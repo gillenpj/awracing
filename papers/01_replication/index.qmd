@@ -1,0 +1,153 @@
+---
+title: "Replicating Owen (2019) on UK All-Weather Flat handicaps, 2006–2015"
+subtitle: "A conditional-logit model of race outcomes"
+author: "Patrick Gillen"
+date: today
+abstract: |
+  We replicate the conditional-logit win model of Alun Owen
+  [@owen2019] on a different dataset: UK All-Weather (AW) Flat
+  handicaps run at Kempton, Lingfield, Southwell and Wolverhampton
+  between 2006-01-01 and 2015-10-14, restricted to Class 2--5. The
+  feature set, model specification and diagnostic suite are kept as
+  close to Owen's as the data allow, and the fit is contrasted with
+  Owen's Table 3 (UK Turf Flat, 2014--2016). Calibration and the two
+  probability-scoring rules he reports are evaluated out-of-sample on
+  the held-out 30% of races. Coefficient signs largely agree with
+  Owen's; magnitudes drift in places consistent with the AW / Turf
+  surface difference. The scoring picture is less encouraging than
+  Owen's: on this AW subset, the fitted model trails the market on
+  both rules across most of the threshold range. One small design
+  choice we own is that history-based features are built from each
+  AW horse's full cross-surface career, not its AW-only record;
+  @sec-data sets out the empirical motivation. Other than that, the
+  feature set, model specification and diagnostic suite are kept as
+  close to Owen's as the data allow. We see this work as a starting
+  point: the second paper in this series will add features *and*
+  move to the exploded conditional logit so the full finishing
+  order, not just the win, contributes to the fit; the third will
+  switch the model entirely, to a Plackett–Luce R² tree.
+format:
+  html: default
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+tar_config_set(store = file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "_targets"
+))
+
+tar_load(c(
+  aw_courses,
+  candidate_races,
+  qualifying_races,
+  qualifying_runners,
+  races_train,
+  races_test,
+  full_history,
+  features,
+  raw_easy_features,
+  mlogit_train_data,
+  mlogit_test_data,
+  fitted_mlogit,
+  model_diagnostics,
+  fitted_final,
+  test_predictions,
+  model_market_ratio,
+  backtest_naive,
+  backtest_sweep
+))
+```
+
+# Introduction {#sec-intro}
+
+Modelling the outcome of a horse race is a long-running problem in
+applied statistics and a useful proving ground for discrete-choice
+methods more generally. @owen2019 fits a conditional-logit win model
+to UK Turf Flat racing over 2014--2016 and reports both the parameter
+estimates (his Table 3) and a small suite of probabilistic
+diagnostics: a calibration plot (his Figure 7) and two scoring rules
+(his Figure 8). Owen's headline finding is that the model and the
+betting market track each other closely on calibration, with the
+market modestly sharper on the scoring rules.
+
+This paper repeats that exercise on a different subset of the
+British racing programme: handicap races on the four UK All-Weather
+(AW) courses — Kempton, Lingfield, Southwell and Wolverhampton —
+between 1 January 2006 and 14 October 2015, restricted to Class 2--5
+(see @sec-data for why these bounds). The intent is replication, not
+novelty: we use the same feature set as Owen, the same model
+specification (a no-intercept conditional logit fitted with
+{mlogit}), and the same diagnostic plots. The one design choice we
+own is to build history-based features from each AW horse's full
+cross-surface career rather than its AW-only record; @sec-data
+motivates that empirically.
+
+We make no claim to extend or to better Owen's work in this paper.
+The contribution, such as it is, is a careful translation of his
+recipe onto a population that differs from his in three ways at
+once: surface (AW vs Turf), window length (a decade vs three years)
+and race-type scope (we restrict to Class 2--5 handicaps, and the
+two scopes are not directly comparable along this axis).
+Two follow-up papers, signposted in passing throughout but not
+attempted here, will pick up where this one stops. The second adds
+features to the same backbone *and* fits it via the exploded
+conditional logit, so the full finishing order — not just the win —
+contributes to the likelihood. The third moves off the
+conditional-logit framework altogether, to a Plackett–Luce R² tree.
+
+The paper is organised as follows. @sec-data describes the data and
+the race-selection rules, including a digression on why we have built
+features from each horse's full career history rather than its AW
+record alone. @sec-eda walks through the same kind of feature-by-
+feature exploratory plots Owen reports. @sec-results presents the
+fitted model alongside Owen's Table 3, then evaluates calibration and
+the two probability-scoring rules on held-out test races.
+@sec-appx-derivation, an appendix, derives the conditional logit
+from the binary case.
+
+{{< include _01_data.qmd >}}
+
+{{< include _02_exploratory.qmd >}}
+
+{{< include _03_results.qmd >}}
+
+{{< include _04_future_predictive.qmd >}}
+
+{{< include _appx_derivation.qmd >}}
+
+{{< include _appx_software.qmd >}}
+
+# Acknowledgments {.unnumbered}
+
+I have been interested in modelling horse racing since first
+acquiring the Smartform database more than a decade ago. The project
+has been picked up and put down many times, the obstacle almost
+always being the gap between an idea and a running implementation.
+What is different now is that working alongside Claude Code
+(Anthropic's coding agent), with web-based Claude as a research
+companion, has compressed that gap dramatically. I am grateful to
+my brother, Michael Gillen, for the suggestion to build the model
+on All-Weather races — the foundation of the scope choices set out
+in @sec-data. The design choices — dataset, scope, model,
+comparison, editorial line — are mine. The implementation, the bulk
+of the draft prose, and a great deal of the verification were
+Claude Code's, under my direction; every output was reviewed and
+edited before it reached the paper. I do not yet know what general
+lessons this experiment points to about the value of human–AI
+collaboration in applied statistics. That uncertainty is part of
+why I am doing the work, and these papers are partly a record of
+that experiment.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

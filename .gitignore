@@ -1,0 +1,32 @@
+# Pipeline cache — machine-specific and regenerable via `tar_make()`
+_targets/
+
+# Written by `tar_config_set()` in the qmd setup chunks on every render;
+# contains an absolute path to the store, so machine-specific.
+_targets.yaml
+
+# Database credentials
+.env
+
+# Interactive R session leftovers — saved by R when a session exits.
+# Not used by the pipeline; regenerable.
+.RData
+.Rhistory
+
+# Quarto's per-project build cache (freeze, idx, xref, session temp).
+# Regenerated on render and machine-specific.
+.quarto/
+
+# RStudio per-user state (autosaved editor buffers, session history).
+# Standard RStudio convention to gitignore the whole directory.
+.Rproj.user/
+
+# Claude Code's per-user permission state — machine-specific paths
+# and approved-command list. Any future shared project config in
+# .claude/settings.json (without `.local`) will still be tracked.
+.claude/settings.local.json
+
+# Per-paper Quarto output dir. The rendered HTML / PDF is republished
+# into `docs/` for GitHub Pages, so the working copy in `_output/`
+# is redundant and regenerable via `tar_make()`.
+papers/*/_output/

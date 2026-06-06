@@ -1,0 +1,22 @@
+Package: awracing
+Title: All Weather Racing Analysis
+Version: 0.0.1
+Description: Analysis pipeline for UK All Weather flat racing using the
+    Smartform database. Implements a targets-based reproducible pipeline.
+Authors@R: person("First", "Last", role = c("aut", "cre"),
+    email = "your@email.com")
+License: MIT
+Depends: R (>= 4.6.0)
+Imports:
+    targets,
+    tarchetypes,
+    tidyverse,
+    tidymodels,
+    DBI,
+    RMariaDB,
+    dotenv,
+    glue,
+    here,
+    lubridate,
+    quarto
+Encoding: UTF-8

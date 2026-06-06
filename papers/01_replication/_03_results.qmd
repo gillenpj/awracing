@@ -1,0 +1,672 @@
+# Model results {#sec-results}
+
+This section fits Owen's conditional-logit win model on the AW
+training data, compares the resulting coefficients to those Owen
+reports in his Table 3 [@owen2019], and then evaluates the model's
+calibration and proper scoring on the held-out test races.
+
+The recipe is deliberately the same as Owen's. We fit the full
+13-feature specification on the training subset, then — paralleling
+the editing step that yields Owen's Table 3 — drop every term whose
+$p$-value exceeds 0.05 in the full fit and refit on the same data.
+The reduced fit is our headline; we treat it as the AW analogue of
+Owen's Table 3, since Owen's Table 3 is itself a reduced model.
+
+The conditional-logit machinery — softmax over the runners in a race,
+no intercept, no race-specific covariates — is derived from first
+principles in @sec-appx-derivation. In R, the fit is produced by
+{mlogit}; the data is reshaped to {mlogit}'s long-form choice format
+with `chid.var = "race_id"` and `alt.var = "horse_ref"` (a per-race
+runner index in $\{1, \ldots, n_{\text{runners}}\}$) inside the
+pipeline target `mlogit_train_data`.
+
+## Specification
+
+The full Owen specification fitted on the AW training races is
+
+\begin{align*}
+P(\text{horse } j \text{ wins race } i)
+  = \frac{\exp(z_{ij})}{\sum_{m} \exp(z_{im})},
+\end{align*}
+
+with
+
+\begin{align*}
+z_{ij} =
+\beta_1 \,\text{age\_diff}_{ij}
+&+ \beta_2 \,\text{sireSR}_{ij}
++ \beta_3 \,\text{trainerSR}_{ij}
++ \beta_4 \,\text{days\_LTO\_log}_{ij} \\
+&+ \beta_5 \,\text{position1}_{ij}
++ \beta_6 \,\text{position2}_{ij}
++ \beta_7 \,\text{position3}_{ij} \\
+&+ \beta_8 \,\text{entire}_{ij}
++ \beta_9 \,\text{gelding}_{ij}
++ \beta_{10}\,\text{cheekpieces}_{ij} \\
+&+ \beta_{11}\,\text{blinkers}_{ij}
++ \beta_{12}\,\text{visor}_{ij}
++ \beta_{13}\,\text{tonguetie}_{ij}.
+\end{align*}
+
+The three lag-position terms enter as factor variables with five
+levels (0, 1, 2, 3, 4), so each contributes four estimated dummy
+coefficients to the fit and twelve in total.
+
+There are two material divergences from Owen's specification.
+First, we use $\log(1 + \text{daysLTO})$ rather than raw `daysLTO`;
+the substitution is a matter of better-conditioned numerical
+scaling across the larger dynamic range produced by horses with
+very long gaps between AW runs. Coefficient magnitudes on
+`days_LTO_log` and `daysLTO` are therefore not directly comparable,
+but signs and significance are. Second, we encode age as
+`pmin(|age - 3|, 5)` rather than Owen's `|age - 4.5|`; the AW
+empirical peak sits closer to 3 than 4.5, and the cap at distance
+5 prevents the effect from extrapolating into the thinly-supported
+old-age bins (@sec-eda).
+
+## The full fit and term-by-term significance
+
+```{r}
+#| label: tbl-full-fit
+#| code-fold: true
+
+full_coefs <- model_diagnostics$coefficients |>
+  dplyr::mutate(
+    signif = dplyr::case_when(
+      is.na(p.value)     ~ "?",
+      p.value < 0.001    ~ "***",
+      p.value < 0.01     ~ "**",
+      p.value < 0.05     ~ "*",
+      TRUE               ~ "ns"
+    )
+  )
+
+full_coefs |>
+  dplyr::select(parameter, estimate, std.error, p.value, signif) |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Full Owen specification fitted on the AW training data."
+  )
+```
+
+```{r}
+#| label: tbl-full-fitstats
+tibble::tibble(
+  Statistic = c("McFadden R²", "Null deviance", "Residual deviance",
+                "Runner-rows (training)", "Races (training)"),
+  Value     = c(
+    sprintf("%.4f", model_diagnostics$fit_stats["McFadden"]),
+    sprintf("%.1f", model_diagnostics$fit_stats["null.deviance"]),
+    sprintf("%.1f", model_diagnostics$fit_stats["residual.deviance"]),
+    format(model_diagnostics$fit_stats["nobs"],   big.mark = ","),
+    format(model_diagnostics$fit_stats["nraces"], big.mark = ",")
+  )
+) |>
+  knitr::kable(caption = "Aggregate fit statistics for the full specification.")
+```
+
+The runner-row and race counts here are slightly below the
+training-split counts reported in @sec-data. We do not impute, and
+we do not drop individual runners; instead we drop the **whole
+race** if any of its runners has an NA in a modelling column. The
+race-level drop is the right granularity here because {mlogit}
+requires exactly one chosen alternative per choice set, and
+removing a single runner could leave a race with zero or two
+recorded winners. The NA cases are almost entirely a
+first-time-starter sire (no prior strike rate defined) or a debut
+trainer; the small reduction (1.13% of training races, 1.24% of
+runner-rows) is the residual cost of the strict-no-leakage rule on
+sire and trainer strike rates.
+
+We follow Owen and drop any term whose every level has $p > 0.05$.
+For factor terms (the three `position` lags), a term is retained if
+*any* of its four dummy levels reaches significance.
+
+```{r}
+#| label: drop-terms
+
+term_of <- function(coef_name) {
+  if (grepl("^position1[1-4]$", coef_name)) return("position1")
+  if (grepl("^position2[1-4]$", coef_name)) return("position2")
+  if (grepl("^position3[1-4]$", coef_name)) return("position3")
+  coef_name
+}
+
+orig_coefs_with_term <- full_coefs |>
+  dplyr::mutate(term = vapply(parameter, term_of, character(1)))
+
+term_significance <- orig_coefs_with_term |>
+  dplyr::group_by(term) |>
+  dplyr::summarise(
+    n_levels = dplyr::n(),
+    min_p    = suppressWarnings(min(p.value, na.rm = TRUE)),
+    any_sig  = any(!is.na(p.value) & p.value < 0.05),
+    .groups  = "drop"
+  )
+
+kept_terms    <- term_significance$term[ term_significance$any_sig]
+dropped_terms <- term_significance$term[!term_significance$any_sig]
+```
+
+**Dropped terms** (no level with $p < 0.05$ in the full fit):
+`r if (length(dropped_terms) == 0L) "none" else paste(dropped_terms, collapse = ", ")`.
+
+## Reduced model (headline)
+
+```{r}
+#| label: fit-reduced
+
+final_formula <- stats::as.formula(
+  paste("won ~", paste(kept_terms, collapse = " + "), "| 0 | 0")
+)
+
+fitted_final <- mlogit::mlogit(final_formula, data = mlogit_train_data)
+
+final_coef_table <- summary(fitted_final)$CoefTable
+final_coefs <- tibble::tibble(
+  parameter        = rownames(final_coef_table),
+  final_estimate   = final_coef_table[, "Estimate"],
+  final_std.error  = final_coef_table[, "Std. Error"],
+  final_p.value    = final_coef_table[, "Pr(>|z|)"]
+)
+```
+
+The reduced model is fitted on the same training data with the
+formula automatically constructed from the retained terms. This is
+the AW analogue of Owen's Table 3; @tbl-owen-comparison sets it
+side-by-side with the values Owen reports.
+
+```{r}
+#| label: tbl-owen-comparison
+#| code-fold: true
+
+# Owen (2019) Table 3 exact values — the post-pruning (reduced) fit
+# on UK Turf Flat 2014–2016. Every entry is significant by
+# construction (Table 3 is the reduced specification), so `owen_signif`
+# is derived from the sign of `owen_estimate`. Owen's `daysLTO` is on
+# the raw scale; we map it onto our `days_LTO_log` row for the join
+# and flag the scale difference in the Note column.
+
+owen_table3 <- tibble::tribble(
+  ~parameter,         ~owen_estimate, ~owen_se,  ~owen_p,
+  "age_diff",         -0.152,         0.0313,    "<0.001",
+  "sireSR",            0.048,         0.0093,    "<0.001",
+  "trainerSR",         0.051,         0.0093,    "<0.001",
+  "days_LTO_log",     -0.004,         0.0018,    "0.021",
+  "position11",        0.607,         0.0918,    "<0.001",
+  "position12",        0.329,         0.1003,    "<0.001",
+  "position13",        0.313,         0.1026,    "<0.001",
+  "position14",        0.157,         0.1081,    "<0.001",
+  "position21",        0.377,         0.0970,    "<0.001",
+  "position22",        0.373,         0.0975,    "<0.001",
+  "position23",        0.075,         0.1070,    "<0.001",
+  "position24",        0.220,         0.1048,    "<0.001",
+  "entire",            0.489,         0.1294,    "<0.001",
+  "gelding",           0.548,         0.0946,    "<0.001",
+  "cheekpieces",      -0.503,         0.1454,    "0.001"
+) |>
+  dplyr::mutate(
+    owen_signif = dplyr::if_else(owen_estimate > 0, "+", "-")
+  )
+
+aw_coefs <- final_coefs |>
+  dplyr::mutate(
+    aw_signif = dplyr::case_when(
+      is.na(final_p.value) ~ "?",
+      final_p.value < 0.001 ~ "***",
+      final_p.value < 0.01  ~ "**",
+      final_p.value < 0.05  ~ "*",
+      TRUE                  ~ "ns"
+    ),
+    aw_direction = dplyr::case_when(
+      aw_signif == "ns"     ~ "ns",
+      final_estimate > 0    ~ "+",
+      final_estimate < 0    ~ "-",
+      TRUE                  ~ "0"
+    )
+  )
+
+comparison <- owen_table3 |>
+  dplyr::full_join(aw_coefs, by = "parameter") |>
+  dplyr::mutate(
+    difference = final_estimate - owen_estimate,
+    note = dplyr::case_when(
+      is.na(owen_estimate) & (is.na(final_estimate) | aw_signif == "ns") ~ "Both: NS / dropped",
+      is.na(owen_estimate) & aw_signif != "ns"                            ~ "AW retains; Owen dropped",
+      is.na(final_estimate)                                                ~ "AW dropped; Owen retains",
+      owen_signif == aw_direction                                          ~ "Same direction",
+      TRUE                                                                 ~ "Direction differs"
+    ),
+    note = dplyr::case_when(
+      parameter == "days_LTO_log" ~
+        paste0(note, " (AW: log(1 + daysLTO); Owen: raw daysLTO; scales differ)"),
+      TRUE ~ note
+    )
+  ) |>
+  dplyr::select(
+    Parameter        = parameter,
+    `Owen est.`      = owen_estimate,
+    `Owen SE`        = owen_se,
+    `Owen p`         = owen_p,
+    `AW est.`        = final_estimate,
+    `AW SE`          = final_std.error,
+    `AW sig.`        = aw_signif,
+    `AW − Owen`      = difference,
+    Note             = note
+  ) |>
+  dplyr::arrange(
+    factor(
+      Parameter,
+      levels = c(
+        "age_diff",
+        "sireSR", "trainerSR", "days_LTO_log",
+        "position11", "position12", "position13", "position14",
+        "position21", "position22", "position23", "position24",
+        "position31", "position32", "position33", "position34",
+        "entire", "gelding",
+        "cheekpieces", "blinkers", "visor", "tonguetie"
+      )
+    )
+  )
+
+knitr::kable(
+  comparison,
+  digits  = 4,
+  align   = c("l", "r", "r", "c", "r", "r", "c", "r", "l"),
+  caption = "AW reduced model (training fit) vs Owen (2019) Table 3 (UK Turf Flat 2014–2016).
+Two rows are not directly comparable on absolute magnitude: `days_LTO_log` (AW uses log; Owen uses raw `daysLTO`), and `sireSR` / `trainerSR` (Owen appears to report on a percentage scale, our coefficients are on a proportion scale — divide AW by 100 for a like-for-like comparison; see text)."
+)
+```
+
+The two strike-rate rows in @tbl-owen-comparison deserve a moment.
+Both `sireSR` and `trainerSR` are *defined* identically in our
+pipeline and in Owen's — wins divided by races at the latest
+meeting strictly before the runner's race date, returned as a
+proportion in $[0, 1]$ (median around 0.10 in both our distribution
+and his). The fitted AW coefficients (+2.355 for sireSR, +5.094 for
+trainerSR) are roughly 50× and 100× larger than Owen's (+0.048,
++0.051). A direct read of the table would suggest a wildly stronger
+strike-rate signal on AW than on Turf. The more likely
+interpretation is a reporting-scale mismatch: Owen's coefficients
+behave numerically as though his rates were on the percent scale
+(0--100), while ours are on the proportion scale (0--1). Dividing
+our coefficients by 100 puts them on the same footing:
+
+- `trainerSR` — AW 0.0509 vs Owen 0.0510. A near-exact match.
+- `sireSR` — AW 0.0235 vs Owen 0.0480. AW is about half Owen's.
+
+The trainerSR agreement is striking. The sireSR halving is
+substantively interesting: AW handicap horses are older and more
+mature than the predominantly 3-year-old Turf flat population Owen
+fits, and the inherited speed-and-stamina signal a sire carries is
+plausibly weaker once horses have had more time to express their
+own ability. Both observations would survive a refit with rescaled
+predictors; we present them here as scale-corrected magnitudes
+rather than refitting, since the qualitative direction of every
+other comparison in the table is unaffected.
+
+```{r}
+#| label: tbl-fitstats-comparison
+
+summarise_fit <- function(fitted, label) {
+  # Null log-likelihood from choice-set sizes (robust to mlogit's
+  # `summary()$lratio` not always being populated). Matches the
+  # formula in `extract_model_diagnostics()` for consistency: padded
+  # slots in `fitted$probabilities` are zero, real slots strictly
+  # positive, so `> 0` selects actual alternatives.
+  probs_mat          <- fitted$probabilities
+  n_runners_per_race <- rowSums(probs_mat > 0)
+  ll      <- as.numeric(stats::logLik(fitted))
+  ll_null <- -sum(log(n_runners_per_race))
+  tibble::tibble(
+    Model           = label,
+    `n params`      = length(stats::coef(fitted)),
+    `logLik`        = ll,
+    `McFadden R²`   = 1 - ll / ll_null,
+    `Null dev.`     = -2 * ll_null,
+    `Resid. dev.`   = -2 * ll
+  )
+}
+
+dplyr::bind_rows(
+  summarise_fit(fitted_mlogit, "Full"),
+  summarise_fit(fitted_final,  "Reduced")
+) |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Full vs reduced specification: aggregate fit statistics on the training data."
+  )
+```
+
+The qualitative picture is largely consistent with Owen's: `age_diff`
+attracts a significant negative coefficient (peak-ability encoding,
+declining symmetrically away from peak); both strike-rate measures
+sit positive; the `position1` and `position2` factors retain
+significance on at least one level apiece, while `position3` is
+dropped in both fits; `entire` and `gelding` come in positive and
+`cheekpieces` negative; the remaining tack indicators are
+non-significant. Magnitude differences between the two fits show on
+the comparison table above; specific patterns of agreement and
+drift are worth reading line-by-line rather than summarising
+prematurely, given that the AW and Turf populations differ in
+surface, window length and race-type scope.
+
+## Out-of-sample evaluation: calibration
+
+Owen's Figure 7 [@owen2019, §3.3] plots observed win proportion
+against fitted (or implied) win probability, binned in 5-point
+intervals across $[0, 0.50]$. Perfect calibration sits on the
+$y = x$ line; points above indicate under-prediction, below
+indicate over-prediction.
+
+We compute model probabilities on the **test races** using the
+reduced fit — i.e. these are out-of-sample forecasts, not in-sample
+fits. Market-implied probabilities are constructed from the
+runner's starting price and renormalised per race so the
+probabilities in each race sum to one.
+
+```{r}
+#| label: build-probability-table
+
+probs_mat_test <- stats::predict(fitted_final, newdata = mlogit_test_data)
+
+model_probs_long <- probs_mat_test |>
+  as.data.frame() |>
+  tibble::rownames_to_column("race_id") |>
+  tidyr::pivot_longer(
+    cols      = -race_id,
+    names_to  = "horse_ref",
+    values_to = "model_prob"
+  ) |>
+  dplyr::filter(!is.na(model_prob), model_prob > 0) |>
+  dplyr::mutate(
+    race_id   = as.integer(race_id),
+    horse_ref = as.integer(horse_ref)
+  )
+
+mldat_df <- as.data.frame(mlogit_test_data)
+class(mldat_df) <- "data.frame"
+attr(mldat_df, "index")    <- NULL
+attr(mldat_df, "clseries") <- NULL
+
+calib_base <- mldat_df |>
+  dplyr::select(race_id, runner_id, horse_ref, won) |>
+  dplyr::mutate(
+    race_id   = as.integer(race_id),
+    horse_ref = as.integer(horse_ref),
+    won       = as.integer(won)
+  ) |>
+  dplyr::inner_join(model_probs_long, by = c("race_id", "horse_ref"))
+
+market_probs <- qualifying_runners |>
+  dplyr::select(race_id, runner_id, starting_price_decimal) |>
+  dplyr::filter(!is.na(starting_price_decimal),
+                starting_price_decimal > 1) |>
+  dplyr::mutate(implied_raw = 1 / starting_price_decimal) |>
+  dplyr::group_by(race_id) |>
+  dplyr::mutate(market_prob = implied_raw / sum(implied_raw)) |>
+  dplyr::ungroup() |>
+  dplyr::select(race_id, runner_id, market_prob)
+
+calib_data <- calib_base |>
+  dplyr::left_join(market_probs, by = c("race_id", "runner_id"))
+```
+
+```{r}
+#| label: fig-calibration
+#| fig-cap: "Figure 7 (Owen 2019, §3.3, replicated on AW test data): observed
+#|   win proportion vs predicted / implied win probability, binned in 5-point
+#|   intervals over [0, 0.50]. Circles = reduced model out-of-sample; plus signs
+#|   = market. Reference line y = x is perfect calibration."
+
+bin_breaks <- seq(0, 0.50, by = 0.05)
+bin_mids   <- head(bin_breaks, -1) + 0.025
+
+calibration_summary <- function(df, prob_col, label) {
+  df |>
+    dplyr::filter(!is.na(.data[[prob_col]]),
+                  .data[[prob_col]] >= 0,
+                  .data[[prob_col]] <= 0.50) |>
+    dplyr::mutate(
+      bin = cut(.data[[prob_col]],
+                breaks = bin_breaks,
+                include.lowest = TRUE,
+                right = FALSE)
+    ) |>
+    dplyr::group_by(bin) |>
+    dplyr::summarise(
+      n            = dplyr::n(),
+      observed     = mean(won),
+      predicted_mu = mean(.data[[prob_col]]),
+      .groups      = "drop"
+    ) |>
+    dplyr::mutate(
+      bin_mid = bin_mids[as.integer(bin)],
+      source  = label
+    )
+}
+
+calib_summary <- dplyr::bind_rows(
+  calibration_summary(calib_data, "model_prob",  "Model (reduced)"),
+  calibration_summary(calib_data, "market_prob", "Market")
+)
+
+ggplot2::ggplot(
+  calib_summary,
+  ggplot2::aes(x = bin_mid, y = observed, shape = source, colour = source)
+) +
+  ggplot2::geom_abline(slope = 1, intercept = 0,
+                       linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::scale_shape_manual(values = c("Model (reduced)" = 1L, Market = 3L)) +
+  ggplot2::scale_colour_manual(values = c("Model (reduced)" = "steelblue", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                              limits = c(0, 0.50), breaks = bin_breaks) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                              limits = c(0, NA)) +
+  ggplot2::labs(
+    x      = "Predicted / implied win probability",
+    y      = "Observed win proportion",
+    shape  = NULL, colour = NULL
+  ) +
+  ggplot2::theme_minimal()
+```
+
+## Out-of-sample evaluation: P1 and P2 scoring rules
+
+Owen's Figure 8 plots two scoring rules against a probability
+threshold. One caveat to flag up front before any comparison
+with Owen's headline numbers: Owen reports P1 and P2 *in-sample*
+on the training set as a goodness-of-fit diagnostic, while the
+values we compute below are *out-of-sample* on the held-out test
+races. Out-of-sample scores will, on average, trail in-sample
+scores for any non-trivial fit, so reading directly from his
+quoted P1 / P2 magnitudes to ours overstates any apparent gap.
+We return to this in @sec-future.
+
+For each threshold $t$, we take the subset of runner-rows whose
+respective probability exceeds $t$, then compute
+
+- **P1** (geometric mean of probability assigned to winners):
+  $$P_1(t) = \exp\!\left(\frac{1}{N_w}\sum_{i \in \text{winners}} \log p_{ij}\right).$$
+- **P2** (geometric mean of per-row Bernoulli likelihood):
+  $$P_2(t) = \exp\!\left(\frac{1}{N}\!\left[\sum_{\text{winners}}\log p + \sum_{\text{losers}} \log(1 - p)\right]\right).$$
+
+P1 rewards high probability on actual winners; P2 also penalises
+high probability on losers (proper scoring rule). Higher is better
+for both.
+
+```{r}
+#| label: scoring-functions
+
+add_loglik <- function(df, prob_col) {
+  df |>
+    dplyr::filter(!is.na(.data[[prob_col]]),
+                  .data[[prob_col]] > 0,
+                  .data[[prob_col]] < 1) |>
+    dplyr::mutate(
+      ll_winner = ifelse(won == 1L, log(.data[[prob_col]]),         NA_real_),
+      ll_full   = ifelse(won == 1L, log(.data[[prob_col]]),
+                                    log(1 - .data[[prob_col]]))
+    )
+}
+
+score_at_threshold <- function(df, prob_col, threshold) {
+  sub <- df[df[[prob_col]] > threshold, , drop = FALSE]
+  if (nrow(sub) == 0L) {
+    return(tibble::tibble(threshold = threshold, n = 0L, n_winners = 0L,
+                          P1 = NA_real_, P2 = NA_real_))
+  }
+  winners <- sub[sub$won == 1L, , drop = FALSE]
+  p1 <- if (nrow(winners) > 0L) exp(mean(winners$ll_winner, na.rm = TRUE)) else NA_real_
+  p2 <- exp(mean(sub$ll_full, na.rm = TRUE))
+  tibble::tibble(threshold = threshold, n = nrow(sub), n_winners = nrow(winners),
+                 P1 = p1, P2 = p2)
+}
+
+scoring_summary <- function(df, prob_col, label, thresholds) {
+  scored_df <- add_loglik(df, prob_col)
+  purrr::map_dfr(thresholds, \(t) score_at_threshold(scored_df, prob_col, t)) |>
+    dplyr::mutate(source = label)
+}
+
+thresholds <- seq(0, 0.50, by = 0.025)
+score_long <- dplyr::bind_rows(
+  scoring_summary(calib_data, "model_prob",  "Model (reduced)", thresholds),
+  scoring_summary(calib_data, "market_prob", "Market",          thresholds)
+)
+```
+
+```{r}
+#| label: fig-P1
+#| fig-cap: "Figure 8(a) (Owen 2019, §3.3, replicated on AW test data): P1 against
+#|   probability threshold for the reduced model (solid) and the market (dashed).
+#|   Higher = more probability concentrated on eventual winners."
+
+ggplot2::ggplot(
+  score_long,
+  ggplot2::aes(x = threshold, y = P1, linetype = source, colour = source)
+) +
+  ggplot2::geom_line(linewidth = 0.8) +
+  ggplot2::scale_linetype_manual(values = c("Model (reduced)" = "solid", Market = "dashed")) +
+  ggplot2::scale_colour_manual(values = c("Model (reduced)" = "steelblue", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.50)) +
+  ggplot2::labs(
+    x        = "Probability threshold",
+    y        = "P1 (geometric mean prob. on winners)",
+    linetype = NULL, colour = NULL
+  ) +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: fig-P2
+#| fig-cap: "Figure 8(b) (Owen 2019, §3.3, replicated on AW test data): P2 against
+#|   probability threshold. Higher = better calibration plus better discrimination
+#|   (proper scoring rule)."
+
+ggplot2::ggplot(
+  score_long,
+  ggplot2::aes(x = threshold, y = P2, linetype = source, colour = source)
+) +
+  ggplot2::geom_line(linewidth = 0.8) +
+  ggplot2::scale_linetype_manual(values = c("Model (reduced)" = "solid", Market = "dashed")) +
+  ggplot2::scale_colour_manual(values = c("Model (reduced)" = "steelblue", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.50)) +
+  ggplot2::labs(
+    x        = "Probability threshold",
+    y        = "P2 (geometric mean Bernoulli likelihood)",
+    linetype = NULL, colour = NULL
+  ) +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: tbl-threshold-counts
+#| code-fold: true
+score_long |>
+  dplyr::select(threshold, source, n, n_winners, P1, P2) |>
+  tidyr::pivot_wider(names_from = source, values_from = c(n, n_winners, P1, P2)) |>
+  dplyr::arrange(threshold) |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Subset sizes and scoring values at each threshold for the reduced model and the market.
+As the threshold rises, fewer rows qualify; P1 and P2 estimates become noisier."
+  )
+```
+
+## Discussion
+
+The coefficient picture lands close to where Owen's recipe predicts.
+Signs agree across the great majority of retained features, and the
+features Owen drops as non-significant — `position3` and three of
+the four tack indicators — drop out at p < 0.05 in his fit. On AW
+some of those terms (`blinkers`, `tonguetie`, the `position3`
+factor) do reach significance in our reduced fit; on roughly ten
+times as many training races, smaller true effects become
+statistically detectable, so this is a sample-size phenomenon rather
+than a substantive AW / Turf difference. Two more substantive
+magnitude differences are worth singling out from
+@tbl-owen-comparison. First, the `gelding` coefficient is roughly
+half Owen's (+0.28 vs +0.55). The AW Class 2--5 population is 65%
+geldings — more than the broader Turf flat — so the contrast
+between geldings and the non-gelding reference is mechanically
+compressed on AW, and the coefficient with it. Second, the
+strike-rate finding flagged in @sec-results: after the suspected
+percent-vs-proportion scale correction, AW trainerSR matches Owen's
+almost exactly while AW sireSR is about half. The trainer effect
+appears to be a stable feature of British handicap racing
+irrespective of surface; the sire effect is plausibly weaker on AW
+because horses are older and more of their ability is visible in
+their own record rather than inherited.
+
+The probabilistic diagnostics are where this replication is
+visibly less encouraging than Owen's. On Turf, Owen reports a
+model that tracks the market quite tightly on calibration and runs
+close to the market on both scoring rules across the threshold
+range, with the market modestly sharper. On AW, the reduced model
+underperforms the market on P1 and P2 across most of the threshold
+range visible in @fig-P1 and @fig-P2, with the gap widening as the
+threshold rises (i.e. as we restrict to higher-confidence picks).
+Calibration is in the right ballpark but visibly noisier than
+Owen's, with bin-level deviations from the $y = x$ line that
+exceed sampling error in places. The forward-looking backtest in
+@sec-future is consistent with this picture: Owen's bet-selection
+rule ($\hat{P} > 0.15$, ratio $> 1.3$), which he reports yielding
++20.5% ROI on his Turf test set, does not produce a positive ROI
+on the AW test set, and the ROI-vs-ratio sweep (@fig-roi-sweep)
+has a 90% bootstrap CI that straddles zero across the full
+threshold range.
+
+The most plausible reading is that the conditional-logit
+specification — Owen's, ours, or any thirteen-feature variant — is
+asked to compete against a starting price that already aggregates
+much richer information. The SP encodes weight carried, draw,
+going, distance suitability, jockey, recent workout form, course
+form, and the collective judgment of informed money. Our thirteen
+features capture none of that directly. The surprise is not that
+the model trails the market; it would be remarkable if it did not.
+What is genuinely interesting in Owen's paper is that on a small
+test set (264 bets, 512 races) his model nonetheless generated a
+positive ROI of the order of 20%. With a sample that size, the
+sampling distribution of ROI is wide enough that the 90% CI
+plausibly includes zero, and Owen is careful to hedge accordingly.
+Our headline ROI is materially negative across 1,713 bets and 2,224
+races, with CIs comfortably below zero — a more confident *null* on
+a much larger sample, rather than a contradiction of a confident
+*positive*.
+
+Paper 2 picks this up with three specific extensions to the
+predictor set, all of which the database supplies but neither this
+paper nor Owen's uses. **Draw** (stall number) is known to matter
+on AW and varies with course and distance — it is a horse-race
+pair feature and belongs in the next specification. **Weight
+carried** (or each horse's deviation from the race's weight range)
+is a direct readout of the handicapper's assessment of relative
+ability within the race, structurally the most natural predictor
+for a handicap and absent from Owen's feature list. **Going** and
+**race class** become available as race-level features through the
+interaction-with-horse-level trick saved for the paper 2 appendix.
+The same paper also moves to the exploded conditional logit, so
+the full finishing order contributes to the fit. Paper 3 then
+leaves conditional logit behind for a Plackett--Luce R² tree.

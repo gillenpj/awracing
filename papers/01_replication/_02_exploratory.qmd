@@ -1,0 +1,252 @@
+# Exploratory analysis {#sec-eda}
+
+```{r}
+#| label: eda-setup
+#| include: false
+source(file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "papers", "01_replication", "_helpers.R"
+))
+```
+
+This section reproduces, on the AW population, the kind of
+feature-by-feature exploration that motivates Owen's choice of
+predictors. For each candidate predictor we plot empirical win
+rate against the feature, with bins chosen to give enough mass per
+bar that the per-bin standard error remains informative. The
+dashed reference line on each plot is the headline win rate over
+the data shown.
+
+The headline win rate over the full qualifying population is the
+mechanical consequence of average field size: with field sizes
+between 4 and 16 runners and exactly one winner per race, the
+average win rate per runner-row is the reciprocal of the mean field
+size.
+
+```{r}
+#| label: headline-win-rate
+tibble::tibble(
+  `Runner-rows`     = nrow(features),
+  `Wins`            = sum(features$won),
+  `Mean field size` = sum(features$won) / nrow(features) |> (\(p) 1 / p)(),
+  `Win rate`        = scales::percent(mean(features$won), accuracy = 0.01)
+) |>
+  knitr::kable(digits = 2,
+               caption = "Headline counts on the joined features tibble (training + test).")
+```
+
+We work off the joined `features` tibble produced by the pipeline.
+It carries 13 modelling columns: `age_diff` (Owen's symmetric-
+distance age encoding around 3), `sireSR` and `trainerSR` (cumulative
+strike rates with strict no-leakage), `days_LTO_log = log(days_LTO +
+1)`, the prior-finish lags `position1` / `position2` / `position3`
+(each encoded as 0--4 with 0 meaning "no prior run, or finished
+worse than 4th"), and the six binary tack / sex indicators
+`entire`, `gelding`, `blinkers`, `cheekpieces`, `visor`,
+`tonguetie`.
+
+## Age
+
+```{r}
+#| label: tbl-age
+age_summary <- features |> summarise_win_rate("age")
+age_summary |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by raw age (years), with bin-level standard errors."
+  )
+```
+
+```{r}
+#| label: fig-age
+#| fig-cap: "Win rate by raw age (years)."
+age_summary |> plot_win_rate()
+```
+
+The win-rate-by-age curve on AW data peaks early and declines as
+the horses get older. Owen [@owen2019] captures the age effect with
+a symmetric-distance encoding, `age_diff = |age - 4.5|`, taking 4.5
+as the peak from published evidence on thoroughbred ageing curves.
+
+For AW we depart in two small ways. First, the empirical AW peak
+sits noticeably younger than 4.5 — closer to age 3 — reflecting
+that AW campaigns are disproportionately run by faster-maturing
+horses; we therefore take the peak as 3. Second, the AW window
+carries very few starters above age 8, so a raw absolute distance
+extrapolates the effect into thinly-supported old-age bins; we cap
+the unsigned offset at 5, holding `age_diff` flat above age 8.
+Concretely the regression in @sec-results uses
+`age_diff = pmin(|age - 3|, 5)`.
+
+## Days since last race
+
+We bin `days_LTO` into intervals matching the rest-effect ranges
+Owen discusses. NA values become a `(missing)` bin, which here
+captures first-time runners with no prior race to count days from.
+
+```{r}
+#| label: tbl-days-lto
+days_breaks  <- c(0, 7, 14, 30, 60, 90, 180, 365, Inf)
+days_summary <- features |> summarise_win_rate("days_LTO", bins = days_breaks)
+days_summary |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by days since last race, with rest-effect bins."
+  )
+```
+
+```{r}
+#| label: fig-days-lto
+#| fig-cap: "Win rate by days since last race, on rest-effect bins."
+days_summary |> plot_win_rate()
+```
+
+Win rate softens as days since last race grows, with the long-tail
+bins (180+ days) sitting noticeably below the headline. Owen reports
+a small negative coefficient on raw `daysLTO` (~ −0.004). The
+log-transformed version we use (`days_LTO_log = log(days_LTO + 1)`)
+re-shapes the same effect on a more even scale; the empirical
+relationship visible here is monotonically (and mildly) decreasing.
+
+## Binary tack and sex indicators
+
+The six binary features are a sex pair (`entire`, `gelding`) and
+four tack indicators (`blinkers`, `cheekpieces`, `visor`,
+`tonguetie`). They are aliased on each other in the obvious way —
+fillies and mares are neither `entire` nor `gelding`, and a runner
+without a piece of tack has the corresponding indicator 0.
+
+```{r}
+#| label: tbl-binaries
+binaries         <- c("entire", "gelding", "blinkers", "cheekpieces", "visor", "tonguetie")
+binary_summaries <- binaries |>
+  purrr::set_names() |>
+  purrr::map(\(feat) summarise_win_rate(features, feat))
+
+binary_summaries |>
+  dplyr::bind_rows() |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by binary feature: 0 / 1 split per indicator."
+  )
+```
+
+```{r}
+#| label: fig-binaries
+#| fig-cap:
+#|   - "Win rate by entire"
+#|   - "Win rate by gelding"
+#|   - "Win rate by blinkers"
+#|   - "Win rate by cheekpieces"
+#|   - "Win rate by visor"
+#|   - "Win rate by tonguetie"
+for (feat in binaries) {
+  print(plot_win_rate(binary_summaries[[feat]]))
+}
+```
+
+The sex pair carries visible gaps between the 0 and 1 bars in both
+cases; Owen fits both as positive (+0.49 for `entire`, +0.55 for
+`gelding`), reflecting the conditioning effect of sex on weight
+allocation in handicaps. Among the four tack indicators, only
+`cheekpieces` shows a clear deficit in the indicator-on bar;
+`blinkers`, `visor` and `tonguetie` sit close to the headline rate.
+Owen reports `cheekpieces` with a negative coefficient (−0.50) and
+drops the other three as non-significant; the fit in @sec-results
+will say whether the same pattern carries over to AW.
+
+## Prior finishing positions
+
+Owen's `position1`, `position2`, `position3` encode the horse's
+finishing position in its most recent, second-most-recent and
+third-most-recent prior races. Each is an integer in {0, 1, 2, 3,
+4}, where the level corresponds to the actual finishing position
+and 0 means "no prior run available, or finished worse than 4th".
+
+```{r}
+#| label: tbl-positions
+positions          <- c("position1", "position2", "position3")
+position_summaries <- positions |>
+  purrr::set_names() |>
+  purrr::map(\(feat) summarise_win_rate(features, feat))
+
+position_summaries |>
+  dplyr::bind_rows() |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by prior-finish lag (0--4 levels)."
+  )
+```
+
+```{r}
+#| label: fig-positions
+#| fig-cap:
+#|   - "Win rate by position1 (most recent prior finish)"
+#|   - "Win rate by position2 (second-most-recent prior finish)"
+#|   - "Win rate by position3 (third-most-recent prior finish)"
+for (feat in positions) {
+  print(plot_win_rate(position_summaries[[feat]]))
+}
+```
+
+The pattern Owen reports is that the win-rate effect is largest for
+`position1` and weakens as we look further back: `position1` levels
+1--4 are positive and declining; `position2` levels 1--4 are smaller
+and also declining; `position3` levels are dropped as
+non-significant. The AW plots are consistent with this picture —
+the lift from being a recent winner is larger than the lift from
+being a winner-before-last, and the third-from-last race's
+positional bin gaps are small relative to their standard errors.
+
+## Sire and trainer strike rates
+
+`sireSR` and `trainerSR` are cumulative win rates over all races
+strictly before the runner's race date. They are continuous in
+$[0, 1]$ and uncapped; we bin them with breaks that give finer
+resolution at the low end — where most of the mass sits — and a
+long tail bin above 0.50.
+
+```{r}
+#| label: tbl-sireSR
+sr_breaks    <- c(0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 1.0)
+sire_summary <- features |> summarise_win_rate("sireSR", bins = sr_breaks)
+sire_summary |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by sire strike rate, with finer bins at the low end."
+  )
+```
+
+```{r}
+#| label: fig-sireSR
+#| fig-cap: "Win rate by sire strike rate."
+sire_summary |> plot_win_rate()
+```
+
+```{r}
+#| label: tbl-trainerSR
+trainer_summary <- features |> summarise_win_rate("trainerSR", bins = sr_breaks)
+trainer_summary |>
+  knitr::kable(
+    digits  = 4,
+    caption = "Win rate by trainer strike rate."
+  )
+```
+
+```{r}
+#| label: fig-trainerSR
+#| fig-cap: "Win rate by trainer strike rate."
+trainer_summary |> plot_win_rate()
+```
+
+Both curves are monotonically increasing in strike rate, which is
+the picture Owen reports and on which his positive coefficients
+(both ~ +0.05) rest. The two curves run roughly in parallel, with
+trainer-rate-derived lift slightly larger than sire-rate-derived
+lift in the higher bins — also consistent with Owen's coefficient
+magnitudes.
+
+We take these patterns into @sec-results as motivation for the
+predictor set rather than as quantitative claims. The conditional-
+logit fit is the proper test of which features carry signal once
+the others are controlled for.

@@ -1,0 +1,218 @@
+# Appendix: From binary logistic regression to the conditional logit {#sec-appx-derivation .appendix}
+
+This appendix derives the conditional-logit model used in @sec-results
+from the more familiar binary logistic regression, by way of the
+multinomial case. The aim is exposition, not novelty: all of this
+material is standard, but writing it out in one place clarifies the
+assumptions the headline AW model rests on, and the limitations of
+the simpler models it builds on.
+
+## Binary logistic regression
+
+In the context of horse racing, this type of regression models the
+probability that a particular horse $i$ wins a particular race, given
+that horse's features $x_{i1}, \ldots, x_{ik}$. The model assumes
+$$
+p_i = \frac{e^{z_i}}{1+e^{z_i}}
+$$
+where
+$$
+z_i = \beta_0 + \sum_{l=1}^k \beta_l x_{il}.
+$$
+It follows that the odds are
+$$
+\frac{p_i}{1-p_i} = e^{z_i},
+$$
+and hence the log-odds are linear in the features:
+$$
+\log\frac{p_i}{1-p_i} = \beta_0 + \sum_{l=1}^k \beta_l x_{il}.
+$$
+
+Let the index $i$ run over each horse in each race, with $y_i = 1$ if
+that horse wins its race and $0$ otherwise. Given a set of races, the
+likelihood of the observed outcomes is
+$$
+\prod_{i=1}^n p_i^{y_i}(1-p_i)^{1-y_i},
+$$
+and the log-likelihood is
+$$
+\sum_{i=1}^n \left( y_i \log p_i + (1-y_i)\log(1-p_i) \right).
+$$
+Substituting for $p_i$ gives
+$$
+\sum_{i=1}^n \left( y_i z_i - \log\left(1+e^{z_i}\right) \right).
+$$
+This is a function of the coefficients to be maximised (or,
+equivalently, its negative minimised). Because its Hessian is negative
+semidefinite, the function is concave, so any local maximum is also the
+global maximum.
+
+::: {.callout-note title="Remark (empirical logit)"}
+The linearity of the log-odds,
+$$
+\log\frac{p_i}{1-p_i} = \beta_0+\sum_{l=1}^{k}\beta_l x_{il},
+$$
+suggests a more direct route: if the log-odds could be observed, it
+could simply be regressed on the predictors. With grouped data — many
+runners sharing the same feature values, so that a win proportion
+$\hat{p}$ can be formed within each group — this is precisely Berkson's
+empirical-logit approach, which regresses
+$$
+\log\frac{\hat{p}}{1-\hat{p}}
+$$
+on the predictors by weighted least squares. As the group sizes grow,
+$\hat{p} \to p$ and the estimator becomes asymptotically equivalent to
+maximum likelihood. It breaks down, however, for ungrouped binary data,
+where each observation is a single win or loss: then $\hat{p}$ is $0$
+or $1$, the empirical log-odds is $\pm\infty$, and the regression is
+undefined (a continuity correction patches this but introduces bias).
+Racing data is of exactly this ungrouped kind — one row per horse per
+race — so the empirical-logit shortcut is unavailable, and maximum
+likelihood is the appropriate tool.
+:::
+
+A textbook reference for the binary case is James et al. (2021),
+§4.3.
+
+There is a deeper limitation of the binary model in the racing
+context, beyond the empirical-logit shortcut. Binary logistic
+regression treats each horse-race row as an independent Bernoulli
+trial: the probability that horse $i$ wins depends only on its own
+features, with nothing in the model linking the predictions of
+different horses in the same race. In particular, the fitted $p_i$
+across the horses in a single race need not sum to one — but
+exactly one horse wins each race, so they should. The fitted
+probabilities are coherent as marginal estimates of each horse's
+chance, but they ignore the within-race competition entirely. The
+multinomial logit below addresses part of this problem; the
+conditional logit, the rest.
+
+## Multinomial logistic regression
+
+These models estimate the probability $p_{ij}$ that an individual $i$
+chooses alternative $j$ from a set of $J$ mutually exclusive
+alternatives. The probabilities are parametrised as
+$$
+p_{ij} = \frac{e^{z_{ij}}}{\sum_{m=1}^J e^{z_{im}}}
+$$
+— the softmax — where
+$$
+z_{ij} = \beta_{0j} + \sum_{l=1}^{k} \beta_{lj} x_{il}.
+$$
+The term *softmax* is used because this function is a smooth
+approximation to *argmax*: where argmax returns a one-hot vector,
+softmax spreads the unit mass across all $J$ alternatives, with the
+largest $z_{ij}$ dominating as the scores spread apart.
+
+Here the index $l$ runs over features of the individual choosing
+between the alternatives. For example, a person choosing between
+alternative modes of transport may have features such as income, age,
+and so on. $x_{il}$ is the $l$-th feature of individual $i$ and
+$\beta_{lj}$ is the coefficient that links feature $l$ to alternative
+$j$. The subscript $0$ on $\beta_{0j}$ denotes the intercept for
+alternative $j$, not a coefficient for some zeroth individual: it
+captures the baseline log-odds of choosing alternative $j$ over the
+reference when all features are zero, and is well-defined precisely
+because $j$ indexes a fixed, labelled set of alternatives. This
+formulation is called *individual-specific*.
+
+It is overparameterised, however: adding any constant vector
+$\mathbf{c}$ to every $\boldsymbol{\beta}_j$ multiplies every term in
+the softmax by $e^{\mathbf{c}^\top\mathbf{x}_i}$, which cancels between
+numerator and denominator, leaving all probabilities unchanged. To
+resolve this, we fix alternative $J$ as the reference and set
+$\boldsymbol{\beta}_J = \mathbf{0}$, i.e., the set of
+individual-specific coefficients for alternative $J$, giving
+$$
+p_{ij} = \frac{e^{z_{ij}}}{1+\sum_{m=1}^{J-1} e^{z_{im}}}
+$$
+for $j < J$ and
+$$
+p_{iJ} = \frac{1}{1+\sum_{m=1}^{J-1} e^{z_{im}}}.
+$$
+
+It follows that the log-odds of alternative $j$ relative to the
+reference alternative $J$ are
+$$
+\log\frac{p_{ij}}{p_{iJ}}
+  = \log\frac{e^{z_{ij}}}{1+\sum_{m=1}^{J-1}e^{z_{im}}}
+  - \log\frac{1}{1+\sum_{m=1}^{J-1}e^{z_{im}}}
+  = z_{ij},
+$$
+which is linear in the features:
+$$
+\log\frac{p_{ij}}{p_{iJ}}
+  = \beta_{0j} + \sum_{l=1}^k \beta_{lj} x_{il}.
+$$
+
+Let the index $i$ run over individuals and $j$ over alternatives, with
+$y_{ij} = 1$ if individual $i$ chooses alternative $j$ and $0$
+otherwise. Given a set of observed choices, the likelihood of the
+observed outcomes is
+$$
+\prod_{i=1}^n \prod_{j=1}^J p_{ij}^{y_{ij}},
+$$
+and the log-likelihood is
+$$
+\sum_{i=1}^n \sum_{j=1}^J y_{ij} \log p_{ij}.
+$$
+Substituting for $p_{ij}$ gives
+$$
+\sum_{i=1}^n \left(
+  \sum_{j=1}^{J-1} y_{ij} z_{ij}
+  - \log\left(1+\sum_{m=1}^{J-1}e^{z_{im}}\right)
+\right).
+$$
+This is a function of the coefficients to be maximised. As in the
+binary case, the log-likelihood is concave, so any local maximum is
+also the global maximum. The multinomial extension is due to
+McFadden (1974).
+
+The multinomial model is awkward for horse racing in a different way
+than the binary model was. Its predictors $x_{il}$ are indexed by the
+individual $i$ and the feature $l$, with no index for the alternative
+$j$. In the racing analogue — where $i$ is a race and $j$ is a horse
+— this implies that every feature of interest is a property of the
+race, the same for every horse in it. But the features that matter
+most (speed figure, weight carried, days since last race) are
+properties of horse–race pairs, varying across horses within a race.
+The multinomial logit has nowhere to put such features. The
+conditional logit below addresses exactly this by carrying the
+alternative index into the predictors.
+
+## Conditional logit
+
+Multinomial logistic regression assumes that the features $x_{il}$
+describe the individual and do not vary across alternatives. In horse
+racing this is inadequate: the most natural features — speed figures,
+weight carried, days since last race — are properties of a horse–race
+pair, not of the horse alone. A feature such as speed figure takes a
+different value for each horse in each race, so it carries an
+alternative index: $x_{ilj}$ is the $l$-th feature of individual $i$
+for alternative $j$. This is called an *alternative-specific*
+formulation.
+
+To accommodate this, the linear predictor becomes
+$$
+z_{ij} = \sum_{l=1}^k \beta_l x_{ilj},
+$$
+where crucially the coefficients $\beta_l$ no longer carry a $j$
+index: since the features already vary across alternatives, a single
+coefficient suffices to capture the effect of each feature. Note also
+that alternative-specific intercepts $\beta_{0j}$ are not identified in
+this formulation and are dropped.
+
+The softmax parametrisation, log-odds, likelihood, and log-likelihood
+are then identical to the multinomial case — only the definition of
+$z_{ij}$ changes. The conditional-logit model is the workhorse fitted
+in @sec-results.
+
+### References for this appendix {.unnumbered}
+
+- James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021).
+  *An Introduction to Statistical Learning: With Applications in R*
+  (2nd ed.). Springer.
+- McFadden, D. (1974). Conditional Logit Analysis of Qualitative
+  Choice Behavior. In P. Zarembka (Ed.), *Frontiers in
+  Econometrics* (pp. 105–142). Academic Press.
+

@@ -1,0 +1,340 @@
+# Data and race selection {#sec-data}
+
+## Source: the Smartform database
+
+All race data come from the Smartform MySQL database. The two tables
+we draw on are `historic_races`, which holds one row per race, and
+`historic_runners`, which holds one row per declared runner per race.
+A horse is identified by its `runner_id`, which is stable across
+races and surfaces, so the same horse's runs at AW and turf courses
+can be linked. The full extraction is driven from
+`sql/qualifying_races.sql`, `sql/runners_for_races.sql` and
+`sql/horse_full_history.sql`; pull-and-clean functions in `R/` lift
+the resulting tibbles[^tibble] into the `targets` pipeline.
+
+[^tibble]: A *tibble* is the tidyverse's tidy data frame — strict
+    about column types and printing, otherwise behaves like a
+    `data.frame`. See @sec-appx-software for the full software stack.
+
+## The British class system, and why we begin in 2006
+
+British flat racing is organised along two independent axes. The
+first is a quality tier: Group races, then Listed races (together
+making up Class 1), then Classes 2--7 in decreasing order of prize
+money and minimum ability. The second is the method by which weights
+are assigned: a *handicap* allocates each horse a weight set by the
+BHA Handicapper from its Official Rating, while a *conditions* race
+uses the race's own eligibility rules to level the field (most
+commonly weight-for-age in maidens and novices).
+
+The class scheme used today, with Classes 1--7, was introduced on
+1 January 2006. Prior to that, the data carry a two-digit class code
+(11, 42, 53, 64, …) whose meaning is not directly comparable. Rather
+than recode pre-2006 entries, we simply restrict the window to
+1 January 2006 onwards. The upper end of our window, 14 October
+2015, is the most recent date for which the database extract we
+work with is current.
+
+Within Classes 2--7, the choice of which tier of race to model and
+whether to restrict to handicaps or conditions races has a real
+bearing on what the model can learn. Class 1 is qualitatively
+different — its races are conditions-only and run between the best
+horses in training, with the assigned-weights mechanism that
+Classes 2--7 share entirely absent. The conditions-versus-handicap
+distinction within Classes 2--7 also matters: handicap weights are
+set by the same BHA Handicapper, against the same Official Rating,
+across all four AW courses and all classes from 2--7, so the
+mechanism by which a horse's *ability* gets translated into an
+*assigned weight* is consistent throughout the scope we model.
+
+We restrict to Class 2--5 handicaps on two grounds. First, Class
+2--5 handicaps account for the overwhelming majority of races at
+the four AW courses we model — Classes 6--7 are sparse on the
+all-weather, and Class 1 races on these courses are negligible.
+Second, restricting to handicaps means every race in our
+population shares the same weight-assignment mechanism.
+
+## All-Weather course scope
+
+There are six AW courses in the UK and Ireland. We use four:
+Kempton, Lingfield, Southwell and Wolverhampton. The other two are
+excluded for date or jurisdiction reasons rather than from any
+principled distinction:
+
+- **Chelmsford City** opened in January 2015. Inside our window it
+  contributes only nine months of racing — not enough for the
+  career-history feature build to behave consistently with the four
+  longer-established courses.
+- **Newcastle's** AW track came on stream in May 2016, after our
+  window ends. There is no Newcastle AW history in scope.
+- **Dundalk** is an Irish course, outside the UK scope.
+
+Within the four included courses there is real variation in surface,
+configuration and racing style. Lingfield and Kempton race on
+Polytrack; Wolverhampton and Southwell both race on Tapeta —
+Southwell having switched to Tapeta from Fibresand at the end of
+2021, after our window closes, so all Southwell races we use are
+Fibresand-era. Lingfield is the fastest of the four — a short,
+slightly downhill circuit with a notoriously short run-in.
+Wolverhampton is a tight oval well suited to speed and an early
+position. Kempton is a right-handed track (the others are
+left-handed) with an unusual inner / outer loop arrangement and a
+relatively long home straight. Southwell, on Fibresand, played
+slower than the other three and traditionally rewarded stayers and
+front-runners.
+
+We do *not* control for surface or course in the headline model
+specification in @sec-results, because Owen does not control for
+them either: in his Turf Flat scope, almost all races share a single
+surface family. The fact that our four courses span two surfaces
+(Polytrack and Fibresand) is one of several differences from Owen
+that we flag and absorb into the residual variation rather than
+attempt to model explicitly. Adding a surface or course interaction
+is one of the candidate features for paper 2, which extends the
+feature set and refits with the exploded conditional logit.
+
+::: {.callout-note title="The AW data scope, in one place"}
+- **Source**: Smartform `historic_races` ⋈ `historic_runners`.
+- **Race type**: All Weather Flat, filtered on `race_type` rather
+  than the unreliable `all_weather` flag (the flag drops ~2,500
+  legitimate AW races at our four courses).
+- **Courses**: Kempton, Lingfield, Southwell, Wolverhampton.
+- **Class**: 2--5.
+- **Race kind**: handicaps only (`handicap = 1`); non-maiden.
+- **Date window**: 2006-01-01 to 2015-10-14.
+- **Field size**: 4--16 declared runners; re-checked as 4+ *actual*
+  starters after Non-Runners are removed.
+- **Winner**: `coalesce(amended_position, finish_position) == 1`,
+  to pick up the seven post-disqualification promotions in scope.
+- **Dead heats**: 35 races with two `won = 1` rows are dropped, as
+  {mlogit} cannot fit a choice set with two chosen alternatives.
+:::
+
+After these filters, the SQL produces 7,507 candidate races. The
+R-level cuts (post-Non-Runner field-size and dead-heat removal) take
+this down to **`r format(nrow(qualifying_races), big.mark = ",")`
+qualifying races** containing **`r format(nrow(qualifying_runners),
+big.mark = ",")` runner-race observations**, drawn from
+**`r format(length(unique(qualifying_runners$runner_id)),
+big.mark = ",")` distinct horses**.
+
+```{r}
+#| label: data-counts-table
+tibble::tribble(
+  ~Quantity,                        ~Value,
+  "Qualifying races",               nrow(qualifying_races),
+  "Runner-race observations",       nrow(qualifying_runners),
+  "Distinct horses",                length(unique(qualifying_runners$runner_id)),
+  "Date range (first race)",        as.numeric(min(qualifying_races$meeting_date)),
+  "Date range (last race)",         as.numeric(max(qualifying_races$meeting_date))
+) |>
+  dplyr::mutate(
+    Value = dplyr::if_else(
+      Quantity |> stringr::str_detect("Date range"),
+      format(as.Date(Value, origin = "1970-01-01")),
+      format(as.integer(Value), big.mark = ",")
+    )
+  ) |>
+  knitr::kable(
+    caption = "Headline counts for the qualifying AW population."
+  )
+```
+
+The class distribution of the qualifying races is consistent with the
+broader picture that AW racing is concentrated in mid-tier handicaps:
+
+```{r}
+#| label: class-distribution
+qualifying_races |>
+  dplyr::count(class, name = "Races") |>
+  dplyr::rename(Class = class) |>
+  knitr::kable(
+    caption = "Number of qualifying races by Class."
+  )
+```
+
+## Train / test split
+
+For the modelling in @sec-results we split the qualifying races into
+a training set and a held-out test set chronologically, by race
+date, in a 70 / 30 ratio. The cutoff date is **2012-12-30**,
+identified by sorting races by `meeting_date` and locating the 70th
+percentile; we freeze the date so the split is reproducible against
+an exact calendar boundary irrespective of upstream changes. The
+split is on race date, so every runner in a race stays together in
+one set — no within-race information leaks across the boundary.
+
+```{r}
+#| label: split-counts
+tibble::tribble(
+  ~Set,        ~Races,                  ~`Runner-rows`,
+  "Training",  nrow(races_train),       sum(qualifying_runners$race_id %in% races_train$race_id),
+  "Test",      nrow(races_test),        sum(qualifying_runners$race_id %in% races_test$race_id)
+) |>
+  knitr::kable(
+    format.args = list(big.mark = ","),
+    caption = "Chronological 70/30 train/test split. Cutoff: 2012-12-30 inclusive in training."
+  )
+```
+
+## Why we use full cross-surface career history
+
+A choice we make early is whether to compute history-based features
+(days since last run, prior finishing positions, sire and trainer
+strike rates) from each horse's AW races alone or from its full
+career across all surfaces and courses. We do the latter; this
+subsection sets out the empirical motivation. It is a digression
+from the main thread but worth dwelling on because it affects every
+history-based feature in @sec-eda and @sec-results.
+
+### How much of each horse's career is spent at AW courses?
+
+The four AW venues account for a minority of most horses' career
+starts.
+
+```{r}
+#| label: fig-aw-share
+#| fig-cap: "What share of career races were at AW courses?
+#|   Histogram over the qualifying horse population. The dashed line is the median."
+
+aw_share <- full_history |>
+  dplyr::filter(runner_id %in% unique(qualifying_runners$runner_id)) |>
+  dplyr::group_by(runner_id) |>
+  dplyr::summarise(
+    total_runs = dplyr::n(),
+    aw_runs    = sum(course %in% aw_courses),
+    pct_aw     = 100 * aw_runs / total_runs,
+    .groups    = "drop"
+  )
+
+median_pct <- median(aw_share$pct_aw, na.rm = TRUE)
+
+ggplot2::ggplot(aw_share, ggplot2::aes(x = pct_aw)) +
+  ggplot2::geom_histogram(binwidth = 5, fill = "steelblue", colour = "white") +
+  ggplot2::geom_vline(xintercept = median_pct, linetype = "dashed", colour = "firebrick") +
+  ggplot2::annotate(
+    "text",
+    x     = median_pct + 1,
+    y     = Inf,
+    label = paste0("Median: ", round(median_pct, 1), "%"),
+    hjust = 0, vjust = 1.5, size = 3.5, colour = "firebrick"
+  ) +
+  ggplot2::labs(
+    x = "% of career runs at AW courses",
+    y = "Number of horses"
+  ) +
+  ggplot2::theme_minimal()
+```
+
+The median qualifying horse runs only `r round(median_pct, 1)`% of
+its career at AW courses. The distribution is broad — some horses
+are pure AW specialists (100%) while others run at AW only as
+occasional turf-career interludes (the left tail below 10%). A
+meaningful fraction of our population has barely any AW history at
+all at the moment we observe them in an AW race.
+
+### Where else do AW horses run?
+
+The four AW courses — and Wolverhampton in particular — dominate
+the picture by volume, which is the mechanical consequence of
+selecting the population on AW participation in the first place.
+Beyond the AW set, runs are spread across more than fifty other
+courses nationwide; the population has run more or less everywhere
+in Britain.
+
+```{r}
+#| label: fig-course-map
+#| fig-cap: "Total runs at each course across the qualifying horse population.
+#|   AW courses highlighted in blue."
+
+course_counts <- full_history |>
+  dplyr::count(course, name = "runs") |>
+  dplyr::mutate(
+    aw_course = course %in% aw_courses,
+    course    = forcats::fct_reorder(course, runs)
+  )
+
+ggplot2::ggplot(course_counts, ggplot2::aes(x = runs, y = course, fill = aw_course)) +
+  ggplot2::geom_col() +
+  ggplot2::scale_fill_manual(
+    values = c("TRUE" = "steelblue", "FALSE" = "grey70"),
+    labels = c("TRUE" = "All Weather", "FALSE" = "Other"),
+    name   = "Surface"
+  ) +
+  ggplot2::labs(
+    x = "Number of runs",
+    y = "Course"
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(axis.text.y = ggplot2::element_text(size = 7))
+```
+
+### Would AW-only daysLTO mislead us?
+
+The single most testable consequence of restricting to AW history is
+that `daysLTO` — days since the horse's last race — would be
+computed against a thinner stream of prior runs. For each qualifying
+runner-race we computed `daysLTO` two ways: using only prior AW
+races, and using all prior races regardless of surface.
+
+```{r}
+#| label: fig-daysLTO-distortion
+#| fig-cap: "Difference in days since last run when AW-only history is replaced by full cross-surface history,
+#|   per qualifying runner-race. Negative values mean cross-surface history finds a more recent run that AW-only misses."
+
+prior_all <- full_history |>
+  dplyr::arrange(runner_id, meeting_date, race_id) |>
+  dplyr::group_by(runner_id) |>
+  dplyr::mutate(prev_date_all = dplyr::lag(meeting_date)) |>
+  dplyr::ungroup() |>
+  dplyr::select(runner_id, race_id, prev_date_all)
+
+prior_aw <- full_history |>
+  dplyr::filter(course %in% aw_courses) |>
+  dplyr::arrange(runner_id, meeting_date, race_id) |>
+  dplyr::group_by(runner_id) |>
+  dplyr::mutate(prev_date_aw = dplyr::lag(meeting_date)) |>
+  dplyr::ungroup() |>
+  dplyr::select(runner_id, race_id, prev_date_aw)
+
+daysLTO_distortion <- qualifying_runners |>
+  dplyr::inner_join(
+    full_history |> dplyr::distinct(runner_id, race_id, meeting_date),
+    by = c("runner_id", "race_id")
+  ) |>
+  dplyr::left_join(prior_all, by = c("runner_id", "race_id")) |>
+  dplyr::left_join(prior_aw,  by = c("runner_id", "race_id")) |>
+  dplyr::mutate(
+    days_lto_all = as.integer(meeting_date - prev_date_all),
+    days_lto_aw  = as.integer(meeting_date - prev_date_aw),
+    difference   = days_lto_all - days_lto_aw
+  )
+
+n_total   <- nrow(daysLTO_distortion)
+n_na      <- sum(is.na(daysLTO_distortion$difference))
+pct_na    <- round(100 * n_na / n_total, 1)
+
+distortion <- daysLTO_distortion |> dplyr::filter(!is.na(difference))
+distortion <- distortion |> dplyr::filter(difference >= -365, difference <= 0)
+
+ggplot2::ggplot(distortion, ggplot2::aes(x = difference)) +
+  ggplot2::geom_histogram(binwidth = 7, fill = "steelblue", colour = "white") +
+  ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "firebrick") +
+  ggplot2::labs(
+    subtitle = glue::glue("{pct_na}% of runner-rows have no prior AW history at all and would be NA under AW-only."),
+    x = "Difference in days (all surfaces − AW only)",
+    y = "Number of runner-race observations"
+  ) +
+  ggplot2::theme_minimal()
+```
+
+The spike at zero is large — for most observations the most recent
+prior run was an AW race and the two methods agree. But the left
+tail is material, and `r pct_na`% of runner-rows have no prior AW
+race at all, so an AW-only `daysLTO` cannot be defined for them.
+
+We therefore build every history-based feature in this paper from
+each horse's full cross-surface career history. Restricting to AW
+history would discard real form information for most of the
+population and would produce missing values at a rate that would
+distort the model fit.

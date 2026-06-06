@@ -1,0 +1,176 @@
+# Future predictive performance {#sec-future}
+
+```{r}
+#| label: future-setup
+#| include: false
+tar_load(c(
+  test_predictions,
+  model_market_ratio,
+  backtest_naive,
+  backtest_sweep
+))
+```
+
+Owen's §3.4 deploys the Table 3 reduced model to the held-out test
+set and evaluates a unit-stake betting strategy as a forward-looking
+test of the model's edge against the market. We do the same on the
+AW test races (the 30% chronological hold-out after 2012-12-30:
+`r format(length(unique(test_predictions$race_id)), big.mark = ",")`
+races,
+`r format(nrow(test_predictions), big.mark = ",")` runner-rows).
+
+Given the scoring picture established in @sec-results — the model
+trails the market on both P1 and P2 across most of the threshold
+range — we approach this analysis with low expectations. A model
+whose fitted probabilities sit below the market's on actual winners
+will not, in general, identify positive-EV bets against market odds.
+The analysis below confirms this.
+
+## Market probability construction
+
+For each test race $k$, the over-round-adjusted market-implied win
+probability of horse $j$ is constructed from the starting price by
+renormalising the raw implied probabilities to sum to one over the
+runners in that race:
+
+$$
+P^{\text{mkt}}_{jk} \;=\;
+  \frac{1 / \text{SP}_{jk}}{\sum_{m \in \text{race}_k} 1 / \text{SP}_{m}},
+$$
+
+where $\text{SP}_{jk}$ is the runner's starting price in decimal
+odds. Runners with missing SP are excluded from the bet-selection
+step (their `market_prob` is NA).
+
+The model/market probability ratio is then
+$\text{ratio}_{jk} = \hat{P}_{jk} / P^{\text{mkt}}_{jk}$: ratios
+above 1 are runners the model rates higher than the market; ratios
+below 1 are runners the model rates lower.
+
+## Backtest at Owen's thresholds
+
+Owen's bet-selection rule places a unit stake on horse $j$ in race
+$k$ when both of the following hold:
+
+$$
+\hat{P}_{jk} > 0.15 \qquad\text{and}\qquad
+\text{ratio}_{jk} > 1.3.
+$$
+
+On Owen's Turf test set this rule places 264 bets and returns +54
+units, an ROI of approximately +20.5%. Applied to our AW test set
+with the reduced model fit, the same rule gives:
+
+```{r}
+#| label: tbl-backtest-naive
+backtest_naive |>
+  dplyr::transmute(
+    `Prob threshold`  = prob_threshold,
+    `Ratio threshold` = ratio_threshold,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `Gross return`    = sprintf("%.2f", gross_return),
+    `Profit`          = sprintf("%.2f", profit),
+    `ROI`             = scales::percent(roi, accuracy = 0.1)
+  ) |>
+  knitr::kable(
+    caption = "AW reduced model: betting backtest on the held-out test races at Owen's exact thresholds."
+  )
+```
+
+The headline AW ROI is
+**`r scales::percent(backtest_naive$roi, accuracy = 0.1)`** on
+`r format(backtest_naive$n_bets, big.mark = ",")` bets, against
+Owen's reported +20.5% on 264 bets. The gap is exactly the picture
+the scoring-rule plots in @fig-P1 and @fig-P2 predict: a model that
+assigns less probability to winners than the market does will not,
+on average, identify market-beating bets at any sensible threshold.
+
+## ROI across ratio thresholds
+
+To check whether the headline result above is sensitive to the
+exact 1.3 ratio threshold Owen uses, we sweep the ratio threshold
+$\tau$ from 0.9 to 2.0 in steps of 0.05, hold the model-probability
+threshold fixed at 0.13 (chosen on the AW scoring picture rather
+than copied from Owen's 0.15), and compute point ROI plus a 90%
+bootstrap confidence interval at each $\tau$. The bootstrap
+resamples **races** (not runner-rows) with replacement, $B = 2000$
+draws, seed fixed at 42 for reproducibility. Race-level
+resampling preserves the one-winner-per-race structure of the
+choice sets.
+
+```{r}
+#| label: fig-roi-sweep
+#| fig-cap: "ROI vs ratio threshold on the AW test set, with 90% bootstrap CI (shaded). Model-probability filter held at 0.13. Dashed horizontal line at zero marks break-even."
+
+ggplot2::ggplot(backtest_sweep, ggplot2::aes(x = tau, y = roi)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_ribbon(
+    ggplot2::aes(ymin = ci_lo, ymax = ci_hi),
+    fill  = "steelblue", alpha = 0.20
+  ) +
+  ggplot2::geom_line(linewidth = 0.8, colour = "steelblue") +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::labs(
+    x = "Ratio threshold (model_prob / market_prob)",
+    y = "ROI"
+  ) +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: tbl-roi-sweep
+backtest_sweep |>
+  dplyr::transmute(
+    `Ratio threshold` = tau,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `ROI`             = scales::percent(roi, accuracy = 0.1),
+    `90% CI low`      = scales::percent(ci_lo, accuracy = 0.1),
+    `90% CI high`     = scales::percent(ci_hi, accuracy = 0.1)
+  ) |>
+  knitr::kable(
+    caption = "ROI sweep over ratio thresholds with 90% bootstrap CIs (B = 2000, race-level resampling, seed 42)."
+  )
+```
+
+The 90% bootstrap CI straddles zero across essentially the full
+threshold range. There is no $\tau$ at which the lower bound
+remains above zero, so we have no statistical evidence that any
+filtered subset of the AW model's signal is positive-EV against
+the market. This is the natural consequence of the P1 / P2 picture
+in @sec-results.
+
+## Owen's training-set vs our test-set scoring numbers
+
+A caveat worth flagging on direct comparison with Owen's headline
+numbers. Owen's reported P1 / P2 values (P1_model = 0.120,
+P1_market = 0.136, P2_model = 0.860, P2_market = 0.831 in his
+§3.3) are computed on the **training** set as goodness-of-fit
+diagnostics. Our P1 / P2 in @sec-results are evaluated on the held-
+out **test** set as out-of-sample forecasts. The two sets of
+numbers are not directly comparable — out-of-sample scores will
+typically trail in-sample for any non-trivial fit.
+
+The §3.4 ROI comparison above, however, is like-for-like: Owen's
++20.5% and our AW ROI here are both evaluated out-of-sample on the
+respective held-out test races.
+
+## Closing remark
+
+The AW backtest confirms the negative result the scoring rules
+already implied. The interesting question is not *whether* the
+model trails the market — given thirteen features against an SP
+that aggregates weight, draw, jockey, going, distance form, recent
+workouts and informed money, that direction is set in advance —
+but *what is missing from the model* that lets the market lead.
+Each of the candidates listed in @sec-results (draw, weight
+carried, going, race class) is a property of horse-race pairs that
+the SP already prices, and each is absent from Owen's specification
+and ours. Paper 2 adds them, and reframes the comparison as a test
+of how much of the market's edge is recoverable when the feature
+set is widened to overlap meaningfully with the information set
+that the SP itself sits on. That paper also moves to the exploded
+conditional logit, so the full finishing order — not just the win —
+contributes to the fit. Whether either change is enough to close
+the gap is the question paper 2 will answer.
