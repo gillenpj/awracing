@@ -1,0 +1,12 @@
+# Appendix: Software and reproducibility {#sec-appx-software .appendix}
+
+The software stack — R, the tidyverse, {mlogit} for the conditional-logit
+fits, {DBI}/{RMariaDB} for the Smartform database, {renv} for package
+pinning, and Quarto for typesetting — is the same as paper 1's, whose
+appendix B describes it in full, and we do not repeat that here. As there,
+the whole analysis is a {targets} pipeline: each step in the data →
+features → model → render chain is a `tar_target()`, intermediate results
+are cached on disk, and a single `targets::tar_make()` from the project
+root rebuilds every stale step and re-renders the paper. Fitting is on the
+training split only; every out-of-sample figure is computed on the
+held-out test races.

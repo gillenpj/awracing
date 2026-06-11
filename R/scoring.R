@@ -339,3 +339,180 @@ plot_roi_sweep <- function(sweep_df) {
     ) +
     ggplot2::theme_minimal()
 }
+
+#' Discounted-Harville market place probabilities (paper 2b)
+#'
+#' Converts over-round-adjusted starting-price *win* probabilities into
+#' market-implied *place* (top-3) probabilities, for use as the market
+#' baseline in paper 2b's ranking evaluation.
+#'
+#' Under pure Harville (1973), the probability that horse \eqn{j} finishes
+#' second given horse \eqn{i} won is \eqn{p_j / (1 - p_i)}, third given
+#' \eqn{i, m} placed first and second is \eqn{p_k / (1 - p_i - p_m)}, and
+#' so on. Pure Harville is the Plackett–Luce model, so it would be a
+#' circular baseline for a PL-fitted model. The **discounted** Harville of
+#' Lo & Bacon-Shone (1994, 2008) replaces \eqn{p_k} with \eqn{p_k^{\alpha}}
+#' in the conditional steps — \eqn{\alpha_2} (`alpha_2nd`) for the
+#' second-place conditional and a smaller \eqn{\alpha_3} (`alpha_3rd`) for
+#' the third — which both breaks the PL equivalence and corrects the
+#' favourite–longshot bias in the place dimension. The marginal place
+#' probability returned for horse \eqn{j} is
+#' \eqn{P(j\,1\text{st}) + P(j\,2\text{nd}) + P(j\,3\text{rd})}.
+#'
+#' @param market_probs Tibble with `race_id`, `horse_ref`, and
+#'   `market_prob` (the over-round-adjusted SP win probability, summing to
+#'   one within each race) — as produced by `build_test_predictions()`.
+#' @param alpha_2nd Discount exponent on the second-place conditional
+#'   (default 0.80, Lo & Bacon-Shone's recommended value for
+#'   SP-derived inputs).
+#' @param alpha_3rd Discount exponent on the third-place conditional
+#'   (default 0.65).
+#' @return Tibble with `race_id`, `horse_ref`, and `harville_place_prob`
+#'   (marginal probability of a top-3 finish).
+compute_harville_place_probs <- function(market_probs,
+                                         alpha_2nd = 0.80,
+                                         alpha_3rd = 0.65) {
+  # Discounted-Harville top-3 marginal for a single race's win-prob vector.
+  one_race <- function(p) {
+    n <- length(p)
+    if (n < 3L) return(rep(1, n))   # fewer than 3 runners: all place
+    q2 <- p^alpha_2nd
+    q3 <- p^alpha_3rd
+    place <- numeric(n)
+    for (j in seq_len(n)) {
+      p1 <- p[j]                                   # P(j 1st)
+      p2 <- 0                                      # P(j 2nd)
+      for (i in seq_len(n)) {
+        if (i == j) next
+        p2 <- p2 + p[i] * q2[j] / sum(q2[-i])
+      }
+      p3 <- 0                                      # P(j 3rd)
+      for (i in seq_len(n)) {
+        if (i == j) next
+        denom2_i <- sum(q2[-i])
+        for (m in seq_len(n)) {
+          if (m == i || m == j) next
+          p3 <- p3 + p[i] * (q2[m] / denom2_i) * (q3[j] / sum(q3[-c(i, m)]))
+        }
+      }
+      place[j] <- p1 + p2 + p3
+    }
+    place
+  }
+
+  market_probs |>
+    dplyr::group_by(race_id) |>
+    dplyr::mutate(harville_place_prob = one_race(market_prob)) |>
+    dplyr::ungroup() |>
+    dplyr::select(race_id, horse_ref, harville_place_prob)
+}
+
+#' P1_rank: ranking discrimination on the observed top-3 order (paper 2b)
+#'
+#' Geometric mean, over the test races, of the depth-3 Plackett–Luce
+#' probability assigned to the observed top-3 finishing order, computed as
+#' the exponentiated mean per-race log-likelihood to avoid underflow:
+#' \eqn{\exp\!\big(\frac{1}{n}\sum_i \log P(j_1, j_2, j_3)\big)}. Higher is
+#' better. The ranking analogue of Owen's P1.
+#'
+#' @param ranking_predictions Tibble of per-race depth-3 outcomes with the
+#'   model- or market-implied scores/probabilities needed to evaluate
+#'   \eqn{P(j_1, j_2, j_3)} for the observed order (exact columns TBD).
+#' @return A scalar P1_rank.
+#' @details Not yet implemented — scaffolded for paper 2b.
+score_p1_rank <- function(ranking_predictions) {
+  stop("score_p1_rank(): not yet implemented")
+}
+
+#' Brier_place: place-market calibration (paper 2b)
+#'
+#' Mean squared error between the predicted top-3 (place) probability and
+#' the binary place outcome, over all runner-race observations in the test
+#' set: \eqn{\frac{1}{N}\sum_{i,j}(\text{place}_{ij} - p_{ij})^2}. Lower is
+#' better; a proper scoring rule. The place analogue of Owen's P2.
+#'
+#' @param place_predictions Tibble with one row per runner-race carrying
+#'   `placed` (1 if the horse finished top-3, else 0) and the model- or
+#'   market-implied place probability (exact column TBD).
+#' @return A scalar Brier_place.
+#' @details Not yet implemented — scaffolded for paper 2b.
+score_brier_place <- function(place_predictions) {
+  stop("score_brier_place(): not yet implemented")
+}
+
+#' Paired race-level bootstrap of the ROI *difference* between two models
+#'
+#' The marginal ROI bootstrap CIs of two models cannot tell us whether
+#' their ROIs differ, because the two are evaluated on the same races and
+#' are therefore correlated. This resamples races once per replicate and
+#' computes both models' ROI on that *same* resample, so the difference is
+#' paired and the correlation cancels.
+#'
+#' The two models are first restricted to their **common** race set
+#' (intersection of `race_id`), because different feature sets drop
+#' different test races to NA (e.g. paper 1's 2,224 test races vs paper
+#' 2a's 2,193). Owen's naive rule — `model_prob > prob_threshold` and
+#' `ratio > ratio_threshold` — selects bets per model; a winning unit
+#' stake returns the decimal starting price. ROI is `(gross − stake) /
+#' stake`; the difference is model A minus model B.
+#'
+#' @param ratio_df_a,ratio_df_b Model/market ratio tibbles (as produced by
+#'   `compute_model_market_ratio()` / `compute_model_market_ratio_p2()`),
+#'   each with `race_id`, `model_prob`, `ratio`, `won`,
+#'   `starting_price_decimal`.
+#' @param prob_threshold,ratio_threshold Owen's naive bet-selection
+#'   thresholds (0.15 and 1.3).
+#' @param n_boot Number of race-level resamples (default 2000).
+#' @param seed RNG seed (default 42).
+#' @return One-row tibble: `diff_point` (point ROI difference, A − B),
+#'   `ci_lo` / `ci_hi` (5th / 95th percentiles of the bootstrap
+#'   distribution = a 90% CI), `n_common` (races in the intersection),
+#'   `n_boot`.
+bootstrap_roi_difference <- function(ratio_df_a, ratio_df_b,
+                                     prob_threshold  = 0.15,
+                                     ratio_threshold = 1.3,
+                                     n_boot = 2000L, seed = 42L) {
+  common <- intersect(unique(ratio_df_a$race_id), unique(ratio_df_b$race_id))
+
+  # Per-race bet count and gross return on the common races, in a fixed
+  # race order (races with no qualifying bet contribute zeros).
+  per_race <- function(df) {
+    bets <- df |>
+      dplyr::filter(race_id %in% common,
+                    model_prob > prob_threshold,
+                    ratio > ratio_threshold) |>
+      dplyr::mutate(
+        return_unit = dplyr::if_else(won == 1L, starting_price_decimal, 0)
+      ) |>
+      dplyr::group_by(race_id) |>
+      dplyr::summarise(n_bets = dplyr::n(),
+                       gross  = sum(return_unit), .groups = "drop")
+    tibble::tibble(race_id = common) |>
+      dplyr::left_join(bets, by = "race_id") |>
+      dplyr::mutate(dplyr::across(c(n_bets, gross), \(x) tidyr::replace_na(x, 0)))
+  }
+
+  pa <- per_race(ratio_df_a)
+  pb <- per_race(ratio_df_b)
+  nbets_a <- pa$n_bets; gross_a <- pa$gross
+  nbets_b <- pb$n_bets; gross_b <- pb$gross
+  n <- length(common)
+
+  roi <- function(nb, gr) if (nb == 0L) NA_real_ else (gr - nb) / nb
+  point <- roi(sum(nbets_a), sum(gross_a)) - roi(sum(nbets_b), sum(gross_b))
+
+  set.seed(seed)
+  diffs <- vapply(seq_len(n_boot), function(b) {
+    idx <- sample.int(n, n, replace = TRUE)
+    roi(sum(nbets_a[idx]), sum(gross_a[idx])) -
+      roi(sum(nbets_b[idx]), sum(gross_b[idx]))
+  }, numeric(1))
+
+  tibble::tibble(
+    diff_point = point,
+    ci_lo      = stats::quantile(diffs, 0.05, na.rm = TRUE, names = FALSE),
+    ci_hi      = stats::quantile(diffs, 0.95, na.rm = TRUE, names = FALSE),
+    n_common   = n,
+    n_boot     = n_boot
+  )
+}

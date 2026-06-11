@@ -1,0 +1,356 @@
+# Feature evaluation {#sec-eda}
+
+All exploratory analysis in this section uses the **training split
+only** (70/30 chronological, cutoff 2012-12-30). Win-rate summaries,
+tables, and plots are computed after filtering to `split == "train"`,
+so nothing here is informed by the held-out test races. (Paper 1
+computed its exploratory summaries on the full joined tibble; that
+paper is complete and is not being revisited — see the exploratory
+analysis convention in the project notes.)
+
+```{r}
+#| label: eda-setup
+#| include: false
+# Training set only — see CLAUDE.md exploratory analysis convention
+source(file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "papers", "02_extended_features", "_helpers.R"
+))
+
+# Single training-only working tibble used by every chunk below.
+train <- runners_model_ready |> dplyr::filter(split == "train")
+
+# Bin breaks reused across the win-rate plots.
+sr_breaks      <- c(0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 1.0)
+days_breaks    <- c(0, 7, 14, 30, 60, 90, 180, 365, Inf)
+or_breaks      <- c(-Inf, -20, -10, -5, -2, 2, 5, 10, 20, Inf)
+weight_breaks  <- c(-Inf, -8, -5, -3, -1, 1, 3, 5, 8, Inf)
+premium_breaks <- c(-Inf, -0.10, -0.02, 0.02, 0.10, 0.25, Inf)
+```
+
+## Headline counts (training split)
+
+```{r}
+#| label: tbl-headline
+# Training set only — see CLAUDE.md exploratory analysis convention
+field_sizes <- train |> dplyr::count(race_id, name = "field_size")
+
+tibble::tibble(
+  `Training races`   = scales::comma(dplyr::n_distinct(train$race_id)),
+  `Training runners` = scales::comma(nrow(train)),
+  `Date range`       = paste(min(train$race_date), "to", max(train$race_date)),
+  `Field size (min / median / max)` = paste(
+    min(field_sizes$field_size),
+    stats::median(field_sizes$field_size),
+    max(field_sizes$field_size),
+    sep = " / "
+  ),
+  `Win rate` = scales::percent(mean(train$won), accuracy = 0.01)
+) |>
+  tidyr::pivot_longer(dplyr::everything(), names_to = "Quantity", values_to = "Value") |>
+  knitr::kable(caption = "Training-split headline counts (70/30 chronological, cutoff 2012-12-30).")
+```
+
+With field sizes between 4 and 16 and exactly one winner per race, the
+headline win rate per runner-row is the reciprocal of the mean field
+size; it is a property of the choice-set geometry, not of any feature.
+
+## Automated feature evaluation
+
+We rank every candidate feature by a univariate screen. For each
+feature we fit a standalone no-intercept conditional logit (race =
+choice set) on the training races and score it by the depth-1
+Plackett–Luce $R^2$,
+$$
+R^2_{\text{PL}} = 1 - \frac{\log L_{\text{model}}}{\log L_{\text{null}}},
+$$
+where $\log L_{\text{null}}$ assigns every runner the equal probability
+$1/\text{field size}$. This is the univariate analogue of the exploded
+Plackett–Luce fit used later, following @juola2018 (§4.3.6). Each
+feature is scored on its own complete-choice-set subset, so `n_races`
+varies with the feature's coverage. The three prior-finish lags are
+screened together as one conceptual feature (`position_lags`).
+
+```{r}
+#| label: tbl-feature-screen
+# Training set only — see CLAUDE.md exploratory analysis convention
+# (feature_screen is built from runners_augmented restricted to races_train)
+feature_screen |>
+  dplyr::transmute(
+    Feature  = feature,
+    `PL-R²`  = round(pl_r2, 5),
+    `n races` = n_races
+  ) |>
+  knitr::kable(
+    caption = "Univariate PL-R² screen, all 19 candidate features, ranked. Training races only."
+  )
+```
+
+Two caveats temper the ranking. First, each score depends on the
+assumed functional form: a feature entered linearly may screen weakly
+yet carry signal under a better transformation (or as an interaction).
+Second, standalone univariate signal is not the same as marginal
+contribution — a feature can rank highly alone yet add little once
+correlated features are already in the model. The screen is a
+first-pass filter, not the final word; the conditional-logit fits in
+@sec-extended-win are the proper multivariate test.
+
+## Feature drop decisions
+
+We drop the weakest candidates before model fitting, on the evidence
+of the screen above.
+
+**`weight_delta_lbs` (dropped).** Its NA mechanism is not
+missing-at-random: a missing value means the horse has *no prior run*,
+not that its weight was unchanged. Imputing 0 would assert "no change
+since last time" for a horse that has no last time — a substantively
+false statement. The univariate signal is weak (PL-R² 0.008), and
+`rel_weight` already captures the within-race weight level without any
+NA problem. Dropped.
+
+**Weak-signal features (dropped).** Each of the following has a
+univariate PL-R² at or near zero and is dropped before model fitting:
+
+- `class_delta` (PL-R² 0.00004) — the handicapper already prices class
+  moves into the allotted weight, so the residual signal is negligible.
+- `sire_aw_premium` (0.0008) — no standalone All-Weather edge over the
+  sire's overall rate.
+- `jockey_aw_premium` (0.0007) — likewise for jockeys.
+- `stall_normalised` (0.0003) — draw effect is near-zero pooled across
+  courses and distances (a candidate for a course interaction in a
+  later paper, not a main effect here).
+- `first_time_aw` (0.0001) — AW debut carries essentially no marginal
+  win signal once form is accounted for.
+
+**Deferred decisions.** `gelding`, `cheekpieces`, `has_wins`, and
+`trainer_aw_premium` are *not* dropped here. They enter the full
+conditional-logit model in @sec-extended-win and are removed only if
+their coefficients fail the significance test ($p > 0.05$) in the
+reduced model — the same reduction rule paper 1 applied to Owen's
+specification.
+
+## Position encoding: from factors to Model S
+
+The three prior-finish lags record a horse's finishing position in its
+most recent, second-most-recent and third-most-recent runs. Each takes a
+value in $\{0, 1, 2, 3, 4\}$: $1$–$4$ for a top-four finish, and $0$ for
+"no qualifying recent finish" — either no prior run, or a finish worse
+than fourth.
+
+Paper 1 entered each lag as a *factor*, spending one coefficient on each
+placing $1$–$4$ (with $0$ as the reference): four coefficients per lag,
+twelve in all. That is maximally flexible but not parsimonious. We test
+two cheaper encodings against it on the training races, position terms
+only. **Model P** is the aggressive one — a single position score plus a
+lag-decay term, two coefficients for all three lags combined. **Model S**
+is the middle ground: per lag it gives the $0$ category its own term and
+forces only placings $1$–$4$ onto a straight line, via a binary indicator
+`pos_lagN_zero` (is the value $0$?) and a numeric slope `pos_lagN_nonzero`
+(the placing $1$–$4$, else $0$) — two coefficients per lag, six in all.
+@tbl-position-encoding shows how one lag's value enters the linear
+predictor under the factor grid and under Model S.
+
+| Last finish | Model F (factor) | Model S (adopted) |
+|:---|:---:|:---:|
+| 0 (no top-4) | reference | $\gamma_{\text{zero}}$ |
+| 1st | $\beta_1$ | $\gamma_{\text{slope}}\times 1$ |
+| 2nd | $\beta_2$ | $\gamma_{\text{slope}}\times 2$ |
+| 3rd | $\beta_3$ | $\gamma_{\text{slope}}\times 3$ |
+| 4th | $\beta_4$ | $\gamma_{\text{slope}}\times 4$ |
+| **coefficients per lag** | **4** | **2** |
+
+: One prior-finish lag's contribution to the linear predictor. Model F gives every placing a free effect; Model S separates the "no recent finish" category and constrains placings 1–4 to a straight line (three lags: twelve coefficients under F, six under S). {#tbl-position-encoding}
+
+```{r}
+#| label: model-s-lr
+pt <- position_parsimony_test
+```
+
+Model P is decisively rejected against the factor grid (LR $=$
+`r round(pt$lr_stat, 0)`, df $=$ `r pt$df`, $p < 0.001$): collapsing
+everything to one slope forces the $0$ category onto the same numeric
+scale as a win, which is substantively wrong. Model S, by contrast, is
+**not** rejected (LR $=$ `r round(pt$lr_stat_s, 2)`, df $=$
+`r pt$lr_df_s`, $p =$ `r round(pt$p_value_s, 3)`), and AIC prefers it to
+the twelve-coefficient grid by about 7 points. So once the $0$ category
+has its own term, placings $1$–$4$ are effectively linear, and six
+coefficients capture what twelve did. We adopt Model S for every paper-2
+fit; the empirical win-rate-by-position curves that motivate the
+linearity are plotted later in this section.
+
+## `or_relative` — coverage and imputation
+
+`or_relative` (a runner's official rating minus the race-mean official
+rating) is the strongest new feature in the screen, but it is also the
+one with a real coverage cost.
+
+```{r}
+#| label: tbl-or-coverage
+# Training set only — see CLAUDE.md exploratory analysis convention
+or_runner_pct <- mean(train$or_missing == 1)
+or_race_n     <- train |>
+  dplyr::group_by(race_id) |>
+  dplyr::summarise(any_missing = any(or_missing == 1), .groups = "drop") |>
+  dplyr::summarise(n = sum(any_missing)) |>
+  dplyr::pull(n)
+or_race_total <- dplyr::n_distinct(train$race_id)
+
+tibble::tibble(
+  `Runners with NULL official rating` = scales::percent(or_runner_pct, accuracy = 0.1),
+  `Training races affected`           = paste0(
+    scales::comma(or_race_n), " of ", scales::comma(or_race_total),
+    " (", scales::percent(or_race_n / or_race_total, accuracy = 1), ")"
+  )
+) |>
+  tidyr::pivot_longer(dplyr::everything(), names_to = "Quantity", values_to = "Value") |>
+  knitr::kable(caption = "Official-rating coverage on the training split.")
+```
+
+The missingness is **not at random**: a horse with no official rating
+is typically unexposed (too few qualifying runs to be rated) or
+returning from a long absence — a distinct population, not a random
+sample of the field. Dropping these runners complete-case would discard
+roughly a quarter of training races, and (because the gap is
+concentrated in the early part of the window) would skew the training
+period.
+
+Our decision is therefore to **impute `or_relative` = 0** for unrated
+runners and add a binary companion **`or_missing`** (1 where the rating
+was NULL). The companion lets the model estimate the missing-OR group
+effect separately, rather than forcing those horses onto the zero point
+of the `or_relative` scale (which would otherwise read as "exactly
+average"). This recovers full coverage at no cost to race count, and is
+applied in the `runners_model_ready` target that every subsequent
+modelling step consumes.
+
+## Win-rate plots for retained features
+
+The plots below follow paper 1's visual style: empirical win rate per
+bin with per-bin standard errors, a dashed reference line at the
+overall (training) win rate, and the bin count above each bar. All are
+computed on the training split only. Dropped features are not plotted.
+
+### Official rating (relative) and its missingness indicator
+
+The continuous `or_relative` curve is shown on rated runners only
+(`or_missing == 0`), so the binning reflects genuine rating spread
+rather than the imputed zeros; `or_missing` is then shown on its own.
+
+```{r}
+#| label: tbl-or-relative
+# Training set only — see CLAUDE.md exploratory analysis convention
+or_summary <- train |>
+  dplyr::filter(or_missing == 0) |>
+  summarise_win_rate("or_relative", bins = or_breaks)
+or_summary |>
+  knitr::kable(digits = 4, caption = "Win rate by relative official rating (rated runners).")
+```
+
+```{r}
+#| label: fig-or-relative
+#| fig-cap: "Win rate by relative official rating (rated training runners)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+or_summary |> plot_win_rate()
+```
+
+```{r}
+#| label: fig-or-missing
+#| fig-cap: "Win rate by or_missing (1 = no official rating)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+train |> summarise_win_rate("or_missing") |> plot_win_rate()
+```
+
+### Relative weight
+
+```{r}
+#| label: fig-rel-weight
+#| fig-cap: "Win rate by relative weight (lb above/below the race mean)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+train |> summarise_win_rate("rel_weight", bins = weight_breaks) |> plot_win_rate()
+```
+
+### Strike rates: jockey, trainer, sire
+
+`jockeySR` is the new jockey analogue of Owen's `trainerSR` / `sireSR`;
+all three are cumulative pre-race win rates, uncapped, binned with finer
+resolution at the low end where the mass sits.
+
+```{r}
+#| label: fig-strike-rates
+#| fig-cap:
+#|   - "Win rate by jockey strike rate."
+#|   - "Win rate by trainer strike rate (AW training data)."
+#|   - "Win rate by sire strike rate (AW training data)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+for (feat in c("jockeySR", "trainerSR", "sireSR")) {
+  print(plot_win_rate(summarise_win_rate(train, feat, bins = sr_breaks)))
+}
+```
+
+### Trainer All-Weather premium
+
+Carried into the full model; the drop decision is deferred to the
+reduced-model coefficient test.
+
+```{r}
+#| label: fig-trainer-aw-premium
+#| fig-cap: "Win rate by trainer AW premium (AW rate minus overall rate)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+train |> summarise_win_rate("trainer_aw_premium", bins = premium_breaks) |> plot_win_rate()
+```
+
+### Owen baseline features carried forward
+
+`age_diff` (symmetric distance from age 3) and `daysLTO` (binned on
+log-spaced rest intervals) are replotted here on the AW training split.
+
+```{r}
+#| label: fig-age-diff
+#| fig-cap: "Win rate by age_diff = min(|age - 3|, 5)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+train |> summarise_win_rate("age_diff") |> plot_win_rate()
+```
+
+```{r}
+#| label: fig-days-lto
+#| fig-cap: "Win rate by days since last race, on log-spaced rest bins."
+# Training set only — see CLAUDE.md exploratory analysis convention
+train |> summarise_win_rate("days_LTO", bins = days_breaks) |> plot_win_rate()
+```
+
+### Binary sex / tack / form indicators
+
+`entire`, `gelding`, and `cheekpieces` carry forward from Owen's
+specification; `has_wins` (any prior career win) is a new binary
+candidate carried into the full model.
+
+```{r}
+#| label: fig-binaries
+#| fig-cap:
+#|   - "Win rate by entire"
+#|   - "Win rate by gelding"
+#|   - "Win rate by cheekpieces"
+#|   - "Win rate by has_wins"
+# Training set only — see CLAUDE.md exploratory analysis convention
+for (feat in c("entire", "gelding", "cheekpieces", "has_wins")) {
+  print(plot_win_rate(summarise_win_rate(train, feat)))
+}
+```
+
+### Prior finishing positions
+
+The three prior-finish lags are screened as one feature but plotted
+separately, most-recent first. Each is an integer in {0, 1, 2, 3, 4},
+where 0 means "no prior run, or finished worse than 4th".
+
+```{r}
+#| label: fig-positions
+#| fig-cap:
+#|   - "Win rate by position1 (most recent prior finish)."
+#|   - "Win rate by position2 (second-most-recent prior finish)."
+#|   - "Win rate by position3 (third-most-recent prior finish)."
+# Training set only — see CLAUDE.md exploratory analysis convention
+for (feat in c("position1", "position2", "position3")) {
+  print(plot_win_rate(summarise_win_rate(train, feat)))
+}
+```

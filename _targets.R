@@ -235,6 +235,424 @@ list(
       dplyr::left_join(age_transformation, by = c("race_id", "runner_id"))
   ),
 
+  # -- Paper 2 candidate features --------------------------------------------
+  # Three extended-feature builders, each keyed by (race_id, runner_id),
+  # joined onto paper 1's `features` to form the single augmented runners
+  # tibble below. They consume targets that already exist for paper 1
+  # (qualifying_runners, qualifying_races, full_history,
+  # trainer_sire_cumulative) and do not feed into any paper 1 target, so
+  # the replication fit is untouched. See R/build_extended_features.R for
+  # the per-feature definitions and leakage / NA notes.
+
+  # jockeySR + trainer/sire/jockey AW premiums (cumulative, pre-race).
+  tar_target(
+    jockey_sr_premiums,
+    build_jockey_sr_and_premiums(
+      qualifying_runners, qualifying_races, trainer_sire_cumulative
+    )
+  ),
+
+  # stall_normalised, rel_weight, or_relative (within-race relative).
+  tar_target(
+    within_race_features,
+    build_within_race_features(qualifying_runners)
+  ),
+
+  # class_delta, weight_delta_lbs, first_time_aw, has_wins (career-form
+  # lags off full cross-surface history).
+  tar_target(
+    career_form_features,
+    build_career_form_features(
+      qualifying_runners, full_history, qualifying_races,
+      class_era_floor = date_from
+    )
+  ),
+
+  # -- Augmented runners (paper 2 modelling input) ---------------------------
+  # Single tibble carrying paper 1's modelling columns plus every new
+  # paper-2 candidate feature. This is the one augmented runners target
+  # that paper 2's prepare_mlogit_data() will consume; paper 1 continues
+  # to read the narrower `features` target, so its fit is unchanged.
+  tar_target(
+    runners_augmented,
+    features |>
+      dplyr::left_join(jockey_sr_premiums,   by = c("race_id", "runner_id")) |>
+      dplyr::left_join(within_race_features, by = c("race_id", "runner_id")) |>
+      dplyr::left_join(career_form_features, by = c("race_id", "runner_id"))
+  ),
+
+  # -- Modelling-ready runners (paper 2) -------------------------------------
+  # runners_augmented + the settled paper-2 data decisions: or_missing
+  # companion + or_relative NULL->0 imputation, plus race_date and the
+  # train/test split label. THIS is the canonical tibble every paper-2
+  # modelling / exploratory target consumes (not runners_augmented
+  # directly). See R/build_extended_features.R::build_model_ready() and
+  # the "Paper 2 feature decisions" section of CLAUDE.md.
+  tar_target(
+    runners_model_ready,
+    build_model_ready(runners_augmented, qualifying_races, races_train)
+  ),
+
+  # -- Univariate PL-R^2 feature screen (paper 2, training only) -------------
+  # One standalone conditional logit per candidate feature, scored by the
+  # depth-1 Plackett-Luce R^2 (1 - logL_model / logL_null). Input is
+  # runners_augmented restricted to the training races; each feature is
+  # scored on its own complete-choice-set subset (see R/feature_screen.R).
+  # No test-set data enters this step.
+  tar_target(
+    feature_screen,
+    run_feature_screen(
+      dplyr::filter(runners_augmented, race_id %in% races_train$race_id)
+    )
+  ),
+
+  # -- Position-encoding parsimony test (paper 2, training only) -------------
+  # LR test of the parsimonious 2-coefficient position encoding (Model P:
+  # equal-weight + lag-weighted score) against paper 1's ~12-coefficient
+  # factor encoding (Model F), position lags only. Nested models on one
+  # shared mlogit dataset. See R/feature_screen.R::test_position_parsimony().
+  tar_target(
+    position_parsimony_test,
+    test_position_parsimony(
+      runners_model_ready |> dplyr::filter(split == "train")
+    )
+  ),
+
+  # -- Paper 2 extended win model -------------------------------------------
+  # Conditional logit on the extended feature set with the Model-S
+  # position encoding. Training-only fit; test-only evaluation. Mirrors
+  # the paper-1 fitting / diagnostic pattern (R/model_fitting_p2.R reuses
+  # the paper-1 prepare/predict/backtest idioms without touching paper-1
+  # code). `or_relative` is pre-imputed in runners_model_ready, so the
+  # NA-driven race drop here is small (debut trainers/sires/jockeys).
+  tar_target(
+    mlogit_train_data_p2,
+    prepare_mlogit_data_p2(
+      runners_model_ready |> dplyr::filter(split == "train")
+    )
+  ),
+  tar_target(
+    mlogit_test_data_p2,
+    prepare_mlogit_data_p2(
+      runners_model_ready |> dplyr::filter(split == "test")
+    )
+  ),
+
+  # Full (19-term) and reduced (backward-elimination, one iteration) fits.
+  tar_target(
+    model_p2_full,
+    fit_extended_full(mlogit_train_data_p2)
+  ),
+  tar_target(
+    model_p2_reduced,
+    fit_extended_reduced(mlogit_train_data_p2, model_p2_full)
+  ),
+
+  # Full / reduced fit diagnostics (logLik, null, PL-R², n_races, n_runners).
+  tar_target(
+    model_p2_diagnostics,
+    extract_p2_diagnostics(model_p2_full, model_p2_reduced)
+  ),
+
+  # Test-set predictions from the reduced model. build_test_predictions()
+  # (paper-1 helper) returns `model_prob`; renamed to `predicted_prob`
+  # for the paper-2 interface.
+  tar_target(
+    test_predictions_p2,
+    build_test_predictions(model_p2_reduced, mlogit_test_data_p2, qualifying_runners) |>
+      dplyr::rename(predicted_prob = model_prob)
+  ),
+
+  # Model/market ratio + betting backtests on the test set, reusing the
+  # paper-1 scoring helpers (Owen's exact naive thresholds; the same
+  # 0.9-2.0 ratio sweep with the 0.13 prob filter and B=2000 seed-42
+  # race-level bootstrap) so the paper-2 ROI is directly comparable to
+  # paper 1's -28.2%.
+  tar_target(
+    model_market_ratio_p2,
+    compute_model_market_ratio_p2(test_predictions_p2)
+  ),
+  tar_target(
+    backtest_naive_p2,
+    run_backtest(model_market_ratio_p2,
+                 prob_threshold  = 0.15,
+                 ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_p2,
+    run_backtest_sweep(
+      model_market_ratio_p2,
+      prob_threshold = 0.13,
+      tau_seq        = seq(0.9, 2.0, by = 0.05),
+      n_boot         = 2000L,
+      seed           = 42L
+    )
+  ),
+
+  # -- Paper 2 exploded conditional logit (Plackett–Luce, depth k = 3) -------
+  # Each training race's finishing order is exploded into k=3 nested choice
+  # sets and pooled; a single conditional logit on the same 17-term reduced
+  # spec maximises the depth-3 PL likelihood. Finishing positions come from
+  # qualifying_runners (runners_model_ready carries only the win
+  # indicator), joined in here. Evaluation is depth-1 (win) only, so it is
+  # directly comparable to the win model and to paper 1.
+  tar_target(
+    exploded_train_data,
+    prepare_exploded_data(
+      runners_model_ready |>
+        dplyr::filter(split == "train") |>
+        dplyr::left_join(
+          dplyr::select(qualifying_runners,
+                        race_id, runner_id, finish_position, amended_position),
+          by = c("race_id", "runner_id")
+        )
+    )
+  ),
+  tar_target(
+    model_p2_exploded,
+    fit_exploded_model(exploded_train_data, model_p2_reduced)
+  ),
+  tar_target(
+    model_p2_exploded_diagnostics,
+    extract_p2_exploded_diagnostics(model_p2_exploded, mlogit_train_data_p2)
+  ),
+
+  # Depth-1 (win) test predictions from the exploded coefficients, then the
+  # same backtest suite as the win model for a like-for-like comparison.
+  tar_target(
+    test_predictions_p2_exploded,
+    build_test_predictions(model_p2_exploded, mlogit_test_data_p2, qualifying_runners) |>
+      dplyr::rename(predicted_prob = model_prob)
+  ),
+  tar_target(
+    model_market_ratio_p2_exploded,
+    compute_model_market_ratio_p2(test_predictions_p2_exploded)
+  ),
+  tar_target(
+    backtest_naive_p2_exploded,
+    run_backtest(model_market_ratio_p2_exploded,
+                 prob_threshold  = 0.15,
+                 ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_p2_exploded,
+    run_backtest_sweep(
+      model_market_ratio_p2_exploded,
+      prob_threshold = 0.13,
+      tau_seq        = seq(0.9, 2.0, by = 0.05),
+      n_boot         = 2000L,
+      seed           = 42L
+    )
+  ),
+
+  # -- Paper 2 mixed-logit interactions --------------------------------------
+  # Two race-level x horse-level interactions tested on top of the exploded
+  # model: weight x distance (Benter) and draw x course. All four models
+  # (E/EW/ED/EWD) are fitted on ONE common exploded sample so the LR tests
+  # are valid; the common sample drops the single training race with
+  # draw-less runners (NA stall_x_*), hence a fresh Model E rather than
+  # reusing model_p2_exploded (which differs by that 1 race).
+  tar_target(
+    runners_interactions,
+    build_interaction_features(runners_model_ready, qualifying_races)
+  ),
+  tar_target(
+    exploded_interactions_data,
+    prepare_exploded_data(
+      runners_interactions |>
+        dplyr::filter(split == "train") |>
+        dplyr::left_join(
+          dplyr::select(qualifying_runners,
+                        race_id, runner_id, finish_position, amended_position),
+          by = c("race_id", "runner_id")
+        ),
+      extra_na_vars = c("rel_weight_x_dist", "stall_x_kempton", "stall_x_lingfield",
+                        "stall_x_southwell", "stall_x_wolverhampton")
+    )
+  ),
+  tar_target(
+    model_p2_e,
+    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced)
+  ),
+  tar_target(
+    model_p2_ew,
+    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
+                             extra_terms = "rel_weight_x_dist")
+  ),
+  tar_target(
+    model_p2_ed,
+    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
+                             extra_terms = c("stall_x_kempton", "stall_x_lingfield",
+                                             "stall_x_southwell", "stall_x_wolverhampton"))
+  ),
+  tar_target(
+    model_p2_ewd,
+    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
+                             extra_terms = c("rel_weight_x_dist",
+                                             "stall_x_kempton", "stall_x_lingfield",
+                                             "stall_x_southwell", "stall_x_wolverhampton"))
+  ),
+  tar_target(
+    interaction_lr_tests,
+    build_interaction_lr_tests(model_p2_e, model_p2_ew, model_p2_ed, model_p2_ewd)
+  ),
+
+  # -- Paper 2 final model: exploded + draw x course, Lingfield dropped ------
+  # The LR tests select ED (draw x course) over E/EW/EWD. Within ED the
+  # Lingfield draw term is individually non-significant (Wald p = 0.91), so
+  # the reduced final model drops it (keeping Kempton/Southwell/
+  # Wolverhampton); final_reduction_lr confirms the 1-df drop. _final
+  # targets point at this reduced model. Depth-1 (win) test evaluation; the
+  # test split has no draw-less runners, so no extra drop is needed.
+  tar_target(
+    model_p2_final,
+    fit_exploded_interaction(
+      exploded_interactions_data, model_p2_reduced,
+      extra_terms = c("stall_x_kempton", "stall_x_southwell", "stall_x_wolverhampton")
+    )
+  ),
+  tar_target(
+    final_reduction_lr,
+    lr_test_pair(model_p2_ed, model_p2_final,
+                 "ED (4 courses)", "Final (3 courses, Lingfield dropped)")
+  ),
+
+  # Non-exploded training data carrying the draw-course columns (drops the
+  # one draw-less race), so the final model's depth-1 PL-R² is computable
+  # and directly comparable to the win / exploded diagnostics.
+  tar_target(
+    mlogit_train_data_interactions,
+    prepare_mlogit_data_p2(
+      runners_interactions |> dplyr::filter(split == "train"),
+      extra_na_vars = c("stall_x_kempton", "stall_x_southwell", "stall_x_wolverhampton")
+    )
+  ),
+  tar_target(
+    model_p2_final_diagnostics,
+    extract_p2_exploded_diagnostics(model_p2_final, mlogit_train_data_interactions,
+                                    label = "final")
+  ),
+  tar_target(
+    mlogit_test_data_interactions,
+    prepare_mlogit_data_p2(
+      runners_interactions |> dplyr::filter(split == "test")
+    )
+  ),
+  tar_target(
+    test_predictions_p2_final,
+    build_test_predictions(model_p2_final, mlogit_test_data_interactions, qualifying_runners) |>
+      dplyr::rename(predicted_prob = model_prob)
+  ),
+  tar_target(
+    model_market_ratio_p2_final,
+    compute_model_market_ratio_p2(test_predictions_p2_final)
+  ),
+  tar_target(
+    backtest_naive_p2_final,
+    run_backtest(model_market_ratio_p2_final,
+                 prob_threshold  = 0.15,
+                 ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_p2_final,
+    run_backtest_sweep(
+      model_market_ratio_p2_final,
+      prob_threshold = 0.13,
+      tau_seq        = seq(0.9, 2.0, by = 0.05),
+      n_boot         = 2000L,
+      seed           = 42L
+    )
+  ),
+
+  # -- Paper 2a: interactions refit on the WIN model (not exploded) ----------
+  # Paper 2a is a win-model paper, so its mixed-logit interactions are fitted
+  # on the extended *win* model, not the exploded ranking fit. fit_exploded_
+  # interaction() just fits the supplied formula on the supplied data, so we
+  # reuse it (and the LR / diagnostics / backtest helpers) on the
+  # non-exploded mlogit_train_data_interactions. All four models share that
+  # one common sample, so the LR tests are nested and valid. The exploded
+  # interaction targets above are retained for reference (paper 2b uses the
+  # plain exploded model).
+  tar_target(
+    model_w,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced)
+  ),
+  tar_target(
+    model_w_ew,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced,
+                             extra_terms = "rel_weight_x_dist")
+  ),
+  tar_target(
+    model_w_ed,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced,
+                             extra_terms = c("stall_x_kempton", "stall_x_lingfield",
+                                             "stall_x_southwell", "stall_x_wolverhampton"))
+  ),
+  tar_target(
+    model_w_ewd,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced,
+                             extra_terms = c("rel_weight_x_dist",
+                                             "stall_x_kempton", "stall_x_lingfield",
+                                             "stall_x_southwell", "stall_x_wolverhampton"))
+  ),
+  tar_target(
+    interaction_lr_tests_w,
+    build_interaction_lr_tests(model_w, model_w_ew, model_w_ed, model_w_ewd)
+  ),
+  # The final paper-2a model IS the full four-course draw block
+  # (`model_w_ed`, 21 coefficients). Selection is at the block level (the
+  # W+draw vs W LR test in `interaction_lr_tests_w`), paralleling the
+  # position-lag block in §3.2; individual course terms are not deleted on
+  # their per-term Wald p, so Lingfield's near-zero draw coefficient is
+  # retained as a substantive "no draw bias here" finding. The `_w_final`
+  # diagnostics / test-prediction targets therefore read off `model_w_ed`.
+  tar_target(
+    model_w_final_diagnostics,
+    extract_p2_exploded_diagnostics(model_w_ed, mlogit_train_data_interactions,
+                                    label = "final")
+  ),
+  tar_target(
+    test_predictions_w_final,
+    build_test_predictions(model_w_ed, mlogit_test_data_interactions, qualifying_runners) |>
+      dplyr::rename(predicted_prob = model_prob)
+  ),
+  tar_target(
+    model_market_ratio_w_final,
+    compute_model_market_ratio_p2(test_predictions_w_final)
+  ),
+  tar_target(
+    backtest_naive_w_final,
+    run_backtest(model_market_ratio_w_final,
+                 prob_threshold  = 0.15,
+                 ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_w_final,
+    run_backtest_sweep(
+      model_market_ratio_w_final,
+      prob_threshold = 0.13,
+      tau_seq        = seq(0.9, 2.0, by = 0.05),
+      n_boot         = 2000L,
+      seed           = 42L
+    )
+  ),
+  # Paired race-level bootstrap of the ROI *difference* between models,
+  # restricted to each pair's common test races (paper 1 and paper 2a drop
+  # different races to NA). Three contrasts: final vs paper 1, final vs the
+  # extended win model, and the extended win model vs paper 1. The naive
+  # rule (P > 0.15, ratio > 1.3) is applied per model per resample.
+  tar_target(
+    roi_difference_bootstrap,
+    dplyr::bind_rows(
+      bootstrap_roi_difference(model_market_ratio_w_final, model_market_ratio) |>
+        dplyr::mutate(contrast = "Final − Paper 1", .before = 1),
+      bootstrap_roi_difference(model_market_ratio_w_final, model_market_ratio_p2) |>
+        dplyr::mutate(contrast = "Final − Extended win", .before = 1),
+      bootstrap_roi_difference(model_market_ratio_p2, model_market_ratio) |>
+        dplyr::mutate(contrast = "Extended win − Paper 1", .before = 1)
+    )
+  ),
+
   # -- mlogit-ready data: train and test -------------------------------------
   # Reshape `features` into mlogit's long-form choice data, restricted to
   # training or test races respectively. The NA-bearing-race filter inside
@@ -345,6 +763,71 @@ list(
       "papers/01_replication/_helpers.R",
       "papers/01_replication/references.bib",
       "papers/01_replication/_quarto.yml"
+    )
+  ),
+
+  # -- Paper 2 render (SPLIT into 2a + 2b) -----------------------------------
+  # The combined pre-split paper-2 draft now lives, unmodified, at
+  # papers/02_extended_features_ARCHIVE/ for reference. The target below is
+  # COMMENTED OUT (its path no longer exists) and replaced by paper_2a and
+  # paper_2b. Kept here rather than deleted as a record of the split.
+  # tar_quarto(
+  #   paper_2_extended_features,
+  #   path = "papers/02_extended_features",
+  #   quiet = FALSE,
+  #   extra_files = c(
+  #     "papers/02_extended_features/_01_data.qmd",
+  #     "papers/02_extended_features/_02_feature_evaluation.qmd",
+  #     "papers/02_extended_features/_03_extended_win_model.qmd",
+  #     "papers/02_extended_features/_04_exploded_logit.qmd",
+  #     "papers/02_extended_features/_05_mixed_interactions.qmd",
+  #     "papers/02_extended_features/_06_discussion.qmd",
+  #     "papers/02_extended_features/_appx_derivations.qmd",
+  #     "papers/02_extended_features/_appx_software.qmd",
+  #     "papers/02_extended_features/_helpers.R",
+  #     "papers/02_extended_features/references.bib",
+  #     "papers/02_extended_features/_quarto.yml"
+  #   )
+  # ),
+
+  # -- Paper 2a render: extended win model (+ mixed-logit interactions) ------
+  # Same pattern as paper_1_replication. Currently a full copy of the
+  # pre-split draft; trimming the ranking / exploded-logit material out to
+  # paper 2b is follow-up work.
+  tar_quarto(
+    paper_2a_extended_win_model,
+    path = "papers/02a_extended_win_model",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/02a_extended_win_model/_01_data.qmd",
+      "papers/02a_extended_win_model/_02_feature_evaluation.qmd",
+      "papers/02a_extended_win_model/_03_extended_win_model.qmd",
+      "papers/02a_extended_win_model/_05_mixed_interactions.qmd",
+      "papers/02a_extended_win_model/_06_discussion.qmd",
+      "papers/02a_extended_win_model/_appx_derivations.qmd",
+      "papers/02a_extended_win_model/_appx_software.qmd",
+      "papers/02a_extended_win_model/_helpers.R",
+      "papers/02a_extended_win_model/references.bib",
+      "papers/02a_extended_win_model/_quarto.yml"
+    )
+  ),
+
+  # -- Paper 2b render: exploded conditional logit as a ranking model --------
+  # Scaffold only; the section partials are stubs.
+  tar_quarto(
+    paper_2b_ranking_model,
+    path = "papers/02b_ranking_model",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/02b_ranking_model/_01_data.qmd",
+      "papers/02b_ranking_model/_02_exploded_model.qmd",
+      "papers/02b_ranking_model/_03_evaluation.qmd",
+      "papers/02b_ranking_model/_04_discussion.qmd",
+      "papers/02b_ranking_model/_appx_derivations.qmd",
+      "papers/02b_ranking_model/_appx_software.qmd",
+      "papers/02b_ranking_model/_helpers.R",
+      "papers/02b_ranking_model/references.bib",
+      "papers/02b_ranking_model/_quarto.yml"
     )
   )
 

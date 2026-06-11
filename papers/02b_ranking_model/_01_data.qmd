@@ -1,0 +1,44 @@
+# Data and scope {#sec-data}
+
+<!-- Data and feature set are identical to paper 2a. This section provides
+     a brief pointer to paper 2a §2 rather than repeating the full data
+     description. The only new element is the market baseline construction
+     (discounted Harville). -->
+
+The data, the race-selection rules, the train/test split and the feature
+set are identical to paper 2a; we refer the reader there (paper 2a, §2)
+rather than repeat them. The one genuinely new ingredient this paper needs
+is a *place-market* baseline, constructed below.
+
+## Market baseline: discounted Harville
+
+The win-market baseline used in papers 1 and 2a — starting-price implied
+win probability, over-round adjusted — cannot be directly applied to a
+top-3 ranking objective. We require market-implied *place* probabilities
+for each horse.
+
+We derive these from win starting prices using the discounted Harville
+formula [@lobaconshone1994; @lobaconshone2008]. Under pure Harville
+[@harville1973], the probability that horse $j$ finishes second given
+horse $i$ won is $p_j / (1 - p_i)$, where $p_k$ denotes win probability.
+The probability of a specific top-2 order $(i, j)$ is then
+$p_i\, p_j / (1 - p_i)$, and so on for deeper rankings. Pure Harville is
+mathematically equivalent to the Plackett–Luce model: comparing a
+PL-fitted model against a pure-Harville market baseline would be circular,
+since both share the same functional form.
+
+Lo & Bacon-Shone show that pure Harville systematically overestimates
+place probabilities for favourites and underestimates them for
+longer-priced horses — the favourite–longshot bias operating in the place
+dimension. The discounted Harville corrects this by replacing $p_k$ with
+$p_k^{\alpha}$ in the Harville formula, with $\alpha < 1$ applied to the
+2nd-place conditional and a smaller $\alpha$ to the 3rd-place conditional.
+We use $\alpha = 0.80$ for 2nd place and $\alpha = 0.65$ for 3rd place,
+following Lo & Bacon-Shone's recommended values when
+starting-price-derived probabilities are used as inputs. The discounting
+breaks the PL equivalence and corrects the favourite bias, giving a
+non-trivial market baseline against which the feature-based exploded model
+can be evaluated.
+
+<!-- Implementation note to be added: compute_harville_place_probs() in
+     R/scoring.R. -->

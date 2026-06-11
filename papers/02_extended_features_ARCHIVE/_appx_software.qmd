@@ -1,0 +1,51 @@
+# Appendix: Software and reproducibility {#sec-appx-software .appendix}
+
+All work in this paper is in R 4.6.0 (R Core Team, 2024) and was built up
+under the following stack:
+
+- **[tidyverse](https://www.tidyverse.org/)** for data manipulation,
+  iteration and plotting (`dplyr`, `tidyr`, `purrr`, `ggplot2`,
+  `stringr`, `forcats`, `lubridate`, `readr`). A *tibble* is the
+  tidyverse's tidy data frame — strict rules about column types and
+  printing, otherwise behaves like a `data.frame`.
+- **[{targets}](https://docs.ropensci.org/targets/)** and
+  **[{tarchetypes}](https://docs.ropensci.org/tarchetypes/)** for the
+  pipeline. Each step in the data → features → model → render chain is a
+  `tar_target()`; intermediate results are cached on disk, and only stale
+  steps re-run when the upstream changes.
+- **[{mlogit}](https://cran.r-project.org/package=mlogit)** for the
+  conditional-logit fits. Paper 2 uses it in three ways: the extended win
+  model (@sec-extended-win), the **exploded logit** (@sec-exploded-logit),
+  and the mixed-interaction models (@sec-mixed-interactions). The exploded
+  fit is ordinary `mlogit::mlogit()` applied to a pooled dataset of
+  fictitious sub-races; the explosion itself is built by
+  `prepare_exploded_data()`, which for each race generates the $k = 3$
+  nested choice sets (full field, field minus first, field minus first
+  two), assigns a composite chooser id `"<race_id>_<s>"`, and reshapes via
+  `mlogit::mlogit.data()`. The Model-S position encoding
+  (@sec-eda) is constructed in `build_model_ready()` from paper 1's
+  position factors — per lag, a binary zero indicator
+  (`pos_lagN_zero`) plus the graded 1–4 value (`pos_lagN_nonzero`).
+- **[{DBI}](https://dbi.r-dbi.org/)** and
+  **[{RMariaDB}](https://rmariadb.r-dbi.org/)** for reading from the
+  Smartform MySQL database.
+- **[{renv}](https://rstudio.github.io/renv/)** for pinning package
+  versions; the `renv.lock` file accompanying the project records the
+  exact versions used (among them {mlogit}, {targets} 1.12.0,
+  {tarchetypes} 0.14.1, {dplyr} 1.2.1 and {ggplot2} 4.0.3).
+- **[Quarto](https://quarto.org/)** for typesetting the document you are
+  reading. The master `index.qmd` and section partials render to a single
+  HTML article via `quarto::quarto_render()`, driven from the `{targets}`
+  pipeline.
+
+The full source — pipeline, SQL, feature builders, paper partials — is
+held in a single project tree. Running `targets::tar_make()` from the
+project root rebuilds every cached intermediate that is stale and
+re-renders the paper; fitting is on the training split only and every
+out-of-sample figure is computed on the held-out test races.
+
+### Reference for this appendix {.unnumbered}
+
+- R Core Team (2024). *R: A Language and Environment for Statistical
+  Computing*. R Foundation for Statistical Computing, Vienna, Austria.
+  <https://www.R-project.org/>.

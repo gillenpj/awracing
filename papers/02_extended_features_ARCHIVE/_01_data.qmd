@@ -1,0 +1,98 @@
+# Data and scope {#sec-data}
+
+## Race selection and window
+
+The data scope is unchanged from paper 1: UK All-Weather (AW) Flat
+handicaps in Classes 2–5, run at the four AW courses (Kempton,
+Lingfield, Southwell and Wolverhampton) between 2006-01-01 and
+2015-10-14, with declared fields of 4–16 and exactly one winner per
+race. We refer the reader to paper 1 for the full selection criteria and
+their motivation (the `race_type` filter, the 2006 class-system cutoff,
+the cross-surface career history, and the dead-heat and non-runner
+handling), none of which we revisit here. The chronological 70/30
+train/test split is also carried over verbatim: every race on or before
+2012-12-30 is training, everything after is test, so no within-race
+information crosses the boundary.
+
+```{r}
+#| label: tbl-data-counts
+# Training set only for fitting; counts here describe the full split.
+data_counts <- runners_model_ready |>
+  dplyr::group_by(split) |>
+  dplyr::summarise(
+    Races   = dplyr::n_distinct(race_id),
+    Runners = dplyr::n(),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(split = dplyr::recode(split, train = "Training (≤ 2012-12-30)",
+                                              test  = "Test (> 2012-12-30)")) |>
+  dplyr::arrange(dplyr::desc(Races))
+
+data_counts |>
+  dplyr::mutate(dplyr::across(c(Races, Runners), scales::comma)) |>
+  dplyr::rename(Split = split) |>
+  knitr::kable(caption = "Race and runner counts by split, on the qualifying AW Class 2–5 handicap population.")
+```
+
+## Feature set
+
+Paper 2 works from a two-tier predictor set: the Owen baseline,
+re-estimated on the AW data, and a set of new candidates drawn from the
+racing literature and the All-Weather context. @tbl-feature-set lists
+them, grouped by tier and by whether each is a horse-level feature or a
+race-level feature entered through an interaction.
+
+```{r}
+#| label: tbl-feature-set
+tibble::tribble(
+  ~Group,                 ~Feature,                ~Description,                                              ~Type,                         ~Source,
+  "Owen baseline",        "age_diff",              "Symmetric distance from peak age (3 on AW)",              "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "daysLTO (log)",         "Log days since last run",                                 "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "trainerSR / sireSR",    "Cumulative pre-race strike rate",                         "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "position lags 1–3",     "Prior finishing positions (Model S encoding)",            "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "entire / gelding",      "Sex indicators",                                          "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "cheekpieces",           "Tack indicator",                                          "horse-level",                 "Owen (2019)",
+  "New horse-level",      "jockeySR",              "Cumulative pre-race jockey strike rate",                  "horse-level",                 "Juola (2018)",
+  "New horse-level",      "or_relative",           "Official rating minus race-mean rating",                  "horse-level",                 "Betwise blog",
+  "New horse-level",      "or_missing",            "Indicator: official rating was NULL",                     "horse-level",                 "Betwise blog",
+  "New horse-level",      "rel_weight",            "Weight carried minus race-mean weight",                   "horse-level",                 "Benter (1994)",
+  "New horse-level",      "trainer_aw_premium",    "Trainer AW strike rate minus overall strike rate",        "horse-level",                 "Juola (2018)",
+  "New horse-level",      "has_wins",              "Indicator: any prior career win",                         "horse-level",                 "Betwise blog",
+  "Race-level × horse",   "rel_weight × distance", "Weight deviation interacted with race distance",          "race-level × horse-level",    "Benter (1994)",
+  "Race-level × horse",   "draw × course",         "Normalised draw interacted with course",                  "race-level × horse-level",    "Betwise blog"
+) |>
+  knitr::kable(caption = "Paper-2 feature set: Owen baseline (re-estimated on AW), new horse-level candidates, and race-level interactions.")
+```
+
+## Data decisions
+
+Three decisions in this paper warrant a note; each is taken up in detail
+in the section where it is used.
+
+**Official rating imputation.** The relative official rating `or_relative`
+is NULL for about 10.5% of runners. The missingness is not at random —
+unrated horses are typically unexposed (too few runs to be rated) or
+returning from a long absence — so we do not drop them, which would
+discard roughly a quarter of training races and skew the early window.
+We impute `or_relative` $= 0$ and add a binary companion `or_missing`
+flagging the imputation; this is the standard missing-indicator approach,
+and it lets the model estimate the missing-rating group effect separately
+rather than forcing those horses onto the zero point of the rating scale
+(@sec-eda).
+
+**Position encoding.** Paper 1 entered the three prior-finish lags as
+twelve factor coefficients. We adopt a more parsimonious *Model S*
+encoding — six coefficients, two per lag (a zero indicator plus a single
+linear slope across placings 1–4) — which a likelihood-ratio test finds
+loses nothing against the full factor grid. The encoding and the test
+are set out in @sec-eda.
+
+**Draw × course construction.** Normalised draw (`stall_normalised`)
+showed near-zero standalone signal in the univariate screen, but draw
+bias on AW is known to be track-specific. We enter it as four
+course-specific slopes in the mixed logit (@sec-mixed-interactions); the
+Lingfield term is individually non-significant and is dropped after a
+one-degree-of-freedom reduction test (LR $=$
+`r round(final_reduction_lr$lr_stat, 3)`, df $=$ `r final_reduction_lr$df`,
+$p =$ `r round(final_reduction_lr$p_value, 3)`), leaving course-specific
+draw effects for Kempton, Southwell and Wolverhampton.

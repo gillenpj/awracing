@@ -33,22 +33,27 @@ read_sql_file <- function(filename) {
   readr::read_file(here::here("sql", filename))
 }
 
-#' Pull pre-aggregated trainer/sire cumulative wins and races
+#' Pull pre-aggregated trainer/sire/jockey cumulative wins and races
 #'
-#' Returns one row per (entity, meeting_date) where entity is either
-#' a sire or a trainer (distinguished by the `kind` column). Within
+#' Returns one row per (entity, meeting_date) where entity is a sire,
+#' a trainer, or a jockey (distinguished by the `kind` column). Within
 #' each entity, `wins_thru_date` and `races_thru_date` are cumulative
-#' totals through end of `meeting_date` (inclusive), computed in SQL
-#' via window functions over the full historic_runners universe.
-#' This is the input to `build_strike_rates()`. Window-function
-#' aggregation in SQL replaces an earlier in-R `cumsum()` step that
-#' took >21 hours on the unaggregated 1.72M-row source.
+#' totals through end of `meeting_date` (inclusive); `aw_wins_thru_date`
+#' and `aw_races_thru_date` are the same totals restricted to the
+#' All-Weather Flat surface. All are computed in SQL via window
+#' functions over the full historic_runners universe. This is the
+#' input to `build_strike_rates()` (trainer/sire overall columns) and
+#' to `build_jockey_sr_and_premiums()` (jockey rows + AW columns).
+#' Window-function aggregation in SQL replaces an earlier in-R
+#' `cumsum()` step that took >21 hours on the unaggregated 1.72M-row
+#' source.
 #'
 #' Manages its own DB connection internally — no `con` parameter,
 #' unlike the other extractors in `R/extract_runners.R`.
 #'
 #' @return A tibble with columns kind, entity_id, meeting_date,
-#'   wins_thru_date, races_thru_date.
+#'   wins_thru_date, races_thru_date, aw_wins_thru_date,
+#'   aw_races_thru_date.
 extract_trainer_sire_cumulative <- function() {
   con <- connect_smartform()
   on.exit(disconnect_smartform(con))

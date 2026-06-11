@@ -1,0 +1,62 @@
+# Appendix: Derivations {#sec-appx-derivations .appendix}
+
+This appendix sets out the mixed discrete-choice mechanism by which
+race-level features enter the model through interactions
+(@sec-mixed-interactions). It builds on the conditional logit derived in
+paper 1's appendix, whose notation we reuse: race $i$ is the chooser,
+horse $j$ the alternative, and the linear predictor for horse $j$ in race
+$i$ is $z_{ij} = \sum_{l} \beta_l x_{ilj}$ over alternative-specific
+features $x_{ilj}$, with win probabilities given by the softmax
+$p_{ij} = e^{z_{ij}} / \sum_m e^{z_{im}}$. (The Plackett–Luce and
+exploded-logit machinery, which underlies the ranking model of the
+companion paper 2b, is derived in that paper's appendix.)
+
+## Mixed discrete choice and race-level interactions
+
+Both multinomial and conditional logistic regression are instances of
+discrete choice models. In practice, a *mixed* or hybrid formulation is
+sometimes used, in which the linear predictor includes both pure
+alternative-specific features, pure individual-specific features, and
+interactions between the two; see Train (2009) for a comprehensive
+treatment.
+
+In the racing context, recall that individual $i$ is a race and
+alternative $j$ is a horse. We distinguish two types of feature:
+
+- **Horse-level features** $h_{ijl}$: the $l$-th feature of horse $j$ in
+  race $i$ (e.g. speed figure, weight carried, days since last race).
+  These vary across horses within a race.
+- **Race-level features** $r_{il}$: the $l$-th feature of race $i$ (e.g.
+  going, distance, prize money). These are the same for every horse in a
+  given race.
+
+Pure race-level features cannot enter the model directly: since $r_{il}$
+does not carry a $j$ index, it is the same for every horse in race $i$
+and cancels between numerator and denominator in the softmax, leaving all
+probabilities unchanged. However, interactions between race-level and
+horse-level features,
+$$
+x_{ijl} = r_{il} \cdot h_{ijl},
+$$
+do vary across horses within a race and can enter the model. For example,
+if $r_{i1}$ is an indicator for firm going and $h_{ij1}$ is horse $j$'s
+historical win rate on firm ground, then $x_{ij1} = r_{i1} \cdot h_{ij1}$
+measures how well each horse in the field is suited to today's
+conditions.
+
+Paper 2a uses two interactions of this form. The first is **weight ×
+distance**, $x_{ij} = (\text{distance}_i) \cdot (\text{rel\_weight}_{ij})$,
+where the horse-level weight deviation is scaled by the race distance —
+@benter1994's hypothesis that the burden of extra weight compounds over a
+longer trip. The second is **draw × course**, in which the horse-level
+normalised draw is interacted with a set of course indicators, giving a
+separate draw slope per course; here the "race-level feature" is the
+categorical course, and the interaction lets a draw effect that cancels
+when pooled (because it points in opposite directions at different
+tracks) emerge per course. @sec-mixed-interactions reports that the
+draw × course interaction is significant while weight × distance is not.
+
+### References for this appendix {.unnumbered}
+
+- Train, K. E. (2009). *Discrete Choice Methods with Simulation*
+  (2nd ed.). Cambridge University Press.

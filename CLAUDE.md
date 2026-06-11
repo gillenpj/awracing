@@ -19,9 +19,17 @@ forward plan below.
     264 bets), which the paper's discussion ascribes primarily to
     the starting price aggregating richer information than the
     13-feature predictor set.
-- **Paper 2 — planning / starting.** *Extended feature set with
-  automated feature selection, refit with the exploded conditional
-  logit.* See "Paper 2 plan" below.
+- **Paper 2 — SPLIT into 2a + 2b.**
+  - **Paper 2a — in development.** *Extended feature set and the
+    conditional-logit win model (including mixed-logit / race-level
+    interactions).* Source: `papers/02a_extended_win_model/`. See
+    "Paper 2a plan" below.
+  - **Paper 2b — scaffolded.** *Exploded conditional logit as a
+    ranking model, evaluated on ranking metrics.* Source:
+    `papers/02b_ranking_model/`. See "Paper 2b plan" below.
+  - **Pre-split draft archived.** `papers/02_extended_features_ARCHIVE/`
+    is the combined pre-split paper-2 draft, kept for reference (not
+    rendered).
 - **Paper 3 — planned, model class change.** *Non-linear /
   interaction-friendly model class, applied to AW racing.* See
   "Paper 3 plan" below.
@@ -74,11 +82,13 @@ forward plan below.
     `_appx_software.qmd` via `{{< include >}}`. `_helpers.R` holds
     plotting helpers used in the section files. Bibliography in
     `references.bib`.
-  - `papers/02_extended_factors/` — paper 2, not yet created. When
-    starting, mirror the paper-1 layout (master `index.qmd` +
-    underscore-prefixed section partials + per-paper
-    `references.bib` + `_quarto.yml` with
-    `project.render: [index.qmd]` and `output-dir: _output`).
+  - `papers/02a_extended_win_model/` — **paper 2a, in development.** Extended
+    feature set, extended win model, mixed logit race-level interactions. Master
+    `index.qmd` includes section partials via `{{< include >}}`. Rendered by
+    `tar_quarto(paper_2a_extended_win_model)`.
+  - `papers/02b_ranking_model/` — **paper 2b, scaffolded.** Exploded conditional
+    logit as a ranking model. Master `index.qmd` includes section partials via
+    `{{< include >}}`. Rendered by `tar_quarto(paper_2b_ranking_model)`.
   - `papers/03_<slug>/` — paper 3, model-class change. Slug TBD
     once the model is picked.
 - `docs/` — GitHub Pages publishing root. **Committed.**
@@ -156,6 +166,13 @@ direct `quarto render` (paper folder).
 
 With those two fixes in place, the single command `tar_make()` from
 the project root is the only render path needed.
+
+### Paper 2 re-render nuisance
+tar_make() re-renders paper 1 when paper 2 targets run, despite no
+paper-1 source changes. Traced to both papers' qmd setup chunks
+writing the same root _targets.yaml. Harmless — paper 1 re-renders
+identically. To be investigated and fixed later; do not address in
+current prompts.
 
 ## `{targets}` conventions
 - One function per `tar_target()`. Pure functions: inputs →
@@ -280,6 +297,48 @@ via `nrow(fitted_model$model)` over-counted by ~70%
 (5,150 races × 16 max alts = 82,400 rather than 47,299 actual
 runner-rows).
 
+### Paper 2 extended features (implemented)
+The paper-2 candidate features are built in
+`R/build_extended_features.R` (three pure builders) and assembled
+into the single `runners_augmented` target — paper 1's `features`
+plus every new column. The cumulative-strike-rate SQL
+(`sql/trainer_sire_cumulative.sql`) was extended to emit jockey rows
+(`kind = 'jockey'`) and AW-restricted cumulative columns
+(`aw_wins_thru_date`, `aw_races_thru_date`); the trainer/sire overall
+columns are byte-identical to before, so paper 1's `strike_rates` /
+fit are untouched. Four resolved decisions (do not relitigate):
+
+- **jockeySR is uncapped**, consistent with `trainerSR` / `sireSR`.
+  Those two are themselves raw / uncapped in this pipeline
+  (`build_strike_rates()` defers any winsorisation downstream), so
+  jockeySR follows the same convention — all three strike rates stay
+  on one comparable scale. If a cap is ever wanted it must be applied
+  uniformly to all three at the modelling stage, not to jockeySR
+  alone.
+- **`class_delta` / `weight_delta_lbs` LTO lookup is floored at
+  `date_from` (2006-01-01)**, the comparable-class era. Pre-2006
+  Smartform class codes are multi-digit (11, 42, 53, 64, …) and not
+  comparable with the 2006+ 1–7 scheme; an un-floored class_LTO
+  produced nonsense deltas (e.g. 5 − 64 = −59). Consistent with the
+  2006+ data-scope decision above. The `first_time_aw` / `has_wins`
+  flags deliberately use *full* pre-2006 history — "ever ran AW" /
+  "ever won" is valid across the boundary.
+- **`or_relative` NA rate: ~10.5% overall, 14.4% on the training
+  split** (the missingness is concentrated pre-2013, so it falls
+  disproportionately in the earlier training window). Runners with a
+  NULL official rating; not imputed to the race mean — that would
+  spuriously read as 0 = "exactly average". Because `prepare_mlogit_data()` drops
+  *whole races* on any NA in a modelling column, including it costs
+  ~7,000 runner-rows. Decision: screen it in the univariate PL-R²
+  screen; drop without guilt if it scores poorly, only pay the
+  coverage cost if it scores well.
+- **`stall_normalised` can exceed 1** (max ~1.8). Stall numbers
+  reflect the original draw, so after scratchings a horse can be
+  drawn higher than the actual (post-Non-Runner) field size. Kept as
+  the literal `stall_number / field_size` for now; if the feature
+  survives the screen, revisit within-race rank as a paper-3
+  refinement.
+
 ## Modelling notes
 - Owen's model is a conditional logit (McFadden) fitted with
   `{mlogit}`. Race is the choice set, no intercept, no
@@ -293,6 +352,12 @@ runner-rows).
   p > 0.05 dropped), to parallel Owen's Table 3 — itself a reduced
   model. Calibration and the P1 / P2 scoring rules are evaluated
   on the held-out test set.
+- **Exploratory analysis is training-only (Paper 2 onwards).** All
+  win-rate summaries, tables, and plots in the exploratory section
+  must be computed after filtering to the training split
+  (`split == 'train'`). Paper 1 computed these on the full joined
+  tibble — that paper is complete and is not being corrected.
+  Paper 2 onwards: filter before any feature summarisation.
 
 ## Owen's Table 3 — the comparison baseline
 Final (reduced) model on UK Flat Turf 2014–2016. Exact estimates
@@ -347,7 +412,7 @@ observations are documented in §4.3 of paper 1.
   positive as plausibly indistinguishable from zero, and ours as a
   confident null on the larger sample.
 
-## Paper 2 plan
+## Paper 2a plan
 - **Extend the feature set**, both horse-level and race-level.
   Candidates explicitly named in paper 1's §4.6:
   - **Draw / stall number** (`stall_number` in Smartform). Known
@@ -366,23 +431,152 @@ observations are documented in §4.3 of paper 1.
   off-the-shelf `tidymodels` workflow); stability selection over
   race-level bootstrap is one candidate, AIC-driven stepwise on
   the full + interaction grid is another. Pick during scoping.
-- **Refit with the exploded conditional logit.** Each race
-  explodes into one "real" race plus several "fictitious" sub-
-  races, one for each ranked position. A 5-horse race finishing
-  H1, H3, H4, H2, H5 becomes three nested choice sets:
-  `{H1, H3, H4, H2, H5}` → H1; `{H3, H4, H2, H5}` → H3;
-  `{H4, H2, H5}` → H4. Pool the exploded set and fit a single
-  conditional logit across the whole pool. Extracts more signal
-  from the same races by using the full finishing order rather
-  than just the win indicator. Derivation in
-  `notes/paper2_seed_plackett_luce.md`.
+  (The exploded conditional logit / Plackett–Luce ranking refit is
+  **paper 2b**, not 2a — see "Paper 2b plan" below.)
 - **Comparison plan**: report paper-1 model, Owen's published
-  model (where comparable), and the new exploded fit side-by-side.
-  Carry through Table 3 / Figure 7 / Figure 8 / §3.4 backtest
-  diagnostics.
+  model (where comparable), and the extended win + interaction fit
+  side-by-side. Carry through Table 3 / Figure 7 / Figure 8 / §3.4
+  backtest diagnostics.
 - **Mirror paper-1 paper structure** under
-  `papers/02_extended_factors/` (slug TBD). Reuse the layout,
-  helpers, and rendering bootstrap.
+  `papers/02a_extended_win_model/`. Reuse the layout, helpers, and
+  rendering bootstrap. (Done — scaffolded; section bodies are stubs.)
+
+## Paper 2b plan
+Exploded conditional logit as a ranking model. See
+`papers/02b_ranking_model/`.
+- **Objective:** ranking (top-3 finishing order), not the win.
+- **Model:** exploded conditional logit (Plackett–Luce, depth k = 3);
+  feature set inherited from paper 2a.
+- **Market baseline:** discounted Harville place probabilities via
+  Lo & Bacon-Shone (α = 0.80 for the 2nd-place conditional, 0.65 for the
+  3rd), built from over-round-adjusted SP win probabilities.
+  `compute_harville_place_probs()` in `R/scoring.R` (scaffolded; not yet a
+  target).
+- **Metrics:** P1_rank (geometric mean depth-3 PL probability of the
+  observed top-3 order) and Brier_place (top-3 Brier score). Stubs
+  `score_p1_rank()` / `score_brier_place()` in `R/scoring.R`.
+- **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
+- **Status:** scaffolded; content to be filled after paper 2a is complete.
+
+## Paper 2 feature decisions
+
+### Settled drop decisions (do not relitigate)
+- `weight_delta_lbs` — dropped. NA mechanism is not missing-at-random
+  (no prior run, not a neutral value). Weak univariate signal (PL-R²
+  0.008). `rel_weight` already captures the within-race weight level.
+- `class_delta` — dropped. Near-zero univariate signal (PL-R² 0.00004).
+  Handicapper already prices class moves into the weight.
+- `sire_aw_premium`, `jockey_aw_premium` — dropped. Near-zero signal
+  (0.0008, 0.0007).
+- `stall_normalised` — dropped. Weak signal (0.0003). Candidate for
+  course-interaction in paper 3.
+- `first_time_aw` — dropped. Near-zero signal (0.0001).
+
+### Settled keep decisions
+- `or_relative` — strongest new feature (PL-R² 0.035). Impute 0 for
+  NULL official rating; add `or_missing` binary companion (1 if OR was
+  NULL). Missing-not-at-random: unrated horses are a distinct population
+  (unexposed or returning); imputing 0 with companion indicator lets the
+  model estimate the missing-OR effect separately.
+- `jockeySR` — carry forward (PL-R² 0.011, comparable to trainerSR).
+  Uncapped, consistent with trainerSR/sireSR.
+- `rel_weight` — carry forward (PL-R² 0.009, zero coverage cost).
+- `trainer_aw_premium` — carry forward into full model fit; drop
+  decision deferred to reduced model (coefficient test).
+- `has_wins`, `cheekpieces`, `gelding` — carry forward into full model;
+  drop decision deferred to reduced model.
+
+### Features deferred for later prompts
+- B: Position encoding parsimony — SETTLED. Model S (semi-parsimonious,
+  6 coefficients) adopted. For each lag N, two terms:
+  pos_lagN_zero (binary: 1 if position = 0) and pos_lagN_nonzero
+  (numeric: raw position 1–4, else 0). LR test vs full factor Model F:
+  LR = 4.88, df = 6, p = 0.560 — not rejected. AIC favours S over F
+  by 7 points. Positions 1–4 are effectively linear once the zero
+  category is separated out. Model P (scalar + decay, 2 coefficients)
+  was decisively rejected (LR = 600, df = 10, p ≈ 1.4 × 10⁻¹²²) —
+  failure traced to mis-ordering the zero level on the numeric scale.
+  Paper 1's factor encoding is NOT carried forward into paper 2.
+- C: Going interaction — DEFERRED TO PAPER 3. See "Going interaction —
+  deferred to paper 3" subsection below for rationale.
+
+### Going interaction — deferred to paper 3
+Going is a race-level feature; it cancels in the softmax unless
+interacted with a horse-level affinity measure. The meaningful
+version — going_ordinal × horse_going_sr — requires a cumulative
+pre-race win rate filtered by going category (career-history
+sub-query). Deferred to paper 3: tree-based models handle going
+as a raw feature without the interaction constraint, which is the
+right home for it. Do not implement in paper 2.
+
+### Exploratory analysis convention (paper 2)
+- Filter to `split == "train"` before any summarisation.
+- Headline counts reflect training data only.
+- Note the 70/30 chronological split in the section header.
+- Paper 1 used full joined tibble — known issue, not being revisited.
+
+## Paper 2a corrections (final model + honest reporting)
+Applied after the first full draft; these supersede earlier
+choices where they conflict.
+
+- **Reduction rule, stated honestly (§4.1).** The reduced extended
+  win model drops the two lag-3 terms on per-term Wald p — the same
+  rule paper 1 and Owen use. The *joint* LR test of reduced vs full
+  (both on the identical 5,065 training races) **rejects** the
+  reduction (LR ≈ 9.3, df 2, p ≈ 0.009; AIC prefers the full model
+  by ~5). We nonetheless keep the *reduced* model as the paper-2a
+  headline, for (a) like-for-like comparability with paper 1 / Owen
+  and (b) negligible practical difference (McFadden R² 0.0802 full
+  vs 0.0798 reduced). The joint test is reported in §4.1 rather than
+  hidden. Computed live from the fitted objects — not hard-coded.
+- **Draw selected at the BLOCK level; final model = 4-course block.**
+  The final paper-2a model is **`model_w_ed`** — extended win +
+  the full four-course draw block (`stall_x_{kempton,lingfield,
+  southwell,wolverhampton}`), **21 coefficients**. Selection is the
+  W+draw vs W likelihood-ratio test (block in/out), which parallels
+  the position-lag block treatment in §3.2. The earlier per-term
+  deletion of Lingfield (the 3-course `model_w_final` /
+  `final_reduction_lr_w` targets and Table 14) is **reversed and
+  removed**: Lingfield's near-zero draw coefficient is a substantive
+  **no-draw-bias finding**, recorded by carrying a coefficient ≈ 0,
+  not grounds to prune the column. `model_w_final_diagnostics` and
+  `test_predictions_w_final` now read off `model_w_ed`.
+- **Headline ROI is −22.8%** (the 4-course block), replacing the
+  −23.5% of the dropped-Lingfield 3-course fit. Propagated via inline
+  `tar_read(backtest_naive_w_final)$roi` throughout (abstract, intro,
+  §5.5, Table 18) — no hard-coded ROI strings for the final model.
+- **Paired ROI-difference bootstrap.**
+  `R/scoring.R::bootstrap_roi_difference()` + target
+  `roi_difference_bootstrap`: restricts each model pair to its COMMON
+  test races (paper 1 and 2a drop different races to NA), resamples
+  races paired (B = 2000, seed 42), applies Owen's naive rule per
+  model, returns the ROI-difference point + 90% percentile CI. Three
+  contrasts: final − paper 1 (+5.5%, [−3.9, +15.0]); final − extended
+  win (+3.3%, [−1.4, +7.9]); extended win − paper 1 (+2.2%, [−6.9,
+  +11.5]). **All three CIs straddle zero** → the ROI gains are
+  directionally consistent but **not statistically distinguishable**.
+  Prose (abstract, intro, §5.5, §6.1) downgraded from "modest but
+  real" to that framing; new ROI-difference table in §6.1 after
+  Table 18. See [[feedback_temporal_integrity]] for the related
+  honesty principle.
+- **Race-loss accounting (§4.1).** The fits are complete-case at the
+  race level and use 5,065 of 5,209 training races (144 dropped,
+  2.8%). Drops are driven by undefined pre-race strike rates under
+  the strict-before rule: missing `jockeySR` touches 88 races,
+  `sireSR` 35, `trainerSR` 23, `days_LTO_log` 2 (overlapping). The
+  test set is filtered the same way, so paper 1 (2,232 test races)
+  and paper 2a evaluate on slightly different universes — flagged in
+  the Table 18 caption; the paired bootstrap handles it by
+  intersecting. Complete-case behaviour itself is unchanged.
+- **No paper-2b RESULT claims in paper 2a.** Until 2b is actually
+  fitted, every 2b reference in the 2a qmds is design/prospective
+  only ("changes the objective to ranking", "a question we leave to
+  that paper") — no assertion that the exploded fit estimates any
+  interaction "more sharply". Re-audit on any 2a edit: grep `2b`.
+
+## Paper 2 status
+Pre-split draft archived at `papers/02_extended_features_ARCHIVE/`.
+Paper 2a and 2b are now the active branches.
 
 ## Paper 3 plan
 - **Switch model class entirely** to a class that handles
@@ -420,6 +614,12 @@ the user finds interesting:
 - Owen, A. (2019), *Statistical Models of Horse Racing Outcomes
   Using R*, MathSport International 2019 Proceedings — the paper
   paper-1 replicates.
+- Harville, D. A. (1973), *Assigning Probabilities to the Outcomes of
+  Multi-Entry Competitions*, JASA 68(342) — the win→place probability
+  formula; paper 2b's market baseline.
+- Lo, V. S. Y. & Bacon-Shone, J. (1994; 2008) — discounted-Harville
+  corrections for the favourite–longshot bias in the place market
+  (paper 2b's market baseline; α = 0.80, 0.65).
 - r4ds.hadley.nz — tidyverse style guide.
 - tmwr.org — tidymodels patterns.
 - books.ropensci.org/targets — pipeline patterns.

@@ -1,0 +1,145 @@
+---
+title: "Extending the feature set: automated selection and the exploded conditional logit on UK All-Weather Flat handicaps"
+subtitle: "Paper 2 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: today
+abstract: |
+  Paper 1 replicated Owen's (2019) conditional-logit win model on UK
+  All-Weather Flat handicaps and found it trailing the betting market
+  across the threshold range (`r scales::percent(targets::tar_read(backtest_naive)$roi, accuracy = 0.1)`
+  ROI), a shortfall of discrimination rather than calibration. We pursue
+  three extensions on the same data: an enlarged feature set screened by
+  univariate Plackett–Luce R²; the exploded conditional logit, which fits
+  the full finishing order rather than the win alone; and race-level
+  interactions through mixed discrete choice. The official rating is the
+  strongest new predictor; the exploded fit sharpens coefficient estimates
+  without improving win discrimination; and a course-specific draw
+  bias—invisible to a pooled draw term because it reverses sign across
+  tracks—emerges through the interaction. Backtest ROI improves
+  monotonically to `r scales::percent(targets::tar_read(backtest_naive_p2_final)$roi, accuracy = 0.1)`,
+  yet the market continues to lead. The market-efficiency conclusion of
+  paper 1 is sustained but materially weakened.
+format:
+  html: default
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+tar_config_set(store = file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "_targets"
+))
+
+# tar_load() the paper-2 targets centrally here so that
+# tarchetypes::tar_quarto() picks them up as render dependencies (files
+# pulled in via {{< include >}} are not auto-scanned).
+tar_load(c(
+  feature_screen,
+  runners_model_ready,
+  model_p2_full,
+  model_p2_reduced,
+  model_p2_diagnostics,
+  test_predictions_p2,
+  model_market_ratio_p2,
+  backtest_naive_p2,
+  backtest_sweep_p2,
+  exploded_train_data,
+  model_p2_exploded,
+  model_p2_exploded_diagnostics,
+  test_predictions_p2_exploded,
+  backtest_naive_p2_exploded,
+  backtest_sweep_p2_exploded,
+  runners_interactions,
+  interaction_lr_tests,
+  model_p2_e,
+  model_p2_ed,
+  model_p2_final,
+  model_p2_final_diagnostics,
+  final_reduction_lr,
+  position_parsimony_test,
+  test_predictions_p2_final,
+  backtest_naive_p2_final,
+  backtest_sweep_p2_final,
+  # paper-1 targets, for the introduction and the discussion progression table
+  fitted_final,
+  test_predictions,
+  backtest_naive
+))
+```
+
+# Introduction {#sec-intro}
+
+Paper 1 replicated the conditional-logit win model of @owen2019 — one of
+a line of discrete-choice race models reaching back to @boltonchapman1986
+— on UK All-Weather (AW) Flat handicaps and found that the model trails
+the betting market across the full threshold range, returning
+`r scales::percent(backtest_naive$roi, accuracy = 0.1)` on the §3.4
+backtest. We diagnosed the shortfall as a problem of *discrimination*
+rather than calibration: a thirteen-feature predictor set is too thin to
+compete with a starting price that already aggregates weight, draw,
+going, jockey, recent form and informed money. This paper pursues two
+remedies — a richer feature set, and a richer use of the race outcome —
+on exactly the same data.
+
+We make three contributions, in order. First, an **extended feature
+set**, evaluated with an automated univariate screen — a standalone
+conditional logit per candidate, ranked by a depth-1 Plackett–Luce $R^2$
+against the equal-probability null, following @juola2018. Second, the
+**exploded conditional logit**, which treats the full finishing order as
+a sequence of conditional win problems and is mathematically equivalent
+to maximising the Plackett–Luce likelihood, so the
+ranking, not just the win, informs the fit. Third, **race-level
+interactions** through the mixed discrete-choice formulation, which
+recovers a course-specific draw bias invisible to a win model with a
+single pooled draw term. Data scope, race selection and the train/test
+split are unchanged from paper 1.
+
+The ROI improves monotonically across the three steps, from
+`r scales::percent(backtest_naive$roi, accuracy = 0.1)` in paper 1 to
+`r scales::percent(backtest_naive_p2_final$roi, accuracy = 0.1)` in the
+final model — but the market continues to dominate. The official rating
+(`or_relative`) is the strongest new predictor, and the draw × course
+interaction produces the single largest backtest improvement. The
+market-efficiency interpretation of paper 1 is sustained, but weakened:
+the gap to the starting price narrows substantially without closing.
+
+The paper is organised as follows. @sec-data sets out the data, the
+two-tier feature set and the three data decisions specific to this paper.
+@sec-eda evaluates every candidate feature through the univariate screen
+and records the feature drop and keep decisions. @sec-extended-win fits
+the extended win model and contrasts it with paper 1 and Owen's Table 3.
+@sec-exploded-logit refits via the exploded logit and asks whether the
+ranking sharpens prediction. @sec-mixed-interactions tests the two
+race-level interactions and selects the final model. @sec-discussion
+draws the threads together and signposts paper 3, and
+@sec-appx-derivations derives the Plackett–Luce and mixed-choice
+machinery in full.
+
+{{< include _01_data.qmd >}}
+
+{{< include _02_feature_evaluation.qmd >}}
+
+{{< include _03_extended_win_model.qmd >}}
+
+{{< include _04_exploded_logit.qmd >}}
+
+{{< include _05_mixed_interactions.qmd >}}
+
+{{< include _06_discussion.qmd >}}
+
+{{< include _appx_derivations.qmd >}}
+
+{{< include _appx_software.qmd >}}
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

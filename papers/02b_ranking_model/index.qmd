@@ -1,0 +1,96 @@
+---
+title: "Ranking models for UK All-Weather Flat handicaps: the exploded conditional logit and the place market"
+subtitle: "Paper 2b in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: today
+abstract: |
+  Paper 2a established a win-prediction model on UK All-Weather Flat
+  handicaps using an extended feature set and race-level interactions.
+  This paper asks a different question: can the same feature set, fitted
+  under a ranking objective rather than a win objective, predict the top-3
+  finishing order better than the betting market? We fit the exploded
+  conditional logit — equivalent to maximising the Plackett–Luce
+  likelihood over the top-3 — using the feature set defined in paper 2a.
+  We evaluate against a market baseline derived from win starting prices
+  via discounted Harville (Lo & Bacon-Shone). [Results to be completed.]
+format:
+  html: default
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+# Locate the targets store via rprojroot (not here::here, which caches a
+# stale root marker across the paper folders). The render-environment
+# bootstrap (R_LIBS / QUARTO_R / QUARTO_PATH) is set once at the top of
+# _targets.R for the whole pipeline, so nothing extra is needed here.
+tar_config_set(store = file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "_targets"
+))
+
+# TODO: tar_load() the paper-2b targets here once they exist, so that
+# tarchetypes::tar_quarto() picks them up as render dependencies.
+```
+
+# Introduction {#sec-intro}
+
+This is the second of the two papers that split the original paper 2. Its
+companion, paper 2a, fixed the prediction objective as the *win* and asked
+how far an enriched feature set could narrow the gap to the betting
+market; the answer was a modest improvement, with the market still
+leading. This paper holds that feature set fixed and changes the
+*objective*: instead of predicting which horse wins, we predict the top-3
+finishing *order*, fitting the exploded conditional logit — the
+Plackett–Luce ranking model — on the same features. The question is
+whether a ranking objective recovers more of the market's edge than the
+win objective did. @sec-data points to paper 2a for the shared data and
+feature set and constructs the place-market baseline against which the
+model is judged; @sec-exploded-model fits the ranking model;
+@sec-evaluation evaluates it on ranking metrics; and @sec-discussion draws
+the conclusions.
+
+{{< include _01_data.qmd >}}
+
+{{< include _02_exploded_model.qmd >}}
+
+{{< include _03_evaluation.qmd >}}
+
+{{< include _04_discussion.qmd >}}
+
+{{< include _appx_derivations.qmd >}}
+
+{{< include _appx_software.qmd >}}
+
+# Acknowledgments {.unnumbered}
+
+I have been interested in modelling horse racing since first
+acquiring the Smartform database more than a decade ago. The project
+has been picked up and put down many times, the obstacle almost
+always being the gap between an idea and a running implementation.
+What is different now is that working alongside Claude Code
+(Anthropic's coding agent), with web-based Claude as a research
+companion, has compressed that gap dramatically. I am grateful to
+my brother, Michael Gillen, for the suggestion to build the model
+on All-Weather races — the foundation of the scope choices set out
+in @sec-data. The design choices — dataset, scope, model,
+comparison, editorial line — are mine. The implementation, the bulk
+of the draft prose, and a great deal of the verification were
+Claude Code's, under my direction; every output was reviewed and
+edited before it reached the paper. I do not yet know what general
+lessons this experiment points to about the value of human–AI
+collaboration in applied statistics. That uncertainty is part of
+why I am doing the work, and these papers are partly a record of
+that experiment.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

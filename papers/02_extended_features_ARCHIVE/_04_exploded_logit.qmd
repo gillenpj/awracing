@@ -1,0 +1,313 @@
+# Exploded conditional logit {#sec-exploded-logit}
+
+The win model in @sec-extended-win uses only one bit of each race's
+result: who won. The finishing order carries more. The **exploded
+conditional logit** [@henery1981] uses it by treating the
+observed order as a sequence of conditional win problems: the winner is
+chosen from the full field, then the runner-up is chosen from the field
+minus the winner, then third from the field minus the first two, and so
+on. Each step is an ordinary conditional-logit choice on a shrinking
+choice set, and pooling them and fitting a single conditional logit
+across the pool is exactly maximising the Plackett–Luce likelihood. The
+algebra — and the equivalence between the exploded representation and
+the Plackett–Luce likelihood — is derived in Appendix A (lifted from
+`notes/paper2_seed_plackett_luce.md`).
+
+We truncate at depth $k = 3$: only positions 1, 2 and 3 are modelled.
+The ordering among the tail of the field is largely noise [@henery1981],
+so the fictitious sub-races beyond third are dropped from the
+likelihood. The specification is otherwise **identical** to the reduced
+win model — same 17 terms, same Model-S position encoding, same imputed
+`or_relative`/`or_missing` — so any difference is the explosion, not the
+features. Fitting is training-only; evaluation is depth-1 (win) on the
+test set, directly comparable to @sec-extended-win and paper 1.
+
+```{r}
+#| label: p2exp-setup
+#| include: false
+# Fits loaded from targets (not fitted here) -> load mlogit's namespace so
+# summary.mlogit / coef.mlogit dispatch (CLAUDE.md note).
+loadNamespace("mlogit")
+
+win_ct <- summary(model_p2_reduced)$CoefTable
+exp_ct <- summary(model_p2_exploded)$CoefTable
+terms  <- rownames(win_ct)
+
+win_coef <- stats::setNames(win_ct[, "Estimate"], terms)
+exp_coef <- stats::setNames(exp_ct[, "Estimate"], terms)
+win_z    <- stats::setNames(win_ct[, "z-value"],  terms)
+exp_z    <- stats::setNames(exp_ct[, "z-value"],  terms)
+
+exp_sets   <- dplyr::n_distinct(exploded_train_data$exploded_race_id)
+exp_races  <- dplyr::n_distinct(exploded_train_data$race_id)
+exp_rows   <- nrow(exploded_train_data)
+
+pl_r2_win <- model_p2_diagnostics$pl_r2[model_p2_diagnostics$model == "reduced"]
+pl_r2_exp <- model_p2_exploded_diagnostics$pl_r2
+```
+
+## From win to ranking: the exploded construction
+
+`prepare_exploded_data()` builds the pooled choice sets. For each race
+it forms $k = 3$ fictitious sub-races: choice set $s$ is the horse that
+finished $s$th together with every horse not yet ranked — all finishers
+placed $s$-or-worse, plus any non-finishers, which never get ranked and
+so stay in the pool at every depth. The depth-1 sub-race is therefore
+exactly the win model's choice set (the full field, winner = 1st), which
+is what makes the two models comparable at depth 1. Each sub-race gets a
+composite id `"<race_id>_<s>"` as the choice index and a fresh per-set
+`horse_ref`; a `stopifnot` confirms exactly one winner per set.
+
+Two race filters apply. Races with any NA in the 19 modelling columns are
+dropped, the same rule and race set as the win model. Races whose top-3
+finishing positions are not each recorded exactly once — a dead-heat for
+2nd or 3rd, or a gap — cannot be unambiguously exploded and are dropped
+too (finishing position uses `coalesce(amended_position, finish_position)`
+throughout).
+
+```{r}
+#| label: tbl-exploded-size
+# exploded_train_data is a dfidx; use plain vector access (its special
+# `idx` column breaks dplyr mutate/rename — see CLAUDE.md mlogit notes).
+depth_rows <- as.integer(table(exploded_train_data$depth))
+tibble::tibble(
+  `Sub-race`    = paste0("depth ", seq_along(depth_rows), " (",
+                         c("full field", "field − 1st", "field − 1st,2nd"), ")"),
+  `Runner-rows` = depth_rows
+) |>
+  knitr::kable(caption = sprintf(
+    "Exploded training data: %s valid races become %s choice sets (3 each) over %s runner-rows. The 42-race gap versus the win model's 5,065 training races is races with a tie or gap in the top 3 finishers.",
+    format(exp_races, big.mark = ","),
+    format(exp_sets, big.mark = ","),
+    format(exp_rows, big.mark = ",")
+  ))
+```
+
+## Coefficients: win model vs exploded
+
+```{r}
+#| label: tbl-coef-compare
+#| code-fold: true
+
+block_of <- function(term) {
+  if (grepl("^pos_lag", term))                                    return("1. Position (Model S)")
+  if (term %in% c("days_LTO_log", "trainerSR", "sireSR"))         return("2. Form / history")
+  if (term %in% c("age_diff", "entire", "gelding", "cheekpieces")) return("3. Horse characteristics")
+  "4. New features"
+}
+pretty_term <- function(t) dplyr::recode(t, days_LTO_log = "daysLTO (log)")
+
+tibble::tibble(
+  Block            = vapply(terms, block_of, character(1)),
+  Term             = pretty_term(terms),
+  `Win est.`       = round(win_coef[terms], 4),
+  `Win z`          = round(win_z[terms], 2),
+  `Exploded est.`  = round(exp_coef[terms], 4),
+  `Exploded z`     = round(exp_z[terms], 2)
+) |>
+  dplyr::arrange(Block) |>
+  knitr::kable(
+    align   = c("l", "l", "r", "r", "r", "r"),
+    caption = "Reduced win model (depth-1 win only) vs the exploded fit
+(depth-3 Plackett–Luce), same 17-term specification. Estimates and Wald
+z-values side by side."
+  )
+```
+
+Two patterns stand out, and they pull in opposite directions.
+
+**Estimates shrink.** Almost every coefficient is smaller in magnitude
+under the explosion: `jockeySR` falls from `r sprintf("%+.2f", win_coef[["jockeySR"]])`
+to `r sprintf("%+.2f", exp_coef[["jockeySR"]])`, `or_relative` from
+`r sprintf("%+.3f", win_coef[["or_relative"]])` to
+`r sprintf("%+.3f", exp_coef[["or_relative"]])`, and `rel_weight`
+collapses from `r sprintf("%+.3f", win_coef[["rel_weight"]])` to
+`r sprintf("%+.4f", exp_coef[["rel_weight"]])`. The reason is what each
+model is asked to explain. The win model loads a feature with all of its
+ability to separate the *winner* from the field; the exploded model must
+make the same coefficient explain the 1-vs-rest, 2-vs-rest and
+3-vs-rest contrasts at once. Features that matter more for *winning*
+than for separating mid-pack places — weight carried being the clearest
+case — are pulled toward their weaker average-over-depths effect.
+
+**Precision sharpens.** Despite the smaller estimates, most z-values
+*grow*, because depth-3 explosion roughly triples the number of choice
+problems the same races contribute: `days_LTO_log` sharpens from
+`r sprintf("%.1f", win_z[["days_LTO_log"]])` to
+`r sprintf("%.1f", exp_z[["days_LTO_log"]])`, `pos_lag1_zero` from
+`r sprintf("%.1f", win_z[["pos_lag1_zero"]])` to
+`r sprintf("%.1f", exp_z[["pos_lag1_zero"]])`, `trainerSR` from
+`r sprintf("%.1f", win_z[["trainerSR"]])` to
+`r sprintf("%.1f", exp_z[["trainerSR"]])`. The form and position features
+— the ones that order the whole field, not just crown the winner — gain
+the most, which is the hypothesis the explosion was meant to test:
+recent-form signal is estimated more precisely once the full finishing
+order, not just the win, informs the fit. The exception is `rel_weight`,
+whose z *falls* — confirming, from the other direction, that weight is a
+win-specific rather than a rank-general signal.
+
+## Out-of-sample diagnostics
+
+We evaluate the exploded model exactly as the win model: depth-1 win
+probabilities on the test races, against the over-round-adjusted market.
+The calibration plot, P1/P2 scoring rules and betting backtest are the
+same suite as @sec-extended-win and so are directly comparable.
+
+```{r}
+#| label: p2exp-eval-setup
+#| include: false
+# Test set only. Reuse the helper functions defined in @sec-extended-win
+# (calibration_summary / scoring_summary / bin_breaks / thresholds — all
+# in scope from the earlier included section).
+eval_data_ex <- test_predictions_p2_exploded |> dplyr::rename(model_prob = predicted_prob)
+```
+
+```{r}
+#| label: fig-calibration-exploded
+#| fig-cap: "Calibration on the AW test set, exploded model (Owen Figure 7 equivalent): observed win proportion vs predicted / implied win probability, 5-point bins over [0, 0.50]. Circles = exploded model (depth-1, out-of-sample); plus signs = market; dashed line y = x."
+calib_summary_ex <- dplyr::bind_rows(
+  calibration_summary(eval_data_ex, "model_prob",  "Model (exploded)"),
+  calibration_summary(eval_data_ex, "market_prob", "Market")
+)
+ggplot2::ggplot(calib_summary_ex,
+                ggplot2::aes(x = bin_mid, y = observed, shape = source, colour = source)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::scale_shape_manual(values = c("Model (exploded)" = 1L, Market = 3L)) +
+  ggplot2::scale_colour_manual(values = c("Model (exploded)" = "darkgreen", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                              limits = c(0, 0.50), breaks = bin_breaks) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, NA)) +
+  ggplot2::labs(x = "Predicted / implied win probability",
+                y = "Observed win proportion", shape = NULL, colour = NULL) +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: fig-p1-p2-exploded
+#| fig-cap:
+#|   - "P1 vs probability threshold, exploded model (Owen Figure 8a equivalent), AW test set."
+#|   - "P2 vs probability threshold, exploded model (Owen Figure 8b equivalent), AW test set."
+score_long_ex <- dplyr::bind_rows(
+  scoring_summary(eval_data_ex, "model_prob",  "Model (exploded)", thresholds),
+  scoring_summary(eval_data_ex, "market_prob", "Market",           thresholds)
+)
+p_score_ex <- function(yvar, ylab) {
+  ggplot2::ggplot(score_long_ex,
+                  ggplot2::aes(x = threshold, y = .data[[yvar]],
+                               linetype = source, colour = source)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::scale_linetype_manual(values = c("Model (exploded)" = "solid", Market = "dashed")) +
+    ggplot2::scale_colour_manual(values = c("Model (exploded)" = "darkgreen", Market = "tomato")) +
+    ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.50)) +
+    ggplot2::labs(x = "Probability threshold", y = ylab, linetype = NULL, colour = NULL) +
+    ggplot2::theme_minimal()
+}
+print(p_score_ex("P1", "P1 (geom. mean prob. on winners)"))
+print(p_score_ex("P2", "P2 (geom. mean Bernoulli likelihood)"))
+```
+
+```{r}
+#| label: tbl-backtest-naive-exploded
+backtest_naive_p2_exploded |>
+  dplyr::transmute(
+    `Prob threshold`  = prob_threshold,
+    `Ratio threshold` = ratio_threshold,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `Gross return`    = sprintf("%.2f", gross_return),
+    `Profit`          = sprintf("%.2f", profit),
+    `ROI`             = scales::percent(roi, accuracy = 0.1)
+  ) |>
+  knitr::kable(caption = "Exploded model: betting backtest on the AW test races at Owen's exact thresholds.")
+```
+
+```{r}
+#| label: fig-roi-sweep-exploded
+#| fig-cap: "ROI vs ratio threshold on the AW test set (exploded model), 90% bootstrap CI shaded. Model-probability filter held at 0.13; dashed line at zero marks break-even."
+ggplot2::ggplot(backtest_sweep_p2_exploded, ggplot2::aes(x = tau, y = roi)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "darkgreen", alpha = 0.18) +
+  ggplot2::geom_line(linewidth = 0.8, colour = "darkgreen") +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::labs(x = "Ratio threshold (model_prob / market_prob)", y = "ROI") +
+  ggplot2::theme_minimal()
+```
+
+### Each model on both objectives
+
+```{r}
+#| label: tbl-depth-tradeoff
+#| code-fold: true
+# Win-model coefficients scored on the same exploded choice sets give the
+# win model's depth-3 PL logLik (training races, in-sample). exploded_train_data
+# is a dfidx -> pull columns as plain vectors.
+beta_win  <- stats::coef(model_p2_reduced)
+terms_win <- names(beta_win)
+won_vec   <- as.integer(exploded_train_data$won)
+Xw        <- vapply(terms_win, function(t) as.numeric(exploded_train_data[[t]]),
+                    numeric(length(won_vec)))
+win_depth3_ll <- tibble::tibble(
+  set = exploded_train_data$exploded_race_id,
+  won = won_vec,
+  z   = as.vector(Xw %*% beta_win)
+) |>
+  dplyr::group_by(set) |>
+  dplyr::mutate(p = exp(z - max(z)) / sum(exp(z - max(z)))) |>
+  dplyr::summarise(ll = log(p[won == 1L]), .groups = "drop") |>
+  dplyr::summarise(total = sum(ll)) |>
+  dplyr::pull(total)
+
+tibble::tibble(
+  Model = c("Win model (depth-1 fit)", "Exploded model (depth-3 fit)"),
+  `Depth-1 PL-R² (win)`      = round(c(pl_r2_win, pl_r2_exp), 4),
+  `Depth-3 PL logLik (rank)` = round(c(win_depth3_ll,
+                                       as.numeric(stats::logLik(model_p2_exploded))), 0)
+) |>
+  knitr::kable(
+    caption = "Each model scored on both objectives, on the training races:
+depth-1 win discrimination (PL-R²) and depth-3 Plackett–Luce ranking fit
+(log-likelihood over the 15,069 exploded choice sets)."
+  )
+```
+
+Each model is the maximum-likelihood fit of its own objective — the win
+model leads at depth 1, the exploded model at depth 3 — and the two gaps
+(≈0.006 in PL-R², ≈176 in ranking log-likelihood) quantify the cost of
+optimising for one at the expense of the other.
+
+## Does the exploded fit improve discrimination?
+
+Not on the win, and that is the headline. The exploded model's depth-1
+Plackett–Luce R² on the training races is
+`r round(pl_r2_exp, 3)`, slightly **below** the win model's
+`r round(pl_r2_win, 3)`. This is expected once stated carefully: the
+exploded fit maximises the depth-3 ranking likelihood, not the win
+likelihood, so it trades a little win-specific fit for fit across the
+whole top-3 order. Judged purely on predicting the winner, the
+win-optimised model is — by construction — at least as good. What the
+explosion buys is **precision**: the form and position coefficients are
+estimated far more sharply (the z-values above), because the full
+finishing order supplies roughly three times the choice problems from
+the same races.
+
+The market comparison is unchanged in character. On calibration and the
+P1/P2 rules the exploded model sits with the win model — closer to the
+market than paper 1, still short of it. The betting backtest is the one
+place the exploded fit edges ahead: a naive ROI of
+**`r scales::percent(backtest_naive_p2_exploded$roi, accuracy = 0.1)`**,
+against the win model's
+`r scales::percent(backtest_naive_p2$roi, accuracy = 0.1)` and paper 1's
+−28.2%. It is the least negative result in the series, but it is still a
+loss, and the ratio-sweep CI continues to straddle and sit below zero —
+so it is an improvement in degree, not a reversal.
+
+The reading consistent with paper 1's market-efficiency framing is that
+using the full finishing order sharpens *how well we can estimate* the
+effect of each feature, but does not add a feature the starting price
+does not already see. Discrimination against the market is bounded by the
+information set, not by the precision of the fit, and on that axis the
+exploded logit and the extended win model land in the same place. The
+remaining lever is to widen the information set itself — race-level
+conditions entered through horse-level interactions — which is
+@sec-mixed-interactions.

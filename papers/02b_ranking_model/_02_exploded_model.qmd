@@ -1,0 +1,11 @@
+# The exploded conditional logit {#sec-exploded-model}
+
+*Stub.* The baseline for comparison throughout this paper is the extended
+win model from paper 2a — the same 17-term reduced specification, fitted
+on the same features.
+
+<!-- Content to be lifted from the paper-2 archive
+     (papers/02_extended_features_ARCHIVE/_04_exploded_logit.qmd): the
+     exploded-data construction (prepare_exploded_data, k = 3), the
+     coefficient table (win vs exploded side by side), and the sub-race /
+     choice-set count table. -->

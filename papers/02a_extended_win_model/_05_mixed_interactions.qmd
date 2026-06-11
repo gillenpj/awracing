@@ -1,0 +1,322 @@
+# Mixed race-level interactions {#sec-mixed-interactions}
+
+The features so far are all horse-level. Race-level features — going,
+distance, course — cannot enter the conditional logit directly: they are
+constant within a race and cancel in the softmax. They enter only as
+**interactions** with horse-level features, whose products vary across
+runners within a race (the mixed discrete-choice mechanism derived in
+@sec-appx-derivations). This section tests two such interactions on top
+of the extended win model from @sec-extended-win, which is the baseline
+throughout (**Model W**).
+
+```{r}
+#| label: p2int-setup
+#| include: false
+loadNamespace("mlogit")
+
+ed_ct    <- summary(model_w_ed)$CoefTable      # 4-course block fit
+fin_ct   <- ed_ct                              # the final paper-2a model IS the full draw block
+fin_coef <- stats::setNames(fin_ct[, "Estimate"], rownames(fin_ct))
+roi_pct  <- function(x) scales::percent(x, accuracy = 0.1)
+
+# LR p-values pulled by test, so the prose tracks the fit.
+lr_p <- function(a, b) {
+  interaction_lr_tests_w |>
+    dplyr::filter(model_a == a, model_b == b) |>
+    dplyr::pull(p_value)
+}
+p_weight          <- lr_p("EW",  "E")    # weight x distance vs baseline
+p_draw            <- lr_p("ED",  "E")    # draw x course vs baseline
+p_weight_giv_draw <- lr_p("EWD", "ED")   # weight | draw
+```
+
+## Two interactions
+
+**Weight × distance** (`rel_weight_x_dist = rel_weight × distance_furlongs`).
+`rel_weight` is horse-level, `distance_furlongs` race-level; their product
+varies across runners. The motivation is @benter1994: the burden of extra
+weight should compound over longer trips, so a horse carrying weight above
+the field mean ought to be penalised more in a staying race than a sprint.
+
+**Draw × course.** Draw bias on All-Weather is known to depend on the
+track — Kempton, Lingfield, Southwell and Wolverhampton have different
+configurations, bend tightness and run-ins. `stall_normalised` had almost
+no standalone signal (@sec-eda), but that pooled estimate could be hiding
+course-specific effects that cancel. We split it into four course-masked
+columns (`stall_normalised` where the race is at that course, else 0),
+one coefficient per course.
+
+```{r}
+#| label: tbl-interaction-features
+# Training set only — see CLAUDE.md exploratory analysis convention
+ri_train <- runners_interactions |> dplyr::filter(split == "train")
+tibble::tibble(
+  Quantity = c("Distance range (furlongs)",
+               "rel_weight_x_dist SD",
+               "Runners with a Kempton draw term",
+               "Runners with a Lingfield draw term",
+               "Runners with a Southwell draw term",
+               "Runners with a Wolverhampton draw term"),
+  Value = c(
+    paste(round(min(ri_train$distance_furlongs), 1), "–",
+          round(max(ri_train$distance_furlongs), 1)),
+    sprintf("%.1f", stats::sd(ri_train$rel_weight_x_dist, na.rm = TRUE)),
+    scales::comma(sum(ri_train$stall_x_kempton       > 0, na.rm = TRUE)),
+    scales::comma(sum(ri_train$stall_x_lingfield     > 0, na.rm = TRUE)),
+    scales::comma(sum(ri_train$stall_x_southwell     > 0, na.rm = TRUE)),
+    scales::comma(sum(ri_train$stall_x_wolverhampton > 0, na.rm = TRUE))
+  )
+) |>
+  knitr::kable(caption = "Interaction features on the training split.")
+```
+
+## Likelihood-ratio tests
+
+Four models, all fitted on one common training sample so the tests are
+nested and valid: **W** (extended win baseline), **W+weight**, **W+draw**,
+and **W+both**. One training race with draw-less runners is dropped from
+all four, so Model W here is the extended win model refitted on that
+shared `r scales::comma(model_w_final_diagnostics$n_races)`-race sample
+(it differs from @sec-extended-win's fit by that single race; the base
+coefficients are unchanged to three decimals).
+
+```{r}
+#| label: tbl-interaction-lr
+#| code-fold: true
+desc <- c(
+  "EW|E"   = "Weight×distance vs baseline",
+  "ED|E"   = "Draw×course vs baseline",
+  "EWD|E"  = "Both vs baseline",
+  "EWD|EW" = "Draw×course | weight×distance",
+  "EWD|ED" = "Weight×distance | draw×course"
+)
+code <- c(E = "W", EW = "W+weight", ED = "W+draw", EWD = "W+both")
+interaction_lr_tests_w |>
+  dplyr::mutate(
+    Test       = paste(code[model_a], "vs", code[model_b]),
+    Comparison = desc[paste(model_a, model_b, sep = "|")],
+    `LR stat`  = round(lr_stat, 2),
+    df         = df,
+    `p-value`  = signif(p_value, 3),
+    Verdict    = dplyr::if_else(decision == "significant",
+                                "adds signal", "no improvement")
+  ) |>
+  dplyr::select(Test, Comparison, `LR stat`, df, `p-value`, Verdict) |>
+  knitr::kable(caption = "Likelihood-ratio tests among the four interaction models, all fitted on the extended win model.")
+```
+
+The verdict is clean. **Draw×course adds signal** (W+draw vs W:
+$p =$ `r signif(p_draw, 2)`; and it survives conditional on weight).
+**Weight×distance does not** — it is indistinguishable from zero both on
+its own (W+weight vs W: $p =$ `r signif(p_weight, 2)`) and added to draw
+(W+both vs W+draw: $p =$ `r signif(p_weight_giv_draw, 2)`). The most
+parsimonious model not rejected at $p < 0.05$ is therefore **W+draw**
+(extended win + draw×course). The likelihood-ratio statistics are modest;
+a fuller use of the data — the exploded ranking likelihood of paper 2b,
+which triples the number of choice problems per race — may estimate the
+same interaction more sharply, a question we leave to that paper.
+
+The draw×course term is selected as a **block** — the four course-masked
+columns enter or leave together, on the W+draw vs W likelihood-ratio test
+above, not on the individual courses' Wald *p*-values. This parallels the
+treatment of the position-lag block in @sec-extended-win, where the lag
+terms were assessed jointly rather than course-by-course: an interaction's
+worth is a property of the whole block, and masking it into four columns
+is an implementation detail, not licence to prune the columns one at a
+time. We therefore keep all four courses, including Lingfield, whose draw
+coefficient is individually near zero (Wald $p =$
+`r signif(ed_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`). That null is not a
+nuisance to be dropped but a **finding**: Lingfield, alone among the four,
+shows no detectable draw bias — consistent with its wide, galloping
+configuration — and the model says so explicitly by carrying a coefficient
+indistinguishable from zero.
+
+The **final paper-2a model** is therefore the extended win model plus the
+full four-course draw block — Kempton, Lingfield, Southwell and
+Wolverhampton — 21 coefficients in all.
+
+## The final model vs the baseline
+
+```{r}
+#| label: tbl-w-coef
+#| code-fold: true
+base_terms <- names(stats::coef(model_w))
+shift <- tibble::tibble(
+  Term         = base_terms,
+  `W est.`     = round(stats::coef(model_w)[base_terms], 4),
+  `Final est.` = round(stats::coef(model_w_ed)[base_terms], 4)
+)
+knitr::kable(shift, caption = "Base (17-term) coefficients: extended win baseline (W) vs the final model. The draw terms leave the base estimates essentially unchanged.")
+```
+
+```{r}
+#| label: tbl-draw-course
+#| code-fold: true
+draw_rows <- grepl("^stall_x_", rownames(fin_ct))
+course_lab <- tools::toTitleCase(sub("stall_x_", "", rownames(fin_ct)[draw_rows]))
+tibble::tibble(
+  Course       = course_lab,
+  Estimate     = round(fin_ct[draw_rows, "Estimate"], 4),
+  `Std. error` = round(fin_ct[draw_rows, "Std. Error"], 4),
+  `z`          = round(fin_ct[draw_rows, "z-value"], 2),
+  `p-value`    = signif(fin_ct[draw_rows, "Pr(>|z|)"], 3),
+  Sig          = dplyr::case_when(
+    fin_ct[draw_rows, "Pr(>|z|)"] < 0.001 ~ "***",
+    fin_ct[draw_rows, "Pr(>|z|)"] < 0.01  ~ "**",
+    fin_ct[draw_rows, "Pr(>|z|)"] < 0.05  ~ "*",
+    TRUE                                  ~ "(ns)"
+  )
+) |>
+  knitr::kable(caption = "Draw×course coefficients in the final model — all four courses retained as a block. The slope is on stall_normalised (draw position / field size), per course; Lingfield's near-zero coefficient is the no-draw-bias finding.")
+```
+
+Adding the interaction barely moves the base coefficients — draw is
+roughly orthogonal to form and rating — so the final model inherits the
+whole extended-feature story and adds the draw effect on top.
+
+**Which courses show draw bias, and the sign flips that hid it.** The four
+course terms do not agree on direction. Kempton
+(`r sprintf("%+.3f", fin_coef[["stall_x_kempton"]])`,
+$p =$ `r signif(fin_ct["stall_x_kempton", "Pr(>|z|)"], 2)`) and Southwell
+(`r sprintf("%+.3f", fin_coef[["stall_x_southwell"]])`,
+$p =$ `r signif(fin_ct["stall_x_southwell", "Pr(>|z|)"], 2)`) favour
+**higher** draws; Wolverhampton
+(`r sprintf("%+.3f", fin_coef[["stall_x_wolverhampton"]])`,
+$p =$ `r signif(fin_ct["stall_x_wolverhampton", "Pr(>|z|)"], 2)`) favours
+**lower** draws, though here only marginally; Lingfield
+(`r sprintf("%+.3f", fin_coef[["stall_x_lingfield"]])`,
+$p =$ `r signif(fin_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`) shows
+essentially none. The marginal significance of the Wolverhampton term is
+worth flagging — under the win objective, with only the win indicator to
+estimate from, the draw signal is recovered less precisely than a fuller
+use of the finishing order might allow — but the substantive finding is
+the *sign flip*: the course effects point in opposite directions, so a
+single pooled draw coefficient averages them to almost nothing, which is
+exactly why `stall_normalised` looked dead in the univariate screen. A feature that appears useless in isolation carries
+real, track-specific signal once the race-level structure is respected
+through the interaction — the clearest vindication in this paper of the
+mixed-logit construction.
+
+**Weight × distance: Benter's compounding not detected.** The
+weight×distance term is statistically indistinguishable from zero on this
+data. Benter's intuition — that weight bites harder over a longer trip —
+may simply be too weak to register in Class 2–5 AW handicaps, where the
+handicapper has already set weights to equalise the field and the
+distance range is moderate, or it may be that `rel_weight` (a within-race
+deviation) already absorbs the level effect with little left for a
+distance modulation. Either way, it does not earn a place in the model.
+
+## Out-of-sample diagnostics
+
+We evaluate the final model exactly as before: win probabilities on the
+test races against the over-round-adjusted market, the same suite as
+@sec-extended-win.
+
+```{r}
+#| label: p2int-eval-setup
+#| include: false
+# Test set only. Reuse the helper functions from @sec-extended-win.
+eval_data_fin <- test_predictions_w_final |> dplyr::rename(model_prob = predicted_prob)
+```
+
+```{r}
+#| label: fig-calibration-final
+#| fig-cap: "Calibration on the AW test set, final model (Owen Figure 7 equivalent): observed win proportion vs predicted / implied win probability, 5-point bins over [0, 0.50]. Circles = final model (out-of-sample); plus signs = market; dashed line y = x."
+calib_summary_fin <- dplyr::bind_rows(
+  calibration_summary(eval_data_fin, "model_prob",  "Model (final)"),
+  calibration_summary(eval_data_fin, "market_prob", "Market")
+)
+ggplot2::ggplot(calib_summary_fin,
+                ggplot2::aes(x = bin_mid, y = observed, shape = source, colour = source)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::scale_shape_manual(values = c("Model (final)" = 1L, Market = 3L)) +
+  ggplot2::scale_colour_manual(values = c("Model (final)" = "purple", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                              limits = c(0, 0.50), breaks = bin_breaks) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, NA)) +
+  ggplot2::labs(x = "Predicted / implied win probability",
+                y = "Observed win proportion", shape = NULL, colour = NULL) +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: fig-p1-p2-final
+#| fig-cap:
+#|   - "P1 vs probability threshold, final model (Owen Figure 8a equivalent), AW test set."
+#|   - "P2 vs probability threshold, final model (Owen Figure 8b equivalent), AW test set."
+score_long_fin <- dplyr::bind_rows(
+  scoring_summary(eval_data_fin, "model_prob",  "Model (final)", thresholds),
+  scoring_summary(eval_data_fin, "market_prob", "Market",        thresholds)
+)
+p_score_fin <- function(yvar, ylab) {
+  ggplot2::ggplot(score_long_fin,
+                  ggplot2::aes(x = threshold, y = .data[[yvar]],
+                               linetype = source, colour = source)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::scale_linetype_manual(values = c("Model (final)" = "solid", Market = "dashed")) +
+    ggplot2::scale_colour_manual(values = c("Model (final)" = "purple", Market = "tomato")) +
+    ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.50)) +
+    ggplot2::labs(x = "Probability threshold", y = ylab, linetype = NULL, colour = NULL) +
+    ggplot2::theme_minimal()
+}
+print(p_score_fin("P1", "P1 (geom. mean prob. on winners)"))
+print(p_score_fin("P2", "P2 (geom. mean Bernoulli likelihood)"))
+```
+
+```{r}
+#| label: tbl-backtest-final
+backtest_naive_w_final |>
+  dplyr::transmute(
+    `Prob threshold`  = prob_threshold,
+    `Ratio threshold` = ratio_threshold,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `Gross return`    = sprintf("%.2f", gross_return),
+    `Profit`          = sprintf("%.2f", profit),
+    `ROI`             = roi_pct(roi)
+  ) |>
+  knitr::kable(caption = "Final model: betting backtest on the AW test races at Owen's exact thresholds.")
+```
+
+```{r}
+#| label: fig-roi-sweep-final
+#| fig-cap: "ROI vs ratio threshold on the AW test set (final model), 90% bootstrap CI shaded. Model-probability filter held at 0.13; dashed line at zero marks break-even."
+ggplot2::ggplot(backtest_sweep_w_final, ggplot2::aes(x = tau, y = roi)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "purple", alpha = 0.15) +
+  ggplot2::geom_line(linewidth = 0.8, colour = "purple") +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::labs(x = "Ratio threshold (model_prob / market_prob)", y = "ROI") +
+  ggplot2::theme_minimal()
+```
+
+## Do the interactions add anything?
+
+Draw×course does; weight×distance does not. The final model's naive
+backtest ROI is **`r roi_pct(backtest_naive_w_final$roi)`**, against the
+extended win model's `r roi_pct(backtest_naive_p2$roi)` and paper 1's
+−28.2%. The point estimates improve at every step, and the
+course-specific draw effect is the most valuable thing this paper adds to
+Owen's feature set — but the improvement is small relative to its sampling
+noise: a paired race-level bootstrap of the ROI *differences* (reported in
+@sec-discussion) cannot separate any of these contrasts from zero. The
+direction is at least intuitive in the market-efficiency frame: draw bias
+is a genuine, track-specific edge a 13-feature win model could not see,
+and the starting price — built partly on punters who *do* know each
+course's draw — was pricing it while the model was not.
+
+And yet the result is still a clear loss. The ratio-sweep CI narrows but
+does not cross zero: the market still prices the field more accurately
+than the model overall. Paper 2a's arc is a *directional* narrowing of the
+gap to the starting price — richer features and the draw interaction
+together move the point ROI from −28.2% to
+`r roi_pct(backtest_naive_w_final$roi)`, though a paired bootstrap cannot
+rule out that the true gap is unchanged. What remains uncaptured is the
+part of the market's edge that lives in information our pre-race feature
+set still does not contain — late money, going on the day — and in two
+structural limits of the model itself. The first is that we have used only
+the win, not the full finishing order; lifting that restriction is the
+subject of the companion paper 2b. The second is that a linear-predictor
+conditional logit cannot represent non-linearities or feature interactions
+at all beyond those we hand-build; that is the subject of paper 3.

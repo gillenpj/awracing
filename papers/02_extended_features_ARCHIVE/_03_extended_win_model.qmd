@@ -1,0 +1,373 @@
+# Extended win model {#sec-extended-win}
+
+This section fits the conditional-logit win model on the extended
+feature set and evaluates it out-of-sample. The recipe parallels paper
+1 exactly — fit the full specification on the training races, then drop
+every term with $p > 0.05$ and refit to a reduced headline model — but
+two things change. The predictor set is wider (the retained paper-2
+features from @sec-eda), and the prior-finish lags now use the **Model
+S** encoding: for each lag $N$, a zero indicator `pos_lagN_zero` (no
+prior run, or finished worse than 4th) plus the graded raw position
+`pos_lagN_nonzero` (1–4). The race scope, train/test split (70/30
+chronological, cutoff 2012-12-30) and diagnostic suite are unchanged
+from paper 1, so the two models are directly comparable. Fitting is
+training-only; every evaluation below is on the held-out test races.
+
+```{r}
+#| label: p2win-setup
+#| include: false
+# The mlogit fits are loaded from targets, not fitted in this document,
+# so mlogit's S3 methods (summary.mlogit / coef.mlogit) are not on the
+# dispatch table yet — load the namespace so summary() below dispatches
+# correctly rather than falling back to summary.default (CLAUDE.md note).
+loadNamespace("mlogit")
+rc <- stats::coef(model_p2_reduced)
+cf <- function(n) if (n %in% names(rc)) sprintf("%+.3f", rc[[n]]) else "dropped"
+pl_r2_reduced <- model_p2_diagnostics$pl_r2[model_p2_diagnostics$model == "reduced"]
+```
+
+## Full and reduced fit
+
+The full specification has 19 terms. The reduced model drops any term
+with $p > 0.05$ and refits (iterating the elimination once); on these
+data only the lag-3 position pair falls away, leaving 17 coefficients.
+
+```{r}
+#| label: tbl-reduced
+#| code-fold: true
+
+reduced_ct <- summary(model_p2_reduced)$CoefTable
+
+block_of <- function(term) {
+  if (grepl("^pos_lag", term))                                  return("1. Position encoding (Model S)")
+  if (term %in% c("days_LTO_log", "trainerSR", "sireSR"))       return("2. Form / history (Owen)")
+  if (term %in% c("age_diff", "entire", "gelding", "cheekpieces")) return("3. Horse characteristics (Owen)")
+  "4. New features (paper 2)"
+}
+
+pretty_term <- function(term) dplyr::recode(term, days_LTO_log = "daysLTO (log)")
+
+reduced_tbl <- tibble::tibble(
+  term      = rownames(reduced_ct),
+  estimate  = reduced_ct[, "Estimate"],
+  std_error = reduced_ct[, "Std. Error"],
+  z_value   = reduced_ct[, "z-value"],
+  p_value   = reduced_ct[, "Pr(>|z|)"]
+) |>
+  dplyr::mutate(
+    sig = dplyr::case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ ""
+    ),
+    Block = factor(vapply(term, block_of, character(1)),
+                   levels = c("1. Position encoding (Model S)",
+                              "2. Form / history (Owen)",
+                              "3. Horse characteristics (Owen)",
+                              "4. New features (paper 2)"))
+  ) |>
+  dplyr::arrange(Block) |>
+  dplyr::transmute(
+    Block,
+    Term          = pretty_term(term),
+    Estimate      = round(estimate, 4),
+    `Std. error`  = round(std_error, 4),
+    `z`           = round(z_value, 2),
+    `p-value`     = signif(p_value, 3),
+    Sig           = sig
+  )
+
+knitr::kable(
+  reduced_tbl,
+  align   = c("l", "l", "r", "r", "r", "r", "c"),
+  caption = "Reduced extended win model (AW training fit), Model-S position
+encoding. Coefficients grouped by block; significance ***p<0.001,
+**p<0.01, *p<0.05. The position lags enter as the semi-parsimonious
+Model-S pair per lag (zero indicator + graded 1–4 value), not as paper
+1's factor grid."
+)
+```
+
+```{r}
+#| label: dropped-p2
+full_terms    <- names(stats::coef(model_p2_full))
+reduced_terms <- names(stats::coef(model_p2_reduced))
+dropped_p2    <- setdiff(full_terms, reduced_terms)
+```
+
+**Terms dropped from the full model** ($p > 0.05$, removed before the
+reduced refit): `r if (length(dropped_p2) == 0) "none" else paste(dropped_p2, collapse = ", ")`.
+Only the third prior-finish lag falls out — the same lag paper 1 drops
+(`position3`) — confirming that the third-back race adds nothing once
+the two most recent are in the model.
+
+```{r}
+#| label: tbl-p2-fitstats
+model_p2_diagnostics |>
+  dplyr::transmute(
+    Model         = model,
+    `logLik`      = round(loglik, 1),
+    `Null logLik` = round(null_loglik, 1),
+    `PL-R²`       = round(pl_r2, 4),
+    `Races`       = n_races,
+    `Runner-rows` = n_runners
+  ) |>
+  knitr::kable(
+    caption = "Full vs reduced extended model: training-set fit statistics.
+PL-R² is the depth-1 Plackett–Luce R² (1 − logLik / null logLik)."
+  )
+```
+
+Every retained coefficient carries the sign its feature predicts. The
+Model-S position terms are all negative: a missing or worse-than-4th
+recent run (`pos_lag1_zero` = `r cf("pos_lag1_zero")`) is a sizeable
+penalty, and within graded finishes a larger position number — a worse
+placing — lowers the win odds (`pos_lag1_nonzero` =
+`r cf("pos_lag1_nonzero")`). The effect decays across lags exactly as
+the encoding intends: lag 1 dominates, lag 2 is weaker, lag 3 is gone.
+`age_diff` (`r cf("age_diff")`) and `days_LTO_log` (`r cf("days_LTO_log")`)
+are negative as in paper 1 (distance from peak age, and rust). The
+three strike rates are strongly positive, and the new features behave:
+`rel_weight` (`r cf("rel_weight")`) is negative — carrying more than the
+field's mean weight lowers the win probability, the handicap signal
+paper 1 flagged as missing — and `or_relative` (`r cf("or_relative")`)
+is the single most significant term in the model.
+
+## Comparison with Owen and paper 1
+
+Read against Owen's Table 3 and paper 1's AW reduced fit, the carried-
+over Owen features land where expected and the new features reshape a
+couple of them.
+
+- **Age, sex, tack.** `age_diff` is negative (Owen −0.152; ours
+  `r cf("age_diff")`), `entire` (`r cf("entire")`) and `gelding`
+  (`r cf("gelding")`) positive, `cheekpieces` (`r cf("cheekpieces")`)
+  negative — the same pattern as Owen and paper 1. As in paper 1,
+  `gelding` is roughly half Owen's +0.548, the AW population being
+  gelding-heavy so the contrast with the reference is compressed.
+
+- **Strike rates attenuate — the main surprise.** Paper 1's AW reduced
+  fit put `trainerSR` at +5.09 and `sireSR` at +2.36 (proportion
+  scale); here they fall to `r cf("trainerSR")` and `r cf("sireSR")`.
+  The cause is the new `jockeySR` (`r cf("jockeySR")`, itself larger
+  than `trainerSR`) and `or_relative`, which are correlated with
+  trainer/sire quality and absorb signal that paper 1 had no choice but
+  to load onto the two strike rates. Divided by 100 for Owen's apparent
+  percent scale, AW `trainerSR` now reads ~0.033 — below Owen's 0.051,
+  where paper 1 matched him almost exactly. This is the expected
+  consequence of a richer specification, not a data discrepancy.
+
+- **New features earn their place.** `or_relative` is the dominant
+  predictor (the largest $z$ in the table) — unsurprising, since the
+  official rating is the handicapper's direct estimate of relative
+  ability, and the starting price paper 1 lost to is built on the same
+  information. Its companion `or_missing` (`r cf("or_missing")`) is
+  negative: unrated horses, controlling for everything else, win less.
+  `rel_weight`, `jockeySR` and `trainer_aw_premium`
+  (`r cf("trainer_aw_premium")`) are all significant; `has_wins`
+  (`r cf("has_wins")`) survives only marginally.
+
+## Out-of-sample evaluation: calibration
+
+As in paper 1 we score the reduced model on the **test races** —
+out-of-sample forecasts, not in-sample fits — and build market-implied
+probabilities from the over-round-adjusted starting price, renormalised
+per race. The calibration plot bins predicted (or implied) win
+probability in 5-point intervals over $[0, 0.50]$; perfect calibration
+sits on $y = x$.
+
+```{r}
+#| label: p2-eval-setup
+#| include: false
+# Test set only. Rename so the paper-1 calibration / scoring idiom
+# (which keys on `model_prob`) applies unchanged.
+eval_data <- test_predictions_p2 |> dplyr::rename(model_prob = predicted_prob)
+```
+
+```{r}
+#| label: fig-calibration-p2
+#| fig-cap: "Calibration on the AW test set (Owen Figure 7 equivalent): observed
+#|   win proportion vs predicted / implied win probability, 5-point bins over
+#|   [0, 0.50]. Circles = extended reduced model (out-of-sample); plus signs =
+#|   market. Dashed line y = x is perfect calibration."
+
+bin_breaks <- seq(0, 0.50, by = 0.05)
+bin_mids   <- head(bin_breaks, -1) + 0.025
+
+calibration_summary <- function(df, prob_col, label) {
+  df |>
+    dplyr::filter(!is.na(.data[[prob_col]]),
+                  .data[[prob_col]] >= 0,
+                  .data[[prob_col]] <= 0.50) |>
+    dplyr::mutate(bin = cut(.data[[prob_col]], breaks = bin_breaks,
+                            include.lowest = TRUE, right = FALSE)) |>
+    dplyr::group_by(bin) |>
+    dplyr::summarise(n = dplyr::n(), observed = mean(won),
+                     predicted_mu = mean(.data[[prob_col]]), .groups = "drop") |>
+    dplyr::mutate(bin_mid = bin_mids[as.integer(bin)], source = label)
+}
+
+calib_summary <- dplyr::bind_rows(
+  calibration_summary(eval_data, "model_prob",  "Model (reduced)"),
+  calibration_summary(eval_data, "market_prob", "Market")
+)
+
+ggplot2::ggplot(calib_summary,
+                ggplot2::aes(x = bin_mid, y = observed, shape = source, colour = source)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::scale_shape_manual(values = c("Model (reduced)" = 1L, Market = 3L)) +
+  ggplot2::scale_colour_manual(values = c("Model (reduced)" = "steelblue", Market = "tomato")) +
+  ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                              limits = c(0, 0.50), breaks = bin_breaks) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, NA)) +
+  ggplot2::labs(x = "Predicted / implied win probability",
+                y = "Observed win proportion", shape = NULL, colour = NULL) +
+  ggplot2::theme_minimal()
+```
+
+## Out-of-sample evaluation: P1 and P2 scoring rules
+
+The two scoring rules follow Owen's Figure 8, evaluated out-of-sample.
+For each threshold $t$, over runner-rows whose probability exceeds $t$:
+$P_1$ is the geometric mean of probability assigned to actual winners,
+and $P_2$ the geometric mean of the per-row Bernoulli likelihood (a
+proper scoring rule that also penalises high probability on losers).
+Higher is better for both.
+
+```{r}
+#| label: p2-scoring-functions
+#| include: false
+
+add_loglik <- function(df, prob_col) {
+  df |>
+    dplyr::filter(!is.na(.data[[prob_col]]),
+                  .data[[prob_col]] > 0, .data[[prob_col]] < 1) |>
+    dplyr::mutate(
+      ll_winner = ifelse(won == 1L, log(.data[[prob_col]]), NA_real_),
+      ll_full   = ifelse(won == 1L, log(.data[[prob_col]]), log(1 - .data[[prob_col]]))
+    )
+}
+
+score_at_threshold <- function(df, prob_col, threshold) {
+  sub <- df[df[[prob_col]] > threshold, , drop = FALSE]
+  if (nrow(sub) == 0L) {
+    return(tibble::tibble(threshold = threshold, n = 0L, n_winners = 0L,
+                          P1 = NA_real_, P2 = NA_real_))
+  }
+  winners <- sub[sub$won == 1L, , drop = FALSE]
+  p1 <- if (nrow(winners) > 0L) exp(mean(winners$ll_winner, na.rm = TRUE)) else NA_real_
+  p2 <- exp(mean(sub$ll_full, na.rm = TRUE))
+  tibble::tibble(threshold = threshold, n = nrow(sub), n_winners = nrow(winners),
+                 P1 = p1, P2 = p2)
+}
+
+scoring_summary <- function(df, prob_col, label, thresholds) {
+  scored_df <- add_loglik(df, prob_col)
+  purrr::map_dfr(thresholds, \(t) score_at_threshold(scored_df, prob_col, t)) |>
+    dplyr::mutate(source = label)
+}
+
+thresholds <- seq(0, 0.50, by = 0.025)
+score_long <- dplyr::bind_rows(
+  scoring_summary(eval_data, "model_prob",  "Model (reduced)", thresholds),
+  scoring_summary(eval_data, "market_prob", "Market",          thresholds)
+)
+```
+
+```{r}
+#| label: fig-p1-p2
+#| fig-cap:
+#|   - "P1 vs probability threshold (Owen Figure 8a equivalent), AW test set. Higher = more probability mass on eventual winners."
+#|   - "P2 vs probability threshold (Owen Figure 8b equivalent), AW test set. Proper scoring rule: calibration plus discrimination."
+
+p_score <- function(yvar, ylab) {
+  ggplot2::ggplot(score_long,
+                  ggplot2::aes(x = threshold, y = .data[[yvar]],
+                               linetype = source, colour = source)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::scale_linetype_manual(values = c("Model (reduced)" = "solid", Market = "dashed")) +
+    ggplot2::scale_colour_manual(values = c("Model (reduced)" = "steelblue", Market = "tomato")) +
+    ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.50)) +
+    ggplot2::labs(x = "Probability threshold", y = ylab, linetype = NULL, colour = NULL) +
+    ggplot2::theme_minimal()
+}
+print(p_score("P1", "P1 (geom. mean prob. on winners)"))
+print(p_score("P2", "P2 (geom. mean Bernoulli likelihood)"))
+```
+
+## Betting backtest
+
+We apply Owen's exact bet-selection rule ($\hat{P} > 0.15$ and
+model/market ratio $> 1.3$) to the AW test set, then sweep the ratio
+threshold from 0.9 to 2.0 with the model-probability filter held at 0.13
+and a 90% bootstrap CI (race-level resampling, $B = 2000$, seed 42) —
+the same procedure paper 1 ran, so the ROI is directly comparable to
+paper 1's headline **−28.2%**.
+
+```{r}
+#| label: tbl-backtest-naive-p2
+backtest_naive_p2 |>
+  dplyr::transmute(
+    `Prob threshold`  = prob_threshold,
+    `Ratio threshold` = ratio_threshold,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `Gross return`    = sprintf("%.2f", gross_return),
+    `Profit`          = sprintf("%.2f", profit),
+    `ROI`             = scales::percent(roi, accuracy = 0.1)
+  ) |>
+  knitr::kable(caption = "Extended reduced model: betting backtest on the AW test races at Owen's exact thresholds.")
+```
+
+```{r}
+#| label: fig-roi-sweep-p2
+#| fig-cap: "ROI vs ratio threshold on the AW test set (extended model), 90% bootstrap CI shaded. Model-probability filter held at 0.13; dashed line at zero marks break-even."
+ggplot2::ggplot(backtest_sweep_p2, ggplot2::aes(x = tau, y = roi)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "steelblue", alpha = 0.20) +
+  ggplot2::geom_line(linewidth = 0.8, colour = "steelblue") +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::labs(x = "Ratio threshold (model_prob / market_prob)", y = "ROI") +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+#| label: tbl-roi-sweep-p2
+backtest_sweep_p2 |>
+  dplyr::transmute(
+    `Ratio threshold` = tau,
+    `Bets`            = n_bets,
+    `Wins`            = n_wins,
+    `ROI`             = scales::percent(roi, accuracy = 0.1),
+    `90% CI low`      = scales::percent(ci_lo, accuracy = 0.1),
+    `90% CI high`     = scales::percent(ci_hi, accuracy = 0.1)
+  ) |>
+  knitr::kable(caption = "ROI sweep over ratio thresholds with 90% bootstrap CIs (B = 2000, race-level resampling, seed 42).")
+```
+
+## Does the extended feature set improve on paper 1?
+
+Yes on discrimination, not enough to beat the market. The extended
+reduced model reaches a depth-1 Plackett–Luce R² of
+`r round(pl_r2_reduced, 3)` on the training races, comfortably above the
+paper-1 specification — most of the lift coming from `or_relative`, the
+handicapper's rating, together with `jockeySR` and `rel_weight`, none of
+which Owen or paper 1 used. The naive backtest ROI improves from paper
+1's −28.2% to
+**`r scales::percent(backtest_naive_p2$roi, accuracy = 0.1)`** —
+directionally better, but still firmly negative, and the ratio sweep's
+90% CI continues to straddle (and sit below) zero across the threshold
+range.
+
+The framing from paper 1 holds. On calibration and the P1/P2 scoring
+rules the model has closed some of the gap to the market but has not
+overtaken it: adding `or_relative` pulls the feature set onto part of
+the information the starting price already prices, which is exactly why
+discrimination improves, yet the SP still aggregates more — weight-by-
+draw interactions, going suitability, late market money — than even the
+widened feature set captures. The extended *win* model is a better
+forecaster than paper 1's; whether using the full finishing order rather
+than the win alone narrows the remaining gap is the question for
+@sec-exploded-logit.

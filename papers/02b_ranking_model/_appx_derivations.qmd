@@ -1,0 +1,84 @@
+# Appendix: Derivations {#sec-appx-derivations .appendix}
+
+This appendix derives the Plackett–Luce model and its exploded-logit
+representation, the ranking machinery fitted in @sec-exploded-model. It
+builds on the conditional logit derived in paper 1's appendix, whose
+notation we reuse: race $i$ is the chooser, horse $j$ the alternative, the
+linear predictor for horse $j$ in race $i$ is
+$z_{ij} = \sum_{l} \beta_l x_{ilj}$ over alternative-specific features
+$x_{ilj}$, and win probabilities are given by the softmax
+$p_{ij} = e^{z_{ij}} / \sum_m e^{z_{im}}$.
+
+## From conditional logit to Plackett–Luce
+
+The conditional-logit model estimates only the probability that a
+particular horse *wins* a race. In practice, we observe a full or partial
+*ranking* of the field, which contains more information than the win
+alone. The Plackett–Luce model [@plackett1975] extends conditional logit
+to rankings by treating the observed order of finishers as a sequence of
+conditional win probabilities: horse $j_1$ wins the race, then horse $j_2$
+wins among the remainder, and so on.
+
+Formally, let $j_1, j_2, \ldots, j_k$ denote the top $k$ finishers in
+race $i$, in order. The Plackett–Luce probability of this partial ranking
+is
+$$
+P(j_1, j_2, \ldots, j_k)
+  = \prod_{s=1}^{k}
+      \frac{e^{z_{ij_s}}}{\sum_{r=s}^{J} e^{z_{ij_r}}},
+$$
+where the denominator at step $s$ sums over all horses not yet ranked.
+Setting $k = J$ gives the probability of a full ranking; setting $k < J$
+gives the truncated version, in which only the top $k$ finishers are
+modelled. In racing, truncation is natural: while the top few finishers
+are separated by genuine differences in ability and conditions on the
+day, the ordering among the tail of the field is largely noise and
+carries little useful signal [@henery1981]. Truncating at $k$ discards
+this noise; paper 2b takes $k = 3$.
+
+The log-likelihood over a set of races is
+$$
+\sum_{i=1}^n \sum_{s=1}^{k}
+  \left( z_{ij_s} - \log\sum_{r=s}^{J} e^{z_{ij_r}} \right).
+$$
+As in the conditional-logit case, this is concave in the coefficients,
+so any local maximum is the global maximum.
+
+### Exploded conditional logit and Plackett–Luce equivalence
+
+The Plackett–Luce likelihood has a natural interpretation in terms of
+conditional logit. Each factor in the product
+$$
+\prod_{s=1}^{k}
+  \frac{e^{z_{ij_s}}}{\sum_{r=s}^{J} e^{z_{ij_r}}}
+$$
+is precisely the conditional-logit probability that horse $j_s$ wins
+*among the horses remaining at position $s$*. So the Plackett–Luce
+likelihood is equivalent to the likelihood of $k$ separate
+conditional-logit problems, one for each position in the ranking, each
+defined on a shrinking choice set. This is known as the *exploded logit*:
+each race is exploded into $k$ conditional-logit observations.
+
+Concretely, define $\mathcal{C}_{is} = \{j_s, j_{s+1}, \ldots, j_J\}$ as
+the choice set at position $s$ — the horses not yet ranked. Then the
+Plackett–Luce log-likelihood can be written as
+$$
+\sum_{i=1}^n \sum_{s=1}^{k}
+  \left( z_{ij_s} - \log \sum_{j \in \mathcal{C}_{is}} e^{z_{ij}}\right),
+$$
+which is identical in form to the conditional-logit log-likelihood
+[@mcfadden1974], summed over $nk$ observations.
+
+In practice, each race is exploded into $k$ fictitious races: the first
+is the real race with the full field; the second is a fictitious race
+consisting only of the horses that finished second or worse; the third a
+fictitious race consisting only of those that finished third or worse;
+and so on. These $nk$ races — real and fictitious — are pooled into a
+single dataset, and a single conditional-logit model is fit across the
+whole pool. By making fuller use of the finishing order rather than just
+the win, this yields more precise estimates of $\boldsymbol{\beta}$. The
+construction is implemented in `prepare_exploded_data()`, and the fitted
+result is @sec-exploded-model's exploded ranking model.
+
+The mixed discrete-choice derivation, used in paper 2a for race-level
+interactions, is given in paper 2a's appendix.

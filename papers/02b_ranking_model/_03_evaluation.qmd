@@ -1,0 +1,43 @@
+# Evaluation on ranking metrics {#sec-evaluation}
+
+## Ranking metrics
+
+We evaluate ranking models on two metrics, both computed out-of-sample on
+the held-out test races.
+
+**P1_rank** (ranking discrimination): the geometric mean, over test races,
+of the Plackett–Luce probability assigned to the observed top-3 finishing
+order. Computed as the exponentiated mean log-likelihood per race to avoid
+numerical underflow:
+$$
+\text{P1}_{\text{rank}}
+  = \exp\!\left( \frac{1}{n} \sum_{i} \log P(j_1^i, j_2^i, j_3^i) \right),
+$$
+where $P(j_1, j_2, j_3)$ is the depth-3 Plackett–Luce probability of the
+observed order under the model or market. Higher is better. This is the
+ranking analogue of Owen's P1 (geometric mean win probability on selected
+bets), generalised to the full field and the top-3 order.
+
+**Brier_place** (place calibration): the mean squared error between the
+predicted place probability and the binary place outcome (top-3 or not),
+averaged over all runner-race observations in the test set:
+$$
+\text{Brier}_{\text{place}}
+  = \frac{1}{N} \sum_{i,j} \left( \text{place}_{ij} - p^{\text{place}}_{ij} \right)^2,
+$$
+where $\text{place}_{ij} = 1$ if horse $j$ finished in the top 3 in race
+$i$, and $p^{\text{place}}_{ij}$ is the model- or market-implied
+probability of a top-3 finish. Lower is better. This is a proper scoring
+rule, analogous to Owen's P2 (Bernoulli log-likelihood on win outcomes)
+but for the place market.
+
+For both metrics, the market baseline uses discounted Harville place
+probabilities (@sec-data).
+
+## Results
+
+*Stub — to be completed.*
+
+## Comparison with market baseline
+
+*Stub — to be completed.*
