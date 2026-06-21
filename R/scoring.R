@@ -407,21 +407,71 @@ compute_harville_place_probs <- function(market_probs,
     dplyr::select(race_id, horse_ref, harville_place_prob)
 }
 
+#' Plackett–Luce probability of the observed top-3 order (paper 2b)
+#'
+#' Per race, the depth-3 Plackett–Luce probability of the observed top-3
+#' finishing order, built from a win-probability vector via the sequential
+#' conditional (Harville) form:
+#' \eqn{P(j_1,j_2,j_3) = \frac{p_{j_1}}{S}\cdot
+#' \frac{q^{(2)}_{j_2}}{\sum_{k\neq j_1} q^{(2)}_k}\cdot
+#' \frac{q^{(3)}_{j_3}}{\sum_{k\neq j_1,j_2} q^{(3)}_k}}, where
+#' \eqn{S=\sum_k p_k} and \eqn{q^{(m)} = p^{\alpha_m}}. With
+#' `alpha_2nd = alpha_3rd = 1` this is the pure PL / Harville order
+#' probability — the model's own depth-3 likelihood, and (per the paper-2b
+#' spec) the undiscounted market baseline; `alpha < 1` gives the
+#' Lo & Bacon-Shone discounted form, kept for generality.
+#'
+#' Only races with a clean top-3 (positions 1, 2, 3 each present exactly
+#' once) are scored; any other race is dropped (returns no row). This is the
+#' same race condition the exploded fit imposes.
+#'
+#' @param predictions Tibble, one row per runner-race: `race_id`,
+#'   `win_prob` (model- or market-implied win probability, summing to one
+#'   within race) and `finish_pos` (integer; 1/2/3 mark the observed order).
+#' @param alpha_2nd,alpha_3rd Discount exponents on the 2nd / 3rd
+#'   conditionals (default 1 = pure PL/Harville order probability).
+#' @return Tibble, one row per scored race: `race_id`, `order_prob`.
+compute_pl_order_probs <- function(predictions, alpha_2nd = 1, alpha_3rd = 1) {
+  predictions |>
+    dplyr::group_by(race_id) |>
+    dplyr::summarise(
+      order_prob = {
+        p  <- win_prob
+        f  <- finish_pos
+        i1 <- which(f == 1L); i2 <- which(f == 2L); i3 <- which(f == 3L)
+        if (length(i1) != 1L || length(i2) != 1L || length(i3) != 1L) {
+          NA_real_
+        } else {
+          q2 <- p^alpha_2nd; q3 <- p^alpha_3rd
+          (p[i1] / sum(p)) *
+            (q2[i2] / sum(q2[-i1])) *
+            (q3[i3] / sum(q3[-c(i1, i2)]))
+        }
+      },
+      .groups = "drop"
+    ) |>
+    dplyr::filter(!is.na(order_prob))
+}
+
 #' P1_rank: ranking discrimination on the observed top-3 order (paper 2b)
 #'
-#' Geometric mean, over the test races, of the depth-3 Plackett–Luce
-#' probability assigned to the observed top-3 finishing order, computed as
-#' the exponentiated mean per-race log-likelihood to avoid underflow:
+#' Geometric mean, over the scored test races, of the depth-3 Plackett–Luce
+#' probability assigned to the observed top-3 finishing order — computed as
+#' the exponentiated mean per-race log-probability to avoid underflow:
 #' \eqn{\exp\!\big(\frac{1}{n}\sum_i \log P(j_1, j_2, j_3)\big)}. Higher is
 #' better. The ranking analogue of Owen's P1.
 #'
-#' @param ranking_predictions Tibble of per-race depth-3 outcomes with the
-#'   model- or market-implied scores/probabilities needed to evaluate
-#'   \eqn{P(j_1, j_2, j_3)} for the observed order (exact columns TBD).
+#' Column contract (one row per race, the order probability pre-computed by
+#' `compute_pl_order_probs()` — symmetric with `score_brier_place()`, and it
+#' keeps the choice of order-probability model, e.g. pure vs discounted
+#' Harville for the market baseline, in the caller rather than the metric):
+#'
+#' @param order_predictions Tibble with one row per scored race: `race_id`
+#'   (int) and `order_prob` (dbl in (0, 1], the predicted probability of the
+#'   observed top-3 finishing order under the model or market).
 #' @return A scalar P1_rank.
-#' @details Not yet implemented — scaffolded for paper 2b.
-score_p1_rank <- function(ranking_predictions) {
-  stop("score_p1_rank(): not yet implemented")
+score_p1_rank <- function(order_predictions) {
+  exp(mean(log(order_predictions$order_prob)))
 }
 
 #' Brier_place: place-market calibration (paper 2b)
@@ -431,13 +481,17 @@ score_p1_rank <- function(ranking_predictions) {
 #' set: \eqn{\frac{1}{N}\sum_{i,j}(\text{place}_{ij} - p_{ij})^2}. Lower is
 #' better; a proper scoring rule. The place analogue of Owen's P2.
 #'
-#' @param place_predictions Tibble with one row per runner-race carrying
-#'   `placed` (1 if the horse finished top-3, else 0) and the model- or
-#'   market-implied place probability (exact column TBD).
+#' Generic by design: the caller supplies `place_prob` — discounted-Harville
+#' from market win probabilities (via `compute_harville_place_probs()`), or
+#' pure-Harville (\eqn{\alpha = 1}) from model win probabilities — so model
+#' and market are scored on the identical metric and compared directly.
+#'
+#' @param place_predictions Tibble, one row per runner-race: `placed`
+#'   (int 0/1, 1 if the horse finished top-3) and `place_prob` (dbl in
+#'   \eqn{[0, 1]}, the predicted probability of a top-3 finish).
 #' @return A scalar Brier_place.
-#' @details Not yet implemented — scaffolded for paper 2b.
 score_brier_place <- function(place_predictions) {
-  stop("score_brier_place(): not yet implemented")
+  mean((place_predictions$placed - place_predictions$place_prob)^2)
 }
 
 #' Paired race-level bootstrap of the ROI *difference* between two models

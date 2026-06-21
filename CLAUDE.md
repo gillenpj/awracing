@@ -506,21 +506,55 @@ observations are documented in §4.3 of paper 1.
   rendering bootstrap. (Done — scaffolded; section bodies are stubs.)
 
 ## Paper 2b plan
-Exploded conditional logit as a ranking model. See
-`papers/02b_ranking_model/`.
-- **Objective:** ranking (top-3 finishing order), not the win.
-- **Model:** exploded conditional logit (Plackett–Luce, depth k = 3);
-  feature set inherited from paper 2a.
-- **Market baseline:** discounted Harville place probabilities via
-  Lo & Bacon-Shone (α = 0.80 for the 2nd-place conditional, 0.65 for the
-  3rd), built from over-round-adjusted SP win probabilities.
-  `compute_harville_place_probs()` in `R/scoring.R` (scaffolded; not yet a
-  target).
-- **Metrics:** P1_rank (geometric mean depth-3 PL probability of the
-  observed top-3 order) and Brier_place (top-3 Brier score). Stubs
-  `score_p1_rank()` / `score_brier_place()` in `R/scoring.R`.
+Exploded conditional logit as a **ranking** model, then its win
+performance as a byproduct. See `papers/02b_ranking_model/`. **Two
+questions, in order.** *(Supersedes the earlier "wrong objective, better
+ROI" framing, which was written against pre-rebuild numbers on a stale
+draw spec; the exploded fits were rebuilt after the 2a draw-block
+correction.)*
+
+- **Q1 — Ranking performance.** Refit the full 2a extended feature set on
+  the ranking (depth-3 Plackett–Luce) objective, with an **independent**
+  course×draw search (not inherited from 2a). Fresh per-term Wald
+  reduction on the exploded fit retains **Kempton, Southwell,
+  Wolverhampton** (3 courses) vs 2a's Kempton + Southwell — only Lingfield
+  drops (p=0.91). Does it beat the market on ranking metrics? **No** —
+  market wins both on the test split: **P1_rank 0.00402 (model) vs 0.00537
+  (market); Brier_place 0.2013 vs 0.1875**. Consistent with papers 1/2a's
+  market-trails-throughout pattern — reported, not chased. Targets:
+  `model_2b_exploded_draw_full`/`_final`, `model_2b_draw_reduction`
+  (+`_steps`), `ranking_eval_runners_2b`, `ranking_metrics_2b`.
+- **Q2 — Win performance as a byproduct.** Does depth-3 ranking
+  supervision make a better **win**-picker than 2a's depth-1 win-fitted
+  model? The same 3-course exploded model on the depth-1 win backtest:
+  **−17.4% ROI vs 2a's −25.4%**, both on the identical 2,193-race test set
+  (`mlogit_test_data_interactions`; 0 dropped either side). Paired
+  ROI-difference bootstrap (`roi_difference_2b_vs_2a`, B=2000, seed 42):
+  **+8.0 pp [+1.0, +14.8]**, 90% CI **excludes zero** — the first
+  statistically distinguishable improvement in the series, though still a
+  clear loss to the market. Targets: `model_market_ratio_2b_win`,
+  `backtest_naive_2b_win`, `backtest_sweep_2b_win`,
+  `roi_difference_2b_vs_2a`.
+- **Market baseline:** discounted Harville place probs (Lo & Bacon-Shone,
+  α=0.80/0.65) for Brier_place; **pure Harville (α=1)** order probability
+  for the P1_rank market baseline. `compute_harville_place_probs()` +
+  `compute_pl_order_probs()` in `R/scoring.R`; `score_p1_rank()` /
+  `score_brier_place()` implemented; eval module `R/ranking_eval_p2b.R`.
+- **Wolverhampton (sign sanity-checked).** Draw slope −0.182 (p=0.0003)
+  on the exploded fit vs −0.160 (p=0.066) in 2a's win model — **same sign,
+  sharper estimate**. Low-draw advantage, directionally consistent with a
+  tight left-handed AW track, but a **distance-pooled** slope: frame as
+  "the ranking objective estimates the same draw effect 2a saw, sharply
+  enough to retain it", not "a new physical bias resolved".
+- **Going: OUT OF SCOPE — deferred to paper 3.** No going feature, no
+  going code in 2b; paper 3's tree-model rationale depends on it being
+  untouched.
 - **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
-- **Status:** scaffolded; content to be filled after paper 2a is complete.
+- **qmd structure (prose pending):** `_02` model build + independent draw
+  search + Wolverhampton; `_03` Q1 (ranking vs market) then Q2 (win/ROI vs
+  2a) as **separate** subsections; `_04` both discussed honestly.
+- **Status:** analysis built and run clean; numbers reviewed; prose
+  pending.
 
 ## Paper 2 feature decisions
 

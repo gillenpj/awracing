@@ -409,19 +409,19 @@ list(
     )
   ),
   tar_target(
-    model_p2_exploded,
+    model_2b_exploded_base,
     fit_exploded_model(exploded_train_data, model_p2_reduced)
   ),
   tar_target(
-    model_p2_exploded_diagnostics,
-    extract_p2_exploded_diagnostics(model_p2_exploded, mlogit_train_data_p2)
+    model_2b_exploded_base_diagnostics,
+    extract_p2_exploded_diagnostics(model_2b_exploded_base, mlogit_train_data_p2)
   ),
 
   # Depth-1 (win) test predictions from the exploded coefficients, then the
   # same backtest suite as the win model for a like-for-like comparison.
   tar_target(
     test_predictions_p2_exploded,
-    build_test_predictions(model_p2_exploded, mlogit_test_data_p2, qualifying_runners) |>
+    build_test_predictions(model_2b_exploded_base, mlogit_test_data_p2, qualifying_runners) |>
       dplyr::rename(predicted_prob = model_prob)
   ),
   tar_target(
@@ -445,13 +445,13 @@ list(
     )
   ),
 
-  # -- Paper 2 mixed-logit interactions --------------------------------------
-  # Two race-level x horse-level interactions tested on top of the exploded
-  # model: weight x distance (Benter) and draw x course. All four models
-  # (E/EW/ED/EWD) are fitted on ONE common exploded sample so the LR tests
-  # are valid; the common sample drops the single training race with
-  # draw-less runners (NA stall_x_*), hence a fresh Model E rather than
-  # reusing model_p2_exploded (which differs by that 1 race).
+  # -- Shared interaction features + exploded interaction data ---------------
+  # Race-level x horse-level interaction columns (draw x course, weight x
+  # distance) on the runner table, and the exploded (depth-3) training data
+  # carrying them. Consumed by paper 2b's draw fits above and paper 2a's win
+  # interaction fits further down. The exploded sample drops the single
+  # training race with draw-less runners (NA stall_x_*) so all draw models
+  # share one sample.
   tar_target(
     runners_interactions,
     build_interaction_features(runners_model_ready, qualifying_races)
@@ -470,56 +470,96 @@ list(
                         "stall_x_southwell", "stall_x_wolverhampton")
     )
   ),
+  # -- Paper 2b: exploded draw x course, fresh per-term reduction ------------
+  # Draw x course enters as the full four-course block on the exploded
+  # (Plackett-Luce, depth-3) fit, then is reduced by the same per-term Wald
+  # p < 0.05 rule paper 2a uses on its win model -- run FRESH here, NOT
+  # inherited from 2a. On the exploded fit Wolverhampton's draw slope is
+  # significant (p ~ 0.0003) where it was marginal (p ~ 0.066) and dropped
+  # in 2a's win model, so the 2b surviving set is Kempton + Southwell +
+  # Wolverhampton (3 courses) vs 2a's Kempton + Southwell (2 courses); only
+  # Lingfield drops. model_2b_draw_reduction_steps records the Wald/LR
+  # sequence and model_2b_exploded_draw_final is the reduced fit.
   tar_target(
-    model_p2_e,
-    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced)
-  ),
-  tar_target(
-    model_p2_ew,
-    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
-                             extra_terms = "rel_weight_x_dist")
-  ),
-  tar_target(
-    model_p2_ed,
-    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
-                             extra_terms = c("stall_x_kempton", "stall_x_lingfield",
-                                             "stall_x_southwell", "stall_x_wolverhampton"))
-  ),
-  tar_target(
-    model_p2_ewd,
-    fit_exploded_interaction(exploded_interactions_data, model_p2_reduced,
-                             extra_terms = c("rel_weight_x_dist",
-                                             "stall_x_kempton", "stall_x_lingfield",
-                                             "stall_x_southwell", "stall_x_wolverhampton"))
-  ),
-  tar_target(
-    interaction_lr_tests,
-    build_interaction_lr_tests(model_p2_e, model_p2_ew, model_p2_ed, model_p2_ewd)
-  ),
-
-  # -- Paper 2 final model: exploded + draw x course, Lingfield dropped ------
-  # The LR tests select ED (draw x course) over E/EW/EWD. Within ED the
-  # Lingfield draw term is individually non-significant (Wald p = 0.91), so
-  # the reduced final model drops it (keeping Kempton/Southwell/
-  # Wolverhampton); final_reduction_lr confirms the 1-df drop. _final
-  # targets point at this reduced model. Depth-1 (win) test evaluation; the
-  # test split has no draw-less runners, so no extra drop is needed.
-  tar_target(
-    model_p2_final,
+    model_2b_exploded_draw_full,
     fit_exploded_interaction(
       exploded_interactions_data, model_p2_reduced,
-      extra_terms = c("stall_x_kempton", "stall_x_southwell", "stall_x_wolverhampton")
+      extra_terms = c("stall_x_kempton", "stall_x_lingfield",
+                      "stall_x_southwell", "stall_x_wolverhampton")
     )
   ),
   tar_target(
-    final_reduction_lr,
-    lr_test_pair(model_p2_ed, model_p2_final,
-                 "ED (4 courses)", "Final (3 courses, Lingfield dropped)")
+    model_2b_draw_reduction,
+    reduce_exploded_draw_block(
+      model_2b_exploded_draw_full, exploded_interactions_data, model_p2_reduced,
+      draw_terms = c("stall_x_kempton", "stall_x_lingfield",
+                     "stall_x_southwell", "stall_x_wolverhampton")
+    )
+  ),
+  tar_target(
+    model_2b_exploded_draw_final,
+    model_2b_draw_reduction$fit
+  ),
+  tar_target(
+    model_2b_draw_reduction_steps,
+    model_2b_draw_reduction$steps
   ),
 
-  # Non-exploded training data carrying the draw-course columns (drops the
-  # one draw-less race), so the final model's depth-1 PL-R² is computable
-  # and directly comparable to the win / exploded diagnostics.
+  # -- Paper 2b: ranking evaluation (test split) -----------------------------
+  # Final-model test win probabilities on the draw-carrying test data
+  # (mlogit_test_data_interactions, defined below), then the ranking
+  # metrics: P1_rank (depth-3 PL order discrimination) and Brier_place
+  # (top-3 calibration), model vs discounted-Harville market baseline
+  # (alpha 0.80 / 0.65). Order probabilities use pure Harville (alpha = 1)
+  # for both sides per the 2b spec.
+  tar_target(
+    test_predictions_2b,
+    build_test_predictions(model_2b_exploded_draw_final,
+                           mlogit_test_data_interactions, qualifying_runners) |>
+      dplyr::rename(win_model = model_prob, win_market = market_prob)
+  ),
+  tar_target(
+    ranking_eval_runners_2b,
+    build_ranking_eval_runners(test_predictions_2b, qualifying_runners)
+  ),
+  tar_target(
+    ranking_metrics_2b,
+    compute_ranking_metrics_2b(ranking_eval_runners_2b)
+  ),
+
+  # -- Paper 2b Q2: win performance of the ranking-fitted model --------------
+  # The same fully-specified 3-course exploded model evaluated on the
+  # depth-1 WIN metric (Owen's naive backtest), to ask whether ranking
+  # (depth-3) supervision helps or hurts win-picking vs 2a's win-fitted
+  # model (headline -25.4%). Reuses test_predictions_2b, built on the same
+  # mlogit_test_data_interactions test set 2a's test_predictions_w_final
+  # uses, so roi_difference_2b_vs_2a intersects on a near-identical race
+  # set (the top-3-clean filter bit only the ranking eval above, not this).
+  tar_target(
+    model_market_ratio_2b_win,
+    compute_model_market_ratio_p2(
+      test_predictions_2b |>
+        dplyr::rename(predicted_prob = win_model, market_prob = win_market)
+    )
+  ),
+  tar_target(
+    backtest_naive_2b_win,
+    run_backtest(model_market_ratio_2b_win, prob_threshold = 0.15, ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_2b_win,
+    run_backtest_sweep(model_market_ratio_2b_win, prob_threshold = 0.13,
+                       tau_seq = seq(0.9, 2.0, by = 0.05), n_boot = 2000L, seed = 42L)
+  ),
+  tar_target(
+    roi_difference_2b_vs_2a,
+    bootstrap_roi_difference(model_market_ratio_2b_win, model_market_ratio_w_final) |>
+      dplyr::mutate(contrast = "2b ranking-fitted - 2a win-fitted", .before = 1)
+  ),
+
+  # Non-exploded train/test data carrying the draw-course columns (drops the
+  # one draw-less race). Consumed by paper 2a's win interaction fits below
+  # and paper 2b's test predictions above.
   tar_target(
     mlogit_train_data_interactions,
     prepare_mlogit_data_p2(
@@ -528,42 +568,11 @@ list(
     )
   ),
   tar_target(
-    model_p2_final_diagnostics,
-    extract_p2_exploded_diagnostics(model_p2_final, mlogit_train_data_interactions,
-                                    label = "final")
-  ),
-  tar_target(
     mlogit_test_data_interactions,
     prepare_mlogit_data_p2(
       runners_interactions |> dplyr::filter(split == "test")
     )
   ),
-  tar_target(
-    test_predictions_p2_final,
-    build_test_predictions(model_p2_final, mlogit_test_data_interactions, qualifying_runners) |>
-      dplyr::rename(predicted_prob = model_prob)
-  ),
-  tar_target(
-    model_market_ratio_p2_final,
-    compute_model_market_ratio_p2(test_predictions_p2_final)
-  ),
-  tar_target(
-    backtest_naive_p2_final,
-    run_backtest(model_market_ratio_p2_final,
-                 prob_threshold  = 0.15,
-                 ratio_threshold = 1.3)
-  ),
-  tar_target(
-    backtest_sweep_p2_final,
-    run_backtest_sweep(
-      model_market_ratio_p2_final,
-      prob_threshold = 0.13,
-      tau_seq        = seq(0.9, 2.0, by = 0.05),
-      n_boot         = 2000L,
-      seed           = 42L
-    )
-  ),
-
   # -- Paper 2a: interactions refit on the WIN model (not exploded) ----------
   # Paper 2a is a win-model paper, so its mixed-logit interactions are fitted
   # on the extended *win* model, not the exploded ranking fit. fit_exploded_

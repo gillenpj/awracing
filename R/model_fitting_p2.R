@@ -493,3 +493,76 @@ build_interaction_lr_tests <- function(model_p2_e, model_p2_ew,
     lr_test_pair(model_p2_ewd, model_p2_ed, "EWD", "ED")   # weight | draw (df 1)
   )
 }
+
+#' Per-term Wald reduction of the exploded draw-course block (paper 2b)
+#'
+#' Backward elimination on the draw-course slopes of an exploded
+#' (Plackett–Luce, depth-3) fit, by the same per-term Wald p < 0.05 rule
+#' paper 2a applies to its win model: at each step the **single** least
+#' significant draw slope with Wald p \eqn{\geq} `alpha` is dropped, the
+#' model refit on the same exploded sample, and the step recorded (the
+#' dropped term's Wald p plus the 1-df likelihood-ratio drop-test between
+#' the before/after fits). It stops when every surviving draw slope is
+#' significant at `alpha` (or none remain). The 17 base feature terms are
+#' held fixed throughout (they were reduced upstream into
+#' `model_p2_reduced`), so only the draw block is pruned.
+#'
+#' Run **fresh** for paper 2b — it does not assume paper 2a's surviving
+#' set. On the exploded fit the draw block is estimated more sharply than on
+#' the win-only model, so the surviving courses can differ from 2a's; the
+#' difference is itself a finding (e.g. Wolverhampton, marginal and dropped
+#' in 2a's win model, is significant here and retained).
+#'
+#' @param model_full The fitted full-block model (all `draw_terms` present),
+#'   from `fit_exploded_interaction()`; used as the starting fit.
+#' @param exploded_data The pooled exploded choice data the block was fit
+#'   on (so refits share the identical sample and the LR tests are nested).
+#' @param model_p2_reduced The reduced win model defining the 17-term base.
+#' @param draw_terms Character vector of the candidate draw-course columns
+#'   (the full block, e.g. the four `stall_x_*` terms).
+#' @param alpha Wald significance threshold for retention (default 0.05).
+#' @return A list: `fit` (the final reduced exploded fit), `surviving`
+#'   (character vector of retained draw terms), and `steps` (a tibble, one
+#'   row per dropped term: `step`, `dropped`, `wald_p`, `n_before`,
+#'   `n_after`, `lr_stat`, `lr_df`, `lr_p`).
+reduce_exploded_draw_block <- function(model_full, exploded_data,
+                                       model_p2_reduced, draw_terms,
+                                       alpha = 0.05) {
+  loadNamespace("mlogit")
+  current <- draw_terms
+  fit     <- model_full
+  steps   <- list()
+
+  repeat {
+    ct <- summary(fit)$CoefTable
+    p  <- ct[current, "Pr(>|z|)"]
+    if (length(current) == 0L || max(p) < alpha) break
+    worst   <- current[which.max(p)]
+    reduced <- setdiff(current, worst)
+    fit_red <- fit_exploded_interaction(exploded_data, model_p2_reduced,
+                                        extra_terms = reduced)
+    lr <- lr_test_pair(fit, fit_red,
+                       paste0(length(current), "-course"),
+                       paste0(length(reduced), "-course"))
+    steps[[length(steps) + 1L]] <- tibble::tibble(
+      step     = length(steps) + 1L,
+      dropped  = sub("stall_x_", "", worst),
+      wald_p   = unname(p[which.max(p)]),
+      n_before = length(current),
+      n_after  = length(reduced),
+      lr_stat  = lr$lr_stat, lr_df = lr$df, lr_p = lr$p_value
+    )
+    current <- reduced
+    fit     <- fit_red
+  }
+
+  list(
+    fit       = fit,
+    surviving = current,
+    steps     = if (length(steps)) dplyr::bind_rows(steps) else
+      tibble::tibble(step = integer(), dropped = character(),
+                     wald_p = double(), n_before = integer(),
+                     n_after = integer(), lr_stat = double(),
+                     lr_df = integer(), lr_p = double())
+  )
+}
