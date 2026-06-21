@@ -71,6 +71,15 @@ forward plan below.
   `tlmgr option repository …`, which fixed it. If a fresh package
   auto-install fails mid-render with a checksum error, re-pin a
   different mirror.
+  - **Debugging a PDF failure:** under `tar_make()` a PDF render error
+    surfaces *masked* as a cryptic targets/cli message
+    (`Could not evaluate cli {} expression: 'captions' … object
+    'captions' not found`) — that is the KOMA `\KOMAoption{captions}`
+    header getting mangled by cli interpolation, **not** the real
+    cause. To see the actual LaTeX/quarto error, render the offending
+    paper directly from the project root:
+    `quarto render papers/<NN>_<slug>/index.qmd --to pdf` (run from the
+    root so the child R session's cwd is correct).
 
 ## Tidyverse-first style — main convention
 - `dplyr` verbs over base subsetting: `filter()`, `mutate()`,
