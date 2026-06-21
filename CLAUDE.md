@@ -20,11 +20,16 @@ forward plan below.
     the starting price aggregating richer information than the
     13-feature predictor set.
 - **Paper 2 — SPLIT into 2a + 2b.**
-  - **Paper 2a — first full draft complete, corrections applied;
-    pending publish to GitHub Pages.** *Extended feature set and the
-    conditional-logit win model (including mixed-logit / race-level
-    interactions).* Source: `papers/02a_extended_win_model/`. See
-    "Paper 2a plan" below.
+  - **Paper 2a — complete and PUBLISHED.** *Extended feature set and
+    the conditional-logit win model (including mixed-logit /
+    race-level interactions).* Source:
+    `papers/02a_extended_win_model/`. Live at
+    <https://gillenpj.github.io/awracing/paper2a/> (HTML + PDF). One
+    headline change from the first draft: the draw×course block is
+    reduced per-term to the two significant courses (Kempton,
+    Southwell) — Wolverhampton and Lingfield dropped — giving a
+    −25.4% backtest ROI. See "Paper 2a plan" and "Paper 2a
+    corrections" below.
   - **Paper 2b — scaffolded.** *Exploded conditional logit as a
     ranking model, evaluated on ranking metrics.* Source:
     `papers/02b_ranking_model/`. See "Paper 2b plan" below.
@@ -50,6 +55,22 @@ forward plan below.
 - `{quarto}` for the papers under `papers/`. Quarto CLI is bundled
   with RStudio at
   `C:/Program Files/RStudio/resources/app/bin/quarto/bin/quarto.exe`.
+- **TeX (TinyTeX) — required for the PDF output.** Each paper renders
+  both HTML and PDF (see "Paper / Quarto convention"), and the PDF
+  branch needs a LaTeX install. TinyTeX is installed under
+  `C:/Users/gille/AppData/Roaming/TinyTeX` (via `quarto install
+  tinytex`); its `tlmgr` is at
+  `…/TinyTeX/bin/windows/tlmgr.bat`. The PDF uses the default
+  `lualatex` engine. Two gotchas, both already resolved on this
+  machine: (1) paper 1 needs the `luatexbase` package — install with
+  `tlmgr install luatexbase` if a PDF render reports it missing; (2)
+  the default CTAN mirror (`gb.mirrors.cicku.me`, also where
+  `mirror.ctan.org` redirects from GB) served corrupt checksums right
+  after the TeX Live 2026 release — the repo is pinned to
+  `https://ftp.fau.de/ctan/systems/texlive/tlnet` via
+  `tlmgr option repository …`, which fixed it. If a fresh package
+  auto-install fails mid-render with a checksum error, re-pin a
+  different mirror.
 
 ## Tidyverse-first style — main convention
 - `dplyr` verbs over base subsetting: `filter()`, `mutate()`,
@@ -83,23 +104,33 @@ forward plan below.
     `_appx_software.qmd` via `{{< include >}}`. `_helpers.R` holds
     plotting helpers used in the section files. Bibliography in
     `references.bib`.
-  - `papers/02a_extended_win_model/` — **paper 2a, first full draft complete, corrections applied; pending publish to GitHub Pages.** Extended
+  - `papers/02a_extended_win_model/` — **paper 2a, complete and published.** Extended
     feature set, extended win model, mixed logit race-level interactions. Master
     `index.qmd` includes section partials via `{{< include >}}`. Rendered by
-    `tar_quarto(paper_2a_extended_win_model)`.
+    `tar_quarto(paper_2a_extended_win_model)` (HTML + PDF).
   - `papers/02b_ranking_model/` — **paper 2b, scaffolded.** Exploded conditional
     logit as a ranking model. Master `index.qmd` includes section partials via
     `{{< include >}}`. Rendered by `tar_quarto(paper_2b_ranking_model)`.
   - `papers/03_<slug>/` — paper 3, model-class change. Slug TBD
     once the model is picked.
 - `docs/` — GitHub Pages publishing root. **Committed.**
-  - `docs/index.html` — landing page, one entry per paper.
-  - `docs/paper1/index.html` + `.pdf` — paper 1 rendered output,
-    copied from `papers/01_replication/_output/` after each render.
-  - Pages source is set to `main` branch, `/docs` folder.
-  - Republishing convention: re-render via `tar_make()`, copy the
-    new HTML + PDF into the matching `docs/paperN/` folder, commit
-    + push.
+  - `docs/index.html` — landing page, one entry per paper; each
+    entry links the HTML and a "— PDF" link to `paperN/index.pdf`.
+  - `docs/paper1/index.html` + `.pdf`, `docs/paper2a/index.html` +
+    `.pdf` — rendered output, copied from the matching
+    `papers/*/_output/` after each render.
+  - Pages source is set to `main` branch, `/docs` folder. There is
+    **no GitHub Actions workflow** — Pages serves the committed
+    `/docs` files directly and runs its own build on push, so
+    publishing = copy `_output/` into `docs/`, commit, push. The
+    `papers/*/_output/` working copies are gitignored.
+  - Republishing convention: re-render via `tar_make()` (which now
+    produces **both `index.html` and `index.pdf`** per paper — see
+    "Paper / Quarto convention"), copy the new HTML + PDF into the
+    matching `docs/paperN/` folder, commit + push. NB: `date: today`
+    in each `index.qmd` means every re-render updates the rendered
+    date, so paper 1's committed output legitimately changes date on
+    any rebuild.
 - `notes/` — kept as a reference shelf only; not consumed by the
   pipeline.
   - `Statistical Models of Horse Racing Outcomes Using R (Owen).pdf`
@@ -131,6 +162,17 @@ forward plan below.
   YAML, abstract, intro, and `{{< include >}}` directives for the
   section partials. Partials are prefixed with `_` so Quarto does
   not try to render them standalone.
+- **Each paper renders two formats — HTML and PDF.** The master
+  `index.qmd` YAML carries `format: {html: default, pdf: {toc: true,
+  number-sections: true}}`, so a single `tar_make()` produces both
+  `_output/index.html` and `_output/index.pdf` via one
+  `tar_quarto()` target. The PDF needs TinyTeX (see "Tech stack").
+  Do not render the PDF standalone with `quarto render --to pdf` from
+  the paper folder — the child R session's cwd breaks the home
+  `~/.Rprofile`'s relative `source("renv/activate.R")`, and the qmd
+  setup chunk fails to find the `_targets` store; `tar_make()` (run
+  from the project root) is the supported render path for both
+  formats.
 - `_quarto.yml` lists only `index.qmd` under `project.render`; all
   partials are pulled in via includes.
 - Bibliography is a per-paper `references.bib`; the format spec in

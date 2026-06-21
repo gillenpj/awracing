@@ -28,6 +28,9 @@ abstract: |
   switch the model entirely, to a Plackett–Luce R² tree.
 format:
   html: default
+  pdf:
+    toc: true
+    number-sections: true
 bibliography: references.bib
 ---
 

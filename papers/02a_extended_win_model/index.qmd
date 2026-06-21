@@ -28,6 +28,9 @@ abstract: |
   from win prediction to ranking.
 format:
   html: default
+  pdf:
+    toc: true
+    number-sections: true
 bibliography: references.bib
 ---
 
