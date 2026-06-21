@@ -7,15 +7,15 @@ constant within a race and cancel in the softmax. They enter only as
 runners within a race (the mixed discrete-choice mechanism derived in
 @sec-appx-derivations). This section tests two such interactions on top
 of the extended win model from @sec-extended-win, which is the baseline
-throughout (**Model W**).
+throughout.
 
 ```{r}
 #| label: p2int-setup
 #| include: false
 loadNamespace("mlogit")
 
-ed_ct    <- summary(model_w_ed)$CoefTable      # 4-course block fit
-fin_ct   <- ed_ct                              # the final paper-2a model IS the full draw block
+ed_ct    <- summary(model_w_ed)$CoefTable      # full 4-course block (selection stage)
+fin_ct   <- summary(model_w_final)$CoefTable   # final model: the 2 retained courses
 fin_coef <- stats::setNames(fin_ct[, "Estimate"], rownames(fin_ct))
 roi_pct  <- function(x) scales::percent(x, accuracy = 0.1)
 
@@ -74,8 +74,10 @@ tibble::tibble(
 
 Four models, all fitted on one common training sample so the tests are
 nested and valid: **W** (extended win baseline), **W+weight**, **W+draw**,
-and **W+both**. One training race with draw-less runners is dropped from
-all four, so Model W here is the extended win model refitted on that
+and **W+both** (the **W** prefix denoting the extended win baseline of
+@sec-extended-win, and the suffixes its two candidate interactions). One
+training race with draw-less runners is dropped from all four, so the
+baseline here is the extended win model refitted on that
 shared `r scales::comma(model_w_final_diagnostics$n_races)`-race sample
 (it differs from @sec-extended-win's fit by that single race; the base
 coefficients are unchanged to three decimals).
@@ -116,24 +118,55 @@ a fuller use of the data — the exploded ranking likelihood of paper 2b,
 which triples the number of choice problems per race — may estimate the
 same interaction more sharply, a question we leave to that paper.
 
-The draw×course term is selected as a **block** — the four course-masked
-columns enter or leave together, on the W+draw vs W likelihood-ratio test
-above, not on the individual courses' Wald *p*-values. This parallels the
-treatment of the position-lag block in @sec-extended-win, where the lag
-terms were assessed jointly rather than course-by-course: an interaction's
-worth is a property of the whole block, and masking it into four columns
-is an implementation detail, not licence to prune the columns one at a
-time. We therefore keep all four courses, including Lingfield, whose draw
-coefficient is individually near zero (Wald $p =$
-`r signif(ed_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`). That null is not a
-nuisance to be dropped but a **finding**: Lingfield, alone among the four,
-shows no detectable draw bias — consistent with its wide, galloping
-configuration — and the model says so explicitly by carrying a coefficient
-indistinguishable from zero.
+The draw×course term enters as a **block**: the four course-masked columns
+are admitted together on the W+draw vs W likelihood-ratio test above, which
+establishes that course-specific draw bias carries signal the pooled term
+could not. Admitting the block is one question; which individual course
+slopes to *retain* is another, and we settle it with the same per-term
+Wald rule paper 1 and Owen use, and that reduces the position-lag block in
+@sec-extended-win — a course slope individually non-significant at
+$p < 0.05$ is dropped. Of the four slopes in the fitted block, Kempton
+(`r sprintf("%+.3f", ed_ct["stall_x_kempton", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_kempton", "Pr(>|z|)"], 2)`) and Southwell
+(`r sprintf("%+.3f", ed_ct["stall_x_southwell", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_southwell", "Pr(>|z|)"], 2)`) clear the
+threshold; Lingfield
+(`r sprintf("%+.3f", ed_ct["stall_x_lingfield", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`) and
+Wolverhampton
+(`r sprintf("%+.3f", ed_ct["stall_x_wolverhampton", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_wolverhampton", "Pr(>|z|)"], 2)`) do not,
+and are dropped.
 
-The **final paper-2a model** is therefore the extended win model plus the
-full four-course draw block — Kempton, Lingfield, Southwell and
-Wolverhampton — 21 coefficients in all.
+```{r}
+#| label: tbl-draw-reduction
+#| code-fold: true
+final_reduction_lr_w |>
+  dplyr::mutate(
+    Drop      = c("Lingfield", "Wolverhampton"),
+    `LR stat` = round(lr_stat, 2),
+    df        = df,
+    `p-value` = signif(p_value, 3),
+    Verdict   = dplyr::if_else(decision == "significant",
+                               "retain term", "drop term")
+  ) |>
+  dplyr::select(Drop, `LR stat`, df, `p-value`, Verdict) |>
+  knitr::kable(caption = "Within-block reduction of the draw×course term: two sequential one-degree-of-freedom likelihood-ratio tests, each dropping one individually non-significant course slope from the model above it, all on the common training sample. Neither drop is rejected at p < 0.05, so the final model retains only Kempton and Southwell.")
+```
+
+The reduction is confirmed by the two sequential reduction tests in
+@tbl-draw-reduction — each a one-degree-of-freedom likelihood-ratio test,
+which drops a single coefficient and checks whether the simpler model loses
+significant fit. Dropping Lingfield from the four-course block costs nothing
+($p =$ `r signif(final_reduction_lr_w$p_value[1], 2)`), and dropping
+Wolverhampton from the remaining three is likewise not rejected at the 5%
+level ($p =$ `r signif(final_reduction_lr_w$p_value[2], 2)`, though it is
+the closer call). The same inclusion rule — individual Wald $p < 0.05$ —
+was applied identically to both courses: this is a mechanical rule
+decision, not a judgement call, even though Wolverhampton's $p$ sits close
+to the line. The **final paper-2a model** is therefore the extended win
+model plus two course-specific draw slopes — Kempton and Southwell —
+`r length(stats::coef(model_w_final))` coefficients in all.
 
 ## The final model vs the baseline
 
@@ -144,7 +177,7 @@ base_terms <- names(stats::coef(model_w))
 shift <- tibble::tibble(
   Term         = base_terms,
   `W est.`     = round(stats::coef(model_w)[base_terms], 4),
-  `Final est.` = round(stats::coef(model_w_ed)[base_terms], 4)
+  `Final est.` = round(stats::coef(model_w_final)[base_terms], 4)
 )
 knitr::kable(shift, caption = "Base (17-term) coefficients: extended win baseline (W) vs the final model. The draw terms leave the base estimates essentially unchanged.")
 ```
@@ -152,47 +185,50 @@ knitr::kable(shift, caption = "Base (17-term) coefficients: extended win baselin
 ```{r}
 #| label: tbl-draw-course
 #| code-fold: true
-draw_rows <- grepl("^stall_x_", rownames(fin_ct))
-course_lab <- tools::toTitleCase(sub("stall_x_", "", rownames(fin_ct)[draw_rows]))
+draw_rows  <- grepl("^stall_x_", rownames(ed_ct))
+course_lab <- tools::toTitleCase(sub("stall_x_", "", rownames(ed_ct)[draw_rows]))
+retained   <- rownames(ed_ct)[draw_rows] %in% names(stats::coef(model_w_final))
 tibble::tibble(
   Course       = course_lab,
-  Estimate     = round(fin_ct[draw_rows, "Estimate"], 4),
-  `Std. error` = round(fin_ct[draw_rows, "Std. Error"], 4),
-  `z`          = round(fin_ct[draw_rows, "z-value"], 2),
-  `p-value`    = signif(fin_ct[draw_rows, "Pr(>|z|)"], 3),
+  Estimate     = round(ed_ct[draw_rows, "Estimate"], 4),
+  `Std. error` = round(ed_ct[draw_rows, "Std. Error"], 4),
+  `z`          = round(ed_ct[draw_rows, "z-value"], 2),
+  `p-value`    = signif(ed_ct[draw_rows, "Pr(>|z|)"], 3),
   Sig          = dplyr::case_when(
-    fin_ct[draw_rows, "Pr(>|z|)"] < 0.001 ~ "***",
-    fin_ct[draw_rows, "Pr(>|z|)"] < 0.01  ~ "**",
-    fin_ct[draw_rows, "Pr(>|z|)"] < 0.05  ~ "*",
-    TRUE                                  ~ "(ns)"
-  )
+    ed_ct[draw_rows, "Pr(>|z|)"] < 0.001 ~ "***",
+    ed_ct[draw_rows, "Pr(>|z|)"] < 0.01  ~ "**",
+    ed_ct[draw_rows, "Pr(>|z|)"] < 0.05  ~ "*",
+    TRUE                                 ~ "(ns)"
+  ),
+  Retained     = dplyr::if_else(retained, "yes", "dropped")
 ) |>
-  knitr::kable(caption = "Draw×course coefficients in the final model — all four courses retained as a block. The slope is on stall_normalised (draw position / field size), per course; Lingfield's near-zero coefficient is the no-draw-bias finding.")
+  knitr::kable(caption = "Draw×course coefficients in the full four-course block (the selection-stage fit). The slope is on stall_normalised (draw position / field size), per course. Kempton and Southwell are individually significant and retained; Lingfield and Wolverhampton are non-significant at p < 0.05 and dropped, leaving the two-course final model.")
 ```
 
 Adding the interaction barely moves the base coefficients — draw is
 roughly orthogonal to form and rating — so the final model inherits the
 whole extended-feature story and adds the draw effect on top.
 
-**Which courses show draw bias, and the sign flips that hid it.** The four
-course terms do not agree on direction. Kempton
-(`r sprintf("%+.3f", fin_coef[["stall_x_kempton"]])`,
-$p =$ `r signif(fin_ct["stall_x_kempton", "Pr(>|z|)"], 2)`) and Southwell
-(`r sprintf("%+.3f", fin_coef[["stall_x_southwell"]])`,
-$p =$ `r signif(fin_ct["stall_x_southwell", "Pr(>|z|)"], 2)`) favour
-**higher** draws; Wolverhampton
-(`r sprintf("%+.3f", fin_coef[["stall_x_wolverhampton"]])`,
-$p =$ `r signif(fin_ct["stall_x_wolverhampton", "Pr(>|z|)"], 2)`) favours
-**lower** draws, though here only marginally; Lingfield
-(`r sprintf("%+.3f", fin_coef[["stall_x_lingfield"]])`,
-$p =$ `r signif(fin_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`) shows
-essentially none. The marginal significance of the Wolverhampton term is
-worth flagging — under the win objective, with only the win indicator to
-estimate from, the draw signal is recovered less precisely than a fuller
-use of the finishing order might allow — but the substantive finding is
-the *sign flip*: the course effects point in opposite directions, so a
-single pooled draw coefficient averages them to almost nothing, which is
-exactly why `stall_normalised` looked dead in the univariate screen. A feature that appears useless in isolation carries
+**Which courses carry draw bias, and the sign flips that hid it.** Within
+the fitted block the four course slopes disagree on both direction and
+strength. Kempton
+(`r sprintf("%+.3f", ed_ct["stall_x_kempton", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_kempton", "Pr(>|z|)"], 2)`) and Southwell
+(`r sprintf("%+.3f", ed_ct["stall_x_southwell", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_southwell", "Pr(>|z|)"], 2)`) show a clear,
+significant advantage to **higher** draws and are the two courses the final
+model keeps. Wolverhampton
+(`r sprintf("%+.3f", ed_ct["stall_x_wolverhampton", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_wolverhampton", "Pr(>|z|)"], 2)`) leans the
+other way, towards **lower** draws, but only marginally; Lingfield
+(`r sprintf("%+.3f", ed_ct["stall_x_lingfield", "Estimate"])`,
+$p =$ `r signif(ed_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`) shows
+essentially none. Under the win objective — with only the win indicator to
+estimate from — neither clears the 5% bar, so both drop out. The
+substantive finding survives the reduction: the per-course effects point in
+*opposite directions*, so a single pooled draw coefficient averages them to
+almost nothing, which is exactly why `stall_normalised` looked dead in the
+univariate screen. A feature that appears useless in isolation carries
 real, track-specific signal once the race-level structure is respected
 through the interaction — the clearest vindication in this paper of the
 mixed-logit construction.
@@ -293,14 +329,15 @@ ggplot2::ggplot(backtest_sweep_w_final, ggplot2::aes(x = tau, y = roi)) +
 
 ## Do the interactions add anything?
 
-Draw×course does; weight×distance does not. The final model's naive
+The final model's naive
 backtest ROI is **`r roi_pct(backtest_naive_w_final$roi)`**, against the
 extended win model's `r roi_pct(backtest_naive_p2$roi)` and paper 1's
-−28.2%. The point estimates improve at every step, and the
-course-specific draw effect is the most valuable thing this paper adds to
-Owen's feature set — but the improvement is small relative to its sampling
-noise: a paired race-level bootstrap of the ROI *differences* (reported in
-@sec-discussion) cannot separate any of these contrasts from zero. The
+−28.2%. The point estimates improve at every step; the extended feature
+set — chiefly the official rating — accounts for most of that gain, with
+the course-specific draw effect adding a smaller further increment. But the
+improvement is small relative to its sampling noise: a paired race-level
+bootstrap of the ROI *differences* (reported in @sec-discussion) cannot
+separate any of these contrasts from zero. The
 direction is at least intuitive in the market-efficiency frame: draw bias
 is a genuine, track-specific edge a 13-feature win model could not see,
 and the starting price — built partly on punters who *do* know each
@@ -314,9 +351,10 @@ together move the point ROI from −28.2% to
 `r roi_pct(backtest_naive_w_final$roi)`, though a paired bootstrap cannot
 rule out that the true gap is unchanged. What remains uncaptured is the
 part of the market's edge that lives in information our pre-race feature
-set still does not contain — late money, going on the day — and in two
-structural limits of the model itself. The first is that we have used only
-the win, not the full finishing order; lifting that restriction is the
-subject of the companion paper 2b. The second is that a linear-predictor
+set still does not contain — late money, going on the day — together with a
+genuine structural limit of the model itself: a linear-predictor
 conditional logit cannot represent non-linearities or feature interactions
-at all beyond those we hand-build; that is the subject of paper 3.
+beyond those we hand-build, which is the subject of paper 3. This paper also
+deliberately scopes to the win outcome rather than the full finishing
+order; using the finishing order is the subject of the companion paper 2b —
+a change of objective, not a shortfall of this one.

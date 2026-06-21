@@ -5,8 +5,8 @@ feature set and evaluates it out-of-sample. The recipe parallels paper
 1 exactly — fit the full specification on the training races, then drop
 every term with $p > 0.05$ and refit to a reduced headline model — but
 two things change. The predictor set is wider (the retained paper-2
-features from @sec-eda), and the prior-finish lags now use the **Model
-S** encoding: for each lag $N$, a zero indicator `pos_lagN_zero` (no
+features from @sec-eda), and the prior-finish lags now use the
+**zero-plus-slope** encoding: for each lag $N$, a zero indicator `pos_lagN_zero` (no
 prior run, or finished worse than 4th) plus the graded raw position
 `pos_lagN_nonzero` (1–4). The race scope, train/test split (70/30
 chronological, cutoff 2012-12-30) and diagnostic suite are unchanged
@@ -39,7 +39,7 @@ data only the lag-3 position pair falls away, leaving 17 coefficients.
 reduced_ct <- summary(model_p2_reduced)$CoefTable
 
 block_of <- function(term) {
-  if (grepl("^pos_lag", term))                                  return("1. Position encoding (Model S)")
+  if (grepl("^pos_lag", term))                                  return("1. Position encoding (zero-plus-slope)")
   if (term %in% c("days_LTO_log", "trainerSR", "sireSR"))       return("2. Form / history (Owen)")
   if (term %in% c("age_diff", "entire", "gelding", "cheekpieces")) return("3. Horse characteristics (Owen)")
   "4. New features (paper 2)"
@@ -62,7 +62,7 @@ reduced_tbl <- tibble::tibble(
       TRUE            ~ ""
     ),
     Block = factor(vapply(term, block_of, character(1)),
-                   levels = c("1. Position encoding (Model S)",
+                   levels = c("1. Position encoding (zero-plus-slope)",
                               "2. Form / history (Owen)",
                               "3. Horse characteristics (Owen)",
                               "4. New features (paper 2)"))
@@ -81,11 +81,11 @@ reduced_tbl <- tibble::tibble(
 knitr::kable(
   reduced_tbl,
   align   = c("l", "l", "r", "r", "r", "r", "c"),
-  caption = "Reduced extended win model (AW training fit), Model-S position
-encoding. Coefficients grouped by block; significance ***p<0.001,
+  caption = "Reduced extended win model (AW training fit), zero-plus-slope
+position encoding. Coefficients grouped by block; significance ***p<0.001,
 **p<0.01, *p<0.05. The position lags enter as the semi-parsimonious
-Model-S pair per lag (zero indicator + graded 1–4 value), not as paper
-1's factor grid."
+zero-plus-slope pair per lag (zero indicator + graded 1–4 value), not as
+paper 1's factor grid."
 )
 ```
 
@@ -198,14 +198,15 @@ The reduction buys parsimony at a cost the data can barely register; we
 flag the joint test here so the choice is explicit rather than hidden.
 
 Every retained coefficient carries the sign its feature predicts. The
-Model-S position terms are all negative: a missing or worse-than-4th
+zero-plus-slope position terms are all negative: a missing or worse-than-4th
 recent run (`pos_lag1_zero` = `r cf("pos_lag1_zero")`) is a sizeable
 penalty, and within graded finishes a larger position number — a worse
 placing — lowers the win odds (`pos_lag1_nonzero` =
 `r cf("pos_lag1_nonzero")`). The effect decays across lags exactly as
 the encoding intends: lag 1 dominates, lag 2 is weaker, lag 3 is gone.
 `age_diff` (`r cf("age_diff")`) and `days_LTO_log` (`r cf("days_LTO_log")`)
-are negative as in paper 1 (distance from peak age, and rust). The
+are negative as in paper 1 (distance from peak age, and rust — the loss of
+sharpness from time away from racing, captured by `days_LTO_log`). The
 three strike rates are strongly positive, and the new features behave:
 `rel_weight` (`r cf("rel_weight")`) is negative — carrying more than the
 field's mean weight lowers the win probability, the handicap signal
@@ -233,11 +234,11 @@ couple of them.
   trainer/sire quality and absorb signal that paper 1 had no choice but
   to load onto the two strike rates. Divided by 100 for Owen's apparent
   percent scale, AW `trainerSR` now reads ~0.033 — below Owen's 0.051,
-  where paper 1 matched him almost exactly. This is the expected
-  consequence of a richer specification, not a data discrepancy.
+  where paper 1 matched him almost exactly.
 
 - **New features earn their place.** `or_relative` is the dominant
-  predictor (the largest $z$ in the table) — unsurprising, since the
+  predictor (the most statistically significant term in the table) —
+  unsurprising, since the
   official rating is the handicapper's direct estimate of relative
   ability, and the starting price paper 1 lost to is built on the same
   information. Its companion `or_missing` (`r cf("or_missing")`) is
@@ -250,8 +251,8 @@ couple of them.
 
 As in paper 1 we score the reduced model on the **test races** —
 out-of-sample forecasts, not in-sample fits — and build market-implied
-probabilities from the over-round-adjusted starting price, renormalised
-per race. The calibration plot bins predicted (or implied) win
+probabilities from the over-round-adjusted industry starting price (SP),
+renormalised per race. The calibration plot bins predicted (or implied) win
 probability in 5-point intervals over $[0, 0.50]$; perfect calibration
 sits on $y = x$.
 
@@ -311,8 +312,11 @@ The two scoring rules follow Owen's Figure 8, evaluated out-of-sample.
 For each threshold $t$, over runner-rows whose probability exceeds $t$:
 $P_1$ is the geometric mean of probability assigned to actual winners,
 and $P_2$ the geometric mean of the per-row Bernoulli likelihood (a
-proper scoring rule that also penalises high probability on losers).
-Higher is better for both.
+proper scoring rule that also penalises high probability on losers). At any
+given threshold, a higher $P_1$ or $P_2$ means the model (or the market) is
+doing better at that threshold — though $P_2$ itself trends down as the
+threshold rises, since it is then conditioned on a smaller, more selective
+set of bets.
 
 ```{r}
 #| label: p2-scoring-functions
@@ -377,8 +381,12 @@ print(p_score("P2", "P2 (geom. mean Bernoulli likelihood)"))
 
 ## Betting backtest
 
-We apply Owen's exact bet-selection rule ($\hat{P} > 0.15$ and
-model/market ratio $> 1.3$) to the AW test set, then sweep the ratio
+We apply Owen's exact bet-selection rule to the AW test set: back a horse
+when the model gives it more than a 15% chance of winning
+($\hat{P} > 0.15$) and the model's probability is at least 1.3 times the
+market-implied probability (ratio $> 1.3$) — that is, the model must be
+both confident in absolute terms and clearly more bullish than the market.
+We then sweep the ratio
 threshold from 0.9 to 2.0 with the model-probability filter held at 0.13
 and a 90% bootstrap CI (race-level resampling, $B = 2000$, seed 42) —
 the same procedure paper 1 ran, so the ROI is directly comparable to
@@ -427,7 +435,7 @@ backtest_sweep_p2 |>
 
 ## Does the extended feature set improve on paper 1?
 
-Yes on discrimination, not enough to beat the market. The extended
+The extended
 reduced model reaches a McFadden pseudo-R² of
 `r round(pl_r2_reduced, 3)` on the training races, comfortably above the
 paper-1 specification — most of the lift coming from `or_relative`, the
@@ -436,15 +444,14 @@ which Owen or paper 1 used. The naive backtest ROI improves from paper
 1's −28.2% to
 **`r scales::percent(backtest_naive_p2$roi, accuracy = 0.1)`** —
 directionally better, but still firmly negative, and the ratio sweep's
-90% CI continues to straddle (and sit below) zero across the threshold
-range.
+90% CI sits below zero across the threshold range.
 
 The framing from paper 1 holds. On calibration and the P1/P2 scoring
 rules the model has closed some of the gap to the market but has not
 overtaken it: adding `or_relative` pulls the feature set onto part of
 the information the starting price already prices, which is exactly why
 discrimination improves, yet the SP still aggregates more — weight-by-
-draw interactions, going suitability, late market money — than even the
+draw interactions, going suitability — than even the
 widened feature set captures. The extended *win* model is a better
 forecaster than paper 1's; whether *race-level interactions* narrow the
 remaining gap is the question for @sec-mixed-interactions. (Whether

@@ -599,21 +599,48 @@ list(
     interaction_lr_tests_w,
     build_interaction_lr_tests(model_w, model_w_ew, model_w_ed, model_w_ewd)
   ),
-  # The final paper-2a model IS the full four-course draw block
-  # (`model_w_ed`, 21 coefficients). Selection is at the block level (the
-  # W+draw vs W LR test in `interaction_lr_tests_w`), paralleling the
-  # position-lag block in §3.2; individual course terms are not deleted on
-  # their per-term Wald p, so Lingfield's near-zero draw coefficient is
-  # retained as a substantive "no draw bias here" finding. The `_w_final`
-  # diagnostics / test-prediction targets therefore read off `model_w_ed`.
+  # Paper-2a final model: the draw x course BLOCK is selected via the
+  # W+draw vs W likelihood-ratio test in `interaction_lr_tests_w` (it adds
+  # signal). Within the block we then apply the SAME per-term Wald
+  # reduction rule paper 1 / Owen / the position-lag block in §3.2 use:
+  # course slopes individually non-significant at p < 0.05 are dropped. In
+  # `model_w_ed` (the full 4-course block) Kempton (p ~ 0.009) and
+  # Southwell (p ~ 0.025) are significant; Lingfield (p ~ 0.35) and
+  # Wolverhampton (p ~ 0.066) are not, and are dropped. The final paper-2a
+  # model therefore carries two course draw terms (Kempton, Southwell),
+  # 19 coefficients. `final_reduction_lr_w` confirms the two sequential
+  # 1-df drops (neither rejected). The `_w_final` diagnostics /
+  # test-prediction targets read off `model_w_final`. (This reverses the
+  # earlier four-course-block decision; see CLAUDE.md "Paper 2a
+  # corrections".)
+  tar_target(
+    model_w_ed_noling,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced,
+                             extra_terms = c("stall_x_kempton", "stall_x_southwell",
+                                             "stall_x_wolverhampton"))
+  ),
+  tar_target(
+    model_w_final,
+    fit_exploded_interaction(mlogit_train_data_interactions, model_p2_reduced,
+                             extra_terms = c("stall_x_kempton", "stall_x_southwell"))
+  ),
+  tar_target(
+    final_reduction_lr_w,
+    dplyr::bind_rows(
+      lr_test_pair(model_w_ed, model_w_ed_noling,
+                   "W+draw (4 courses)", "drop Lingfield (3 courses)"),
+      lr_test_pair(model_w_ed_noling, model_w_final,
+                   "3 courses", "Final (2 courses: Kempton + Southwell)")
+    )
+  ),
   tar_target(
     model_w_final_diagnostics,
-    extract_p2_exploded_diagnostics(model_w_ed, mlogit_train_data_interactions,
+    extract_p2_exploded_diagnostics(model_w_final, mlogit_train_data_interactions,
                                     label = "final")
   ),
   tar_target(
     test_predictions_w_final,
-    build_test_predictions(model_w_ed, mlogit_test_data_interactions, qualifying_runners) |>
+    build_test_predictions(model_w_final, mlogit_test_data_interactions, qualifying_runners) |>
       dplyr::rename(predicted_prob = model_prob)
   ),
   tar_target(

@@ -20,7 +20,8 @@ forward plan below.
     the starting price aggregating richer information than the
     13-feature predictor set.
 - **Paper 2 — SPLIT into 2a + 2b.**
-  - **Paper 2a — in development.** *Extended feature set and the
+  - **Paper 2a — first full draft complete, corrections applied;
+    pending publish to GitHub Pages.** *Extended feature set and the
     conditional-logit win model (including mixed-logit / race-level
     interactions).* Source: `papers/02a_extended_win_model/`. See
     "Paper 2a plan" below.
@@ -82,7 +83,7 @@ forward plan below.
     `_appx_software.qmd` via `{{< include >}}`. `_helpers.R` holds
     plotting helpers used in the section files. Bibliography in
     `references.bib`.
-  - `papers/02a_extended_win_model/` — **paper 2a, in development.** Extended
+  - `papers/02a_extended_win_model/` — **paper 2a, first full draft complete, corrections applied; pending publish to GitHub Pages.** Extended
     feature set, extended win model, mixed logit race-level interactions. Master
     `index.qmd` includes section partials via `{{< include >}}`. Rendered by
     `tar_quarto(paper_2a_extended_win_model)`.
@@ -488,7 +489,13 @@ Exploded conditional logit as a ranking model. See
 
 ### Features deferred for later prompts
 - B: Position encoding parsimony — SETTLED. Model S (semi-parsimonious,
-  6 coefficients) adopted. For each lag N, two terms:
+  6 coefficients) adopted. *(Display-name note: an editorial pass renamed
+  the paper's model labels to plain descriptive terms — Model S →
+  "zero-plus-slope encoding", Model P → "single-slope encoding", Model F →
+  "factor encoding"; the "(Model W)" parenthetical for the extended win
+  model was dropped from prose. Variable names `pos_lagN_zero` /
+  `pos_lagN_nonzero` are unchanged. The P/S/F shorthand is retained here as
+  internal memory only.)* For each lag N, two terms:
   pos_lagN_zero (binary: 1 if position = 0) and pos_lagN_nonzero
   (numeric: raw position 1–4, else 0). LR test vs full factor Model F:
   LR = 4.88, df = 6, p = 0.560 — not rejected. AIC favours S over F
@@ -529,36 +536,56 @@ choices where they conflict.
   and (b) negligible practical difference (McFadden R² 0.0802 full
   vs 0.0798 reduced). The joint test is reported in §4.1 rather than
   hidden. Computed live from the fitted objects — not hard-coded.
-- **Draw selected at the BLOCK level; final model = 4-course block.**
-  The final paper-2a model is **`model_w_ed`** — extended win +
-  the full four-course draw block (`stall_x_{kempton,lingfield,
-  southwell,wolverhampton}`), **21 coefficients**. Selection is the
-  W+draw vs W likelihood-ratio test (block in/out), which parallels
-  the position-lag block treatment in §3.2. The earlier per-term
-  deletion of Lingfield (the 3-course `model_w_final` /
-  `final_reduction_lr_w` targets and Table 14) is **reversed and
-  removed**: Lingfield's near-zero draw coefficient is a substantive
-  **no-draw-bias finding**, recorded by carrying a coefficient ≈ 0,
-  not grounds to prune the column. `model_w_final_diagnostics` and
-  `test_predictions_w_final` now read off `model_w_ed`.
-- **Headline ROI is −22.8%** (the 4-course block), replacing the
-  −23.5% of the dropped-Lingfield 3-course fit. Propagated via inline
-  `tar_read(backtest_naive_w_final)$roi` throughout (abstract, intro,
-  §5.5, Table 18) — no hard-coded ROI strings for the final model.
+- **Draw block selected, then reduced per-term; final model = 2-course
+  (Kempton + Southwell), 19 coefficients.** *(SUPERSEDES the earlier
+  "final = 4-course block" decision — see history note below.)* The
+  draw×course block is admitted via the W+draw vs W likelihood-ratio
+  test (block in/out), establishing course-specific draw bias carries
+  signal. Within the admitted block the **inclusion threshold for each
+  course slope is p < 0.05 on its individual Wald test** — the same
+  per-term rule paper 1 / Owen use and that already drops the lag-3
+  terms in §3.2/§4.1, applied uniformly. In the full block
+  (`model_w_ed`): Kempton (p ≈ 0.009) and Southwell (p ≈ 0.025) are
+  significant and retained; Lingfield (p ≈ 0.35) and Wolverhampton
+  (p ≈ 0.066, marginal) are not, and are dropped. The final model is
+  **`model_w_final`** = extended win + `stall_x_kempton` +
+  `stall_x_southwell`. Confirmed by `final_reduction_lr_w`: two
+  sequential 1-df LR tests (drop Lingfield LR ≈ 0.89, p ≈ 0.35; drop
+  Wolverhampton LR ≈ 3.40, p ≈ 0.065), **neither rejected**, so the
+  reduction is clean. `model_w_final_diagnostics` and
+  `test_predictions_w_final` read off `model_w_final`. `model_w_ed`
+  (4-course block) is kept only as the selection-stage fit shown in the
+  draw-course table and reduction prose. *History:* an intermediate
+  draft made the 4-course block the headline (treating Lingfield's
+  near-zero slope as a "no-draw-bias finding" not to be pruned); that
+  was deliberately reversed back to per-term reduction for internal
+  consistency with the rest of the reduced model (which prunes
+  non-significant terms, e.g. lag-3).
+- **Headline ROI is −25.4%** (the 2-course final model), up from paper
+  1's −28.2% and the extended-win model's −26.0% — monotone
+  improvement, but smaller than the dropped Wolverhampton slope (which
+  favoured low draws) had bought the 4-course block (−22.8%). Propagated
+  via inline `tar_read(backtest_naive_w_final)$roi` throughout (abstract,
+  intro, §5.5, progression table) — no hard-coded ROI strings for the
+  final model. **Consequence of the 2-course reduction:** the draw step
+  now adds only ≈ +0.6 pp of ROI over the extended-win model vs the
+  extended features' ≈ +2.2 pp, so prose crediting draw as the *largest*
+  backtest contributor was corrected — `or_relative` / the extended
+  feature set is the larger contributor, draw a smaller further
+  increment (intro, §5.5, §6.1).
 - **Paired ROI-difference bootstrap.**
   `R/scoring.R::bootstrap_roi_difference()` + target
   `roi_difference_bootstrap`: restricts each model pair to its COMMON
   test races (paper 1 and 2a drop different races to NA), resamples
   races paired (B = 2000, seed 42), applies Owen's naive rule per
   model, returns the ROI-difference point + 90% percentile CI. Three
-  contrasts: final − paper 1 (+5.5%, [−3.9, +15.0]); final − extended
-  win (+3.3%, [−1.4, +7.9]); extended win − paper 1 (+2.2%, [−6.9,
-  +11.5]). **All three CIs straddle zero** → the ROI gains are
-  directionally consistent but **not statistically distinguishable**.
-  Prose (abstract, intro, §5.5, §6.1) downgraded from "modest but
-  real" to that framing; new ROI-difference table in §6.1 after
-  Table 18. See [[feedback_temporal_integrity]] for the related
-  honesty principle.
+  contrasts (2-course final): final − paper 1 (+2.8%, [−6.4, +12.2]);
+  final − extended win (+0.6%, [−2.8, +4.2]); extended win − paper 1
+  (+2.2%, [−6.9, +11.5]). **All three CIs straddle zero** → the ROI
+  gains are directionally consistent but **not statistically
+  distinguishable**. Prose (abstract, intro, §5.5, §6.1) framed as that,
+  not "modest but real"; ROI-difference table in §6.1. See
+  [[feedback_temporal_integrity]] for the related honesty principle.
 - **Race-loss accounting (§4.1).** The fits are complete-case at the
   race level and use 5,065 of 5,209 training races (144 dropped,
   2.8%). Drops are driven by undefined pre-race strike rates under

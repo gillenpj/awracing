@@ -49,7 +49,7 @@ tibble::tribble(
   "Owen baseline",        "age_diff",              "Symmetric distance from peak age (3 on AW)",              "horse-level",                 "Owen (2019)",
   "Owen baseline",        "daysLTO (log)",         "Log days since last run",                                 "horse-level",                 "Owen (2019)",
   "Owen baseline",        "trainerSR / sireSR",    "Cumulative pre-race strike rate",                         "horse-level",                 "Owen (2019)",
-  "Owen baseline",        "position lags 1–3",     "Prior finishing positions (Model S encoding)",            "horse-level",                 "Owen (2019)",
+  "Owen baseline",        "position lags 1–3",     "Prior finishing positions (zero-plus-slope encoding)",            "horse-level",                 "Owen (2019)",
   "Owen baseline",        "entire / gelding",      "Sex indicators",                                          "horse-level",                 "Owen (2019)",
   "Owen baseline",        "cheekpieces",           "Tack indicator",                                          "horse-level",                 "Owen (2019)",
   "New horse-level",      "jockeySR",              "Cumulative pre-race jockey strike rate",                  "horse-level",                 "Juola (2018)",
@@ -81,8 +81,8 @@ rather than forcing those horses onto the zero point of the rating scale
 (@sec-eda).
 
 **Position encoding.** Paper 1 entered the three prior-finish lags as
-twelve factor coefficients. We adopt a more parsimonious *Model S*
-encoding — six coefficients, two per lag (a zero indicator plus a single
+twelve factor coefficients. We adopt a more parsimonious
+*zero-plus-slope* encoding — six coefficients, two per lag (a zero indicator plus a single
 linear slope across placings 1–4) — which a likelihood-ratio test finds
 loses nothing against the full factor grid. The encoding and the test
 are set out in @sec-eda.
@@ -91,8 +91,10 @@ are set out in @sec-eda.
 showed near-zero standalone signal in the univariate screen, but draw
 bias on AW is known to be track-specific. We enter it as four
 course-specific slopes in the mixed logit (@sec-mixed-interactions),
-selected as a block on a likelihood-ratio test and retained in full. The
-Lingfield slope comes out near zero, which we read as a genuine
-no-draw-bias finding for that track rather than grounds to prune the
-column; the block carries course-specific draw effects for all four of
-Kempton, Lingfield, Southwell and Wolverhampton.
+admitted as a block on a likelihood-ratio test and then reduced by the
+same per-term Wald rule used throughout: only the two courses whose draw
+slope is individually significant at $p < 0.05$ — Kempton and Southwell —
+are retained, while Lingfield (no detectable bias) and Wolverhampton (a
+weak, marginally non-significant tendency to favour lower draws) are
+dropped. The final model carries course-specific draw effects for Kempton
+and Southwell.

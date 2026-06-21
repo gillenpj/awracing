@@ -7,21 +7,23 @@ abstract: |
   Paper 1 replicated Owen's (2019) conditional-logit win model on UK
   All-Weather Flat handicaps and found it trailing the betting market
   across the threshold range (`r scales::percent(targets::tar_read(backtest_naive)$roi, accuracy = 0.1)`
-  ROI), a shortfall of discrimination rather than calibration. We enrich
+  ROI). We enrich
   the win model in two ways on the same data: an extended feature set,
   screened by a univariate McFadden pseudo-R²; and race-level features —
   distance and course — entered through the mixed discrete-choice
   formulation as interactions with horse-level features. The official
   rating is the strongest new predictor, and a course-specific draw
-  bias—invisible to a pooled draw term because it reverses sign across
-  tracks—emerges through the interaction. Evaluated on win metrics (the
-  P1/P2 scoring rules and a starting-price betting backtest), the extended
+  bias for Kempton and Southwell emerges through the interaction,
+  invisible to a pooled draw term. Evaluated on win metrics (the
+  P1/P2 scoring rules and an industry starting-price (SP) betting
+  backtest), the extended
   win model with the draw×course interaction moves ROI from
   `r scales::percent(targets::tar_read(backtest_naive)$roi, accuracy = 0.1)`
   in paper 1 to `r scales::percent(targets::tar_read(backtest_naive_w_final)$roi, accuracy = 0.1)`
   in the final model. The direction is consistent across every contrast we
   test, but a paired race-level bootstrap of the ROI difference cannot
-  distinguish either gain from zero, and the market continues to lead. The
+  distinguish either gain from zero, though still well behind the
+  market. The
   companion paper 2b holds this feature set fixed and changes the objective
   from win prediction to ranking.
 format:
@@ -61,6 +63,8 @@ tar_load(c(
   runners_interactions,
   model_w,
   model_w_ed,
+  model_w_final,
+  final_reduction_lr_w,
   model_w_final_diagnostics,
   interaction_lr_tests_w,
   test_predictions_w_final,
@@ -78,20 +82,21 @@ tar_load(c(
 
 Paper 1 replicated the conditional-logit win model of @owen2019 — one of
 a line of discrete-choice race models reaching back to @boltonchapman1986
-— on UK All-Weather (AW) Flat handicaps and found that the model trails
-the betting market across the full threshold range, returning
-`r scales::percent(backtest_naive$roi, accuracy = 0.1)` on the §3.4
-backtest. We diagnosed the shortfall as a problem of *discrimination*
-rather than calibration: a thirteen-feature predictor set is too thin to
-compete with a starting price that already aggregates weight, draw,
-going, jockey, recent form and informed money. This paper keeps the win
-objective and the data fixed, and asks how far a richer feature set can
-narrow that gap.
+— on UK All-Weather (AW) Flat handicaps and found that the model's win
+predictions were less accurate than the betting market's across the full
+threshold range, returning
+`r scales::percent(backtest_naive$roi, accuracy = 0.1)` on the backtest.
+Its probabilities were sound on average — when it said 20%, horses won
+about a fifth of the time — but it was not separating likely winners from
+likely losers sharply enough to compete with an industry starting price
+that already aggregates weight, draw, going, jockey, recent form and
+informed money. This paper keeps the win objective and the data fixed, and
+asks how far a richer feature set can improve on that.
 
 We make two contributions. First, an **extended feature set**, evaluated
 with an automated univariate screen — a standalone conditional logit per
-candidate, ranked by a McFadden pseudo-$R^2$ against the
-equal-probability null, following @juola2018. Second, **race-level
+candidate, ranked by a univariate McFadden pseudo-$R^2$ against the
+equal-probability null, a screening approach used by @juola2018. Second, **race-level
 interactions** through the mixed discrete-choice formulation: distance
 and course are constant within a race and so cancel in the softmax, but
 their products with horse-level features vary across runners and can
@@ -102,13 +107,13 @@ and the train/test split are unchanged from paper 1.
 The win-model ROI moves from
 `r scales::percent(backtest_naive$roi, accuracy = 0.1)` in paper 1 to
 `r scales::percent(backtest_naive_w_final$roi, accuracy = 0.1)` in the
-final model — a narrowing that is directionally consistent but, on a
+final model — an improvement that is directionally consistent but, on a
 paired race-level bootstrap of the ROI difference, not statistically
-distinguishable from zero; the market still dominates. The official rating
-(`or_relative`) is the strongest new predictor, and the draw × course
-interaction produces the single largest backtest improvement. The
-market-efficiency interpretation of paper 1 is sustained, perhaps slightly
-weakened. The companion paper 2b keeps this feature set fixed and changes
+distinguishable from zero; the market remains more accurate. The official
+rating (`or_relative`) is the strongest new predictor and the largest
+single contributor to the backtest gain, with the draw × course
+interaction adding a smaller further improvement. The companion paper 2b
+keeps this feature set fixed and changes
 the objective — from predicting the win to predicting the finishing order
 — to ask whether the ranking likelihood extracts more from the same
 features.

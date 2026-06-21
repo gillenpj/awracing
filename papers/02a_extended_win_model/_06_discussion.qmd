@@ -13,7 +13,7 @@ paper1_plr2 <- {
   1 - as.numeric(stats::logLik(fitted_final)) / (-sum(log(nrr)))
 }
 
-fin_ct <- summary(model_w_ed)$CoefTable   # 4-course block = the final model
+fin_ct <- summary(model_w_final)$CoefTable   # final model: 2 retained courses
 roi_pct <- function(x) scales::percent(x, accuracy = 0.1)
 
 # Mean bookmaker over-round across the test races the backtest bets on:
@@ -63,9 +63,10 @@ tibble::tibble(
 
 The picture is one of modest, point-estimate improvement. The extended
 feature set lifts discrimination above paper 1, the single largest
-contributors being `or_relative` — the handicapper's own assessment of
-ability, the strongest new predictor in the model — and, for the
-backtest, the course-specific draw effect. The naive ROI climbs at each
+contributor being `or_relative` — the handicapper's own assessment of
+ability, the strongest new predictor in the model — and accounts for most
+of the backtest gain as well, with the course-specific draw effect adding
+a smaller further increment. The naive ROI climbs at each
 step, from −28.2% in paper 1 to
 `r roi_pct(backtest_naive_w_final$roi)` in the final model. Whether that
 climb is real or sampling noise is the question the next table settles.
@@ -132,36 +133,6 @@ settled without exchange prices, which this dataset does not carry. This
 is the benchmark that matters for the live-trading direction noted under
 limitations below.
 
-## Draw bias by course
-
-The draw×course result is the clearest illustration in the paper of why
-the mixed discrete-choice construction matters. The four course terms
-disagree on direction: Kempton
-(`r sprintf("%+.3f", fin_ct["stall_x_kempton", "Estimate"])`,
-$p =$ `r signif(fin_ct["stall_x_kempton", "Pr(>|z|)"], 2)`) and Southwell
-(`r sprintf("%+.3f", fin_ct["stall_x_southwell", "Estimate"])`,
-$p =$ `r signif(fin_ct["stall_x_southwell", "Pr(>|z|)"], 2)`) favour
-higher draws, while Wolverhampton
-(`r sprintf("%+.3f", fin_ct["stall_x_wolverhampton", "Estimate"])`,
-$p =$ `r signif(fin_ct["stall_x_wolverhampton", "Pr(>|z|)"], 2)`, only
-marginally) favours lower draws; Lingfield
-(`r sprintf("%+.3f", fin_ct["stall_x_lingfield", "Estimate"])`,
-$p =$ `r signif(fin_ct["stall_x_lingfield", "Pr(>|z|)"], 2)`) shows
-essentially no bias — a substantive finding in its own right, kept in the
-block rather than pruned, recording that the track has no draw advantage
-to price. Because the non-null course effects point in opposite
-directions, a single pooled draw coefficient averages them to almost
-nothing — which is exactly why `stall_normalised` looked useless in the
-univariate screen. A feature that appears dead in isolation carries
-strong, track-specific signal once the race-level structure is respected
-through the interaction. This is the mixed discrete-choice mechanism
-(@sec-appx-derivations) doing real work, not decoration. Under the win
-objective the draw terms are estimated relatively imprecisely —
-Wolverhampton only marginally significant — because only the win indicator
-informs them; whether the ranking likelihood of paper 2b, which draws on
-more of each race, recovers them more sharply is a question we leave to
-that paper.
-
 ## Limitations
 
 - **No live-data test.** The model is fitted and evaluated on the same
@@ -173,13 +144,6 @@ that paper.
   direction, more relevant — benchmark. The Smartform data carries only
   industry SP (the morning forecast price and Tote dividends aside), so a
   Betfair-SP backtest is left to future work.
-- **Going deferred.** A horse-specific going-affinity feature
-  (`going_ordinal × horse_going_sr`) would require a going-filtered
-  career-history sub-query, and as a race-level feature it only enters
-  the conditional logit through an interaction. It is the natural next
-  feature for paper 3, where a tree-based model can take going as a raw
-  predictor without the softmax-cancellation constraint that forces the
-  interaction here.
 - **`or_relative` missing-not-at-random.** The zero-imputation with a
   missing indicator is defensible, but unrated horses remain a distinct
   population rather than average ones; the fitted `or_missing` coefficient
@@ -190,19 +154,6 @@ that paper.
 
 ## Where the series goes next
 
-This paper has taken the win objective as fixed and asked how far a richer
-feature set can go; the answer is "a little way". Two companion papers
-take the two remaining levers. **Paper 2b** holds the feature set fixed
-and changes the *objective*: it fits the exploded conditional logit (the
-Plackett–Luce ranking model) on the same features and evaluates it on
-ranking metrics against a discounted-Harville place-market baseline,
-asking whether predicting the finishing order, rather than just the win,
-recovers more of the market's edge. **Paper 3** changes the *model class*
-while holding everything else fixed: it replaces the conditional-logit
-linear predictor with a tree-based ensemble fitted under a ranking loss,
-keeping the same data scope, the same chronological train/test split, and
-the same diagnostic suite. The point of holding all of that constant is to
-isolate one thing — how much of the remaining gap to the market is
-recoverable from model-class flexibility alone, non-linearities,
-automatic interactions, and raw features such as going — as distinct from
-the feature-set improvements paper 2a has banked.
+Papers 2b and 3 take the two remaining levers: paper 2b changes the
+objective from win prediction to ranking, and paper 3 changes the model
+class from the conditional-logit linear predictor to a tree-based ensemble.

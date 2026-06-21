@@ -5,8 +5,7 @@ only** (70/30 chronological, cutoff 2012-12-30). Win-rate summaries,
 tables, and plots are computed after filtering to `split == "train"`,
 so nothing here is informed by the held-out test races. (Paper 1
 computed its exploratory summaries on the full joined tibble; that
-paper is complete and is not being revisited — see the exploratory
-analysis convention in the project notes.)
+paper is complete and is not being revisited.)
 
 ```{r}
 #| label: eda-setup
@@ -52,8 +51,9 @@ tibble::tibble(
 ```
 
 With field sizes between 4 and 16 and exactly one winner per race, the
-headline win rate per runner-row is the reciprocal of the mean field
-size; it is a property of the choice-set geometry, not of any feature.
+headline win rate per runner-row follows directly from there being exactly
+one winner per race — it is the reciprocal of the average field size, not a
+signal about any feature.
 
 ## Automated feature evaluation
 
@@ -66,9 +66,8 @@ R^2_{\text{McF}} = 1 - \frac{\log L_{\text{model}}}{\log L_{\text{null}}},
 $$
 where $\log L_{\text{null}}$ assigns every runner the equal probability
 $1/\text{field size}$, following the screening approach of @juola2018
-(§4.3.6). Each
-feature is scored on its own complete-choice-set subset, so `n_races`
-varies with the feature's coverage. The three prior-finish lags are
+(§4.3.6). Each feature's score uses only the races where that feature has a
+value, so `n_races` differs by feature. The three prior-finish lags are
 screened together as one conceptual feature (`position_lags`).
 
 ```{r}
@@ -101,7 +100,8 @@ We drop the weakest candidates before model fitting, on the evidence
 of the screen above.
 
 **`weight_delta_lbs` (dropped).** Its NA mechanism is not
-missing-at-random: a missing value means the horse has *no prior run*,
+missing-at-random: a missing value means the horse has *no prior run in the
+comparable-class era* (2006 onward) — almost always, simply no prior run —
 not that its weight was unchanged. Imputing 0 would assert "no change
 since last time" for a horse that has no last time — a substantively
 false statement. The univariate signal is weak (McFadden R² 0.008), and
@@ -127,9 +127,11 @@ univariate McFadden R² at or near zero and is dropped before model fitting:
 conditional-logit model in @sec-extended-win and are removed only if
 their coefficients fail the significance test ($p > 0.05$) in the
 reduced model — the same reduction rule paper 1 applied to Owen's
-specification.
+specification. These are deferred, not dropped outright, because the
+univariate screen can miss a feature that carries little signal on its own
+yet matters once other features are already in the model.
 
-## Position encoding: from factors to Model S
+## Position encoding: from factors to the zero-plus-slope encoding
 
 The three prior-finish lags record a horse's finishing position in its
 most recent, second-most-recent and third-most-recent runs. Each takes a
@@ -141,16 +143,17 @@ Paper 1 entered each lag as a *factor*, spending one coefficient on each
 placing $1$–$4$ (with $0$ as the reference): four coefficients per lag,
 twelve in all. That is maximally flexible but not parsimonious. We test
 two cheaper encodings against it on the training races, position terms
-only. **Model P** is the aggressive one — a single position score plus a
-lag-decay term, two coefficients for all three lags combined. **Model S**
-is the middle ground: per lag it gives the $0$ category its own term and
-forces only placings $1$–$4$ onto a straight line, via a binary indicator
-`pos_lagN_zero` (is the value $0$?) and a numeric slope `pos_lagN_nonzero`
-(the placing $1$–$4$, else $0$) — two coefficients per lag, six in all.
-@tbl-position-encoding shows how one lag's value enters the linear
-predictor under the factor grid and under Model S.
+only. The **single-slope encoding** is the aggressive one — a single
+position score plus a lag-decay term, two coefficients for all three lags
+combined. The **zero-plus-slope encoding** is the middle ground: per lag it
+gives the $0$ category its own term and forces only placings $1$–$4$ onto a
+straight line, via a binary indicator `pos_lagN_zero` (is the value $0$?)
+and a numeric slope `pos_lagN_nonzero` (the placing $1$–$4$, else $0$) —
+two coefficients per lag, six in all. @tbl-position-encoding shows how one
+lag's value enters the linear predictor under the factor encoding and under
+the zero-plus-slope encoding.
 
-| Last finish | Model F (factor) | Model S (adopted) |
+| Last finish | Factor encoding | Zero-plus-slope (adopted) |
 |:---|:---:|:---:|
 | 0 (no top-4) | reference | $\gamma_{\text{zero}}$ |
 | 1st | $\beta_1$ | $\gamma_{\text{slope}}\times 1$ |
@@ -159,24 +162,25 @@ predictor under the factor grid and under Model S.
 | 4th | $\beta_4$ | $\gamma_{\text{slope}}\times 4$ |
 | **coefficients per lag** | **4** | **2** |
 
-: One prior-finish lag's contribution to the linear predictor. Model F gives every placing a free effect; Model S separates the "no recent finish" category and constrains placings 1–4 to a straight line (three lags: twelve coefficients under F, six under S). {#tbl-position-encoding}
+: One prior-finish lag's contribution to the linear predictor. The factor encoding gives every placing a free effect; the zero-plus-slope encoding separates the "no recent finish" category and constrains placings 1–4 to a straight line (three lags: twelve coefficients under the factor encoding, six under zero-plus-slope). {#tbl-position-encoding}
 
 ```{r}
 #| label: model-s-lr
 pt <- position_parsimony_test
 ```
 
-Model P is decisively rejected against the factor grid (LR $=$
-`r round(pt$lr_stat, 0)`, df $=$ `r pt$df`, $p < 0.001$): collapsing
-everything to one slope forces the $0$ category onto the same numeric
-scale as a win, which is substantively wrong. Model S, by contrast, is
-**not** rejected (LR $=$ `r round(pt$lr_stat_s, 2)`, df $=$
-`r pt$lr_df_s`, $p =$ `r round(pt$p_value_s, 3)`), and AIC prefers it to
-the twelve-coefficient grid by about 7 points. So once the $0$ category
-has its own term, placings $1$–$4$ are effectively linear, and six
-coefficients capture what twelve did. We adopt Model S for every paper-2
-fit; the empirical win-rate-by-position curves that motivate the
-linearity are plotted later in this section.
+The single-slope encoding is decisively rejected against the factor grid
+(LR $=$ `r round(pt$lr_stat, 0)`, df $=$ `r pt$df`, $p < 0.001$):
+collapsing everything to one slope forces the $0$ category onto the same
+numeric scale as a win, which is substantively wrong. The zero-plus-slope
+encoding, by contrast, is **not** rejected (LR $=$
+`r round(pt$lr_stat_s, 2)`, df $=$ `r pt$lr_df_s`, $p =$
+`r round(pt$p_value_s, 3)`), and AIC prefers it to the twelve-coefficient
+grid by about 7 points. So once the $0$ category has its own term, placings
+$1$–$4$ are effectively linear, and six coefficients capture what twelve
+did. We adopt the zero-plus-slope encoding for every paper-2 fit; the
+empirical win-rate-by-position curves that motivate the linearity are
+plotted later in this section.
 
 ## `or_relative` — coverage and imputation
 
