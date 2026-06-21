@@ -123,14 +123,20 @@ forward plan below.
     **no GitHub Actions workflow** — Pages serves the committed
     `/docs` files directly and runs its own build on push, so
     publishing = copy `_output/` into `docs/`, commit, push. The
-    `papers/*/_output/` working copies are gitignored.
-  - Republishing convention: re-render via `tar_make()` (which now
+    `papers/*/_output/` working copies are gitignored. (A render-in-CI
+    Action is not possible: the `{targets}` pipeline needs the local
+    Smartform MySQL DB, which CI cannot reach.)
+  - Republishing convention: (1) re-render via `tar_make()` (which
     produces **both `index.html` and `index.pdf`** per paper — see
-    "Paper / Quarto convention"), copy the new HTML + PDF into the
-    matching `docs/paperN/` folder, commit + push. NB: `date: today`
-    in each `index.qmd` means every re-render updates the rendered
-    date, so paper 1's committed output legitimately changes date on
-    any rebuild.
+    "Paper / Quarto convention"); (2) run
+    `Rscript scripts/publish_docs.R` to copy each paper's `_output/`
+    HTML+PDF into the matching `docs/paperN/`; (3) `git add docs/`,
+    commit, push. The landing page `docs/index.html` is hand-edited
+    (one entry per paper); the script does not touch it.
+  - Each `index.qmd` carries a **pinned** `date:` (e.g. paper 1
+    `"2026-06-06"`, paper 2a `"2026-06-21"`), not `date: today`, so a
+    paper's published date is stable across re-renders. Set the date
+    once when the paper is first published.
 - `notes/` — kept as a reference shelf only; not consumed by the
   pipeline.
   - `Statistical Models of Horse Racing Outcomes Using R (Owen).pdf`
@@ -147,6 +153,12 @@ forward plan below.
     Run after any change to SQL or the R-level filters in
     `R/extract_*.R`. Eight `stopifnot()` assertions; see file
     header.
+  - `publish_docs.R` — the publish step. After `tar_make()`, copies
+    each paper's `_output/index.{html,pdf}` into `docs/paperN/`
+    (mapping table at the top of the file; add a row per new paper).
+    Self-contained base R — run as
+    `Rscript scripts/publish_docs.R`, no renv needed. Does not touch
+    the hand-edited landing page.
 - `_targets/` — pipeline cache (gitignored).
 - `renv/`, `renv.lock` — package state.
 - `.env` — DB credentials (gitignored). Read at runtime by

@@ -2,7 +2,7 @@
 title: "Replicating Owen (2019) on UK All-Weather Flat handicaps, 2006–2015"
 subtitle: "A conditional-logit model of race outcomes"
 author: "Patrick Gillen"
-date: today
+date: "2026-06-06"
 abstract: |
   We replicate the conditional-logit win model of Alun Owen
   [@owen2019] on a different dataset: UK All-Weather (AW) Flat

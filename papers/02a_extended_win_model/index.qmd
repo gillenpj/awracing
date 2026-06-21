@@ -2,7 +2,7 @@
 title: "Extending the feature set: automated selection and race-level interactions on UK All-Weather Flat handicaps"
 subtitle: "Paper 2a in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: today
+date: "2026-06-21"
 abstract: |
   Paper 1 replicated Owen's (2019) conditional-logit win model on UK
   All-Weather Flat handicaps and found it trailing the betting market
