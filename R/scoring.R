@@ -417,9 +417,9 @@ compute_harville_place_probs <- function(market_probs,
 #' \frac{q^{(3)}_{j_3}}{\sum_{k\neq j_1,j_2} q^{(3)}_k}}, where
 #' \eqn{S=\sum_k p_k} and \eqn{q^{(m)} = p^{\alpha_m}}. With
 #' `alpha_2nd = alpha_3rd = 1` this is the pure PL / Harville order
-#' probability — the model's own depth-3 likelihood, and (per the paper-2b
-#' spec) the undiscounted market baseline; `alpha < 1` gives the
-#' Lo & Bacon-Shone discounted form, kept for generality.
+#' probability — the exploded model's own depth-3 likelihood; `alpha < 1`
+#' gives the Lo & Bacon-Shone discounted form, used for the paper-2b market
+#' baseline.
 #'
 #' Only races with a clean top-3 (positions 1, 2, 3 each present exactly
 #' once) are scored; any other race is dropped (returns no row). This is the

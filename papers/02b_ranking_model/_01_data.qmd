@@ -18,27 +18,29 @@ top-3 ranking objective. We require market-implied *place* probabilities
 for each horse.
 
 We derive these from win starting prices using the discounted Harville
-formula [@lobaconshone1994; @lobaconshone2008]. Under pure Harville
-[@harville1973], the probability that horse $j$ finishes second given
-horse $i$ won is $p_j / (1 - p_i)$, where $p_k$ denotes win probability.
-The probability of a specific top-2 order $(i, j)$ is then
-$p_i\, p_j / (1 - p_i)$, and so on for deeper rankings. Pure Harville is
-mathematically equivalent to the Plackett–Luce model: comparing a
-PL-fitted model against a pure-Harville market baseline would be circular,
-since both share the same functional form.
+formula [@lobaconshone1994; @lobaconshone2008]. Pure Harville
+[@harville1973] rests on a single assumption: once the winner is removed,
+the remaining horses "re-race" with win probabilities proportional to their
+original ones — the field's relative strengths are unchanged by the
+outcome. Under that assumption the probability that horse $j$ finishes
+second given horse $i$ won is $p_j / (1 - p_i)$, where $p_k$ denotes win
+probability; the probability of a specific top-2 order $(i, j)$ is
+$p_i\, p_j / (1 - p_i)$, and the same conditioning extends to deeper
+rankings.
 
-Lo & Bacon-Shone show that pure Harville systematically overestimates
-place probabilities for favourites and underestimates them for
-longer-priced horses — the favourite–longshot bias operating in the place
-dimension. The discounted Harville corrects this by replacing $p_k$ with
-$p_k^{\alpha}$ in the Harville formula, with $\alpha < 1$ applied to the
-2nd-place conditional and a smaller $\alpha$ to the 3rd-place conditional.
-We use $\alpha = 0.80$ for 2nd place and $\alpha = 0.65$ for 3rd place,
-following Lo & Bacon-Shone's recommended values when
-starting-price-derived probabilities are used as inputs. The discounting
-breaks the PL equivalence and corrects the favourite bias, giving a
-non-trivial market baseline against which the feature-based exploded model
-can be evaluated.
+We use discounted Harville as the market baseline for both metrics — the
+P1_rank order probability and the Brier_place place probability. The reason
+to discount rather than use pure Harville is a known bias: pure Harville
+overstates the place chances of favourites and understates those of
+longer-priced horses, the favourite–longshot bias operating in the place
+dimension. That bias sits in the marginal place probabilities and carries
+through into the joint top-3 order probabilities, so pure Harville would be a
+biased baseline for both metrics. The discounted form of Lo & Bacon-Shone
+corrects it by replacing each win probability $p_k$ with $p_k^{\alpha}$
+($\alpha < 1$) inside the conditional steps before renormalising, with a
+smaller $\alpha$ at deeper positions; we use $\alpha = 0.80$ for second place
+and $\alpha = 0.65$ for third, Lo & Bacon-Shone's recommended values for
+starting-price inputs.
 
 <!-- Implementation note to be added: compute_harville_place_probs() in
      R/scoring.R. -->

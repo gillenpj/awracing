@@ -62,14 +62,12 @@ build_ranking_eval_runners <- function(test_predictions_2b, qualifying_runners) 
 #' calibration) for both the model and the market, on the scorable test
 #' races from `build_ranking_eval_runners()`.
 #'
-#' * Order probabilities (for P1_rank) use pure PL/Harville
-#'   (\eqn{\alpha = 1}) for both model and market — the paper-2b spec for the
-#'   order metric.
-#' * Place probabilities (for Brier_place) use pure Harville
-#'   (\eqn{\alpha = 1}) on the **model** win probs (the exploded model's own
-#'   PL place implication) and discounted Harville (`alpha_2nd`,
-#'   `alpha_3rd`) on the **market** win probs (the Lo & Bacon-Shone
-#'   baseline).
+#' Both metrics score the **model** side with \eqn{\alpha = 1} (no
+#' discounting — the exploded model's own depth-3 PL implication) and the
+#' **market** side with discounted Harville (`alpha_2nd`, `alpha_3rd`; the
+#' Lo & Bacon-Shone baseline) — one consistent market baseline throughout:
+#' * P1_rank: depth-3 order probability.
+#' * Brier_place: top-3 marginal place probability.
 #'
 #' @param ranking_eval_runners_2b Output of `build_ranking_eval_runners()`.
 #' @param alpha_2nd,alpha_3rd Market place-probability discount exponents
@@ -81,12 +79,16 @@ compute_ranking_metrics_2b <- function(ranking_eval_runners_2b,
                                         alpha_2nd = 0.80, alpha_3rd = 0.65) {
   er <- ranking_eval_runners_2b
 
-  # --- P1_rank: order probabilities (pure Harville, alpha = 1, both sides)
+  # --- P1_rank: order probabilities. Model side pure Harville (alpha = 1,
+  # its own depth-3 PL likelihood); market side discounted Harville
+  # (alpha_2nd / alpha_3rd) — the same Lo & Bacon-Shone discounting the
+  # market place probs use below, for one consistent market baseline.
   ord_model <- compute_pl_order_probs(
     er |> dplyr::transmute(race_id, win_prob = win_model, finish_pos)
   )
   ord_market <- compute_pl_order_probs(
-    er |> dplyr::transmute(race_id, win_prob = win_market, finish_pos)
+    er |> dplyr::transmute(race_id, win_prob = win_market, finish_pos),
+    alpha_2nd = alpha_2nd, alpha_3rd = alpha_3rd
   )
   p1_model  <- score_p1_rank(ord_model)
   p1_market <- score_p1_rank(ord_market)

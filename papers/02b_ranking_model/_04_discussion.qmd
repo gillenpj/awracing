@@ -1,1 +1,41 @@
 # Discussion {#sec-discussion}
+
+```{r}
+#| label: p2b-disc-setup
+#| include: false
+loadNamespace("mlogit")   # so summary.mlogit dispatches (CLAUDE.md note)
+p_rank   <- summary(model_2b_exploded_draw_final)$CoefTable["stall_x_wolverhampton", "Pr(>|z|)"]
+roi_gain <- sprintf("%+.1f pp", 100 * roi_difference_2b_vs_2a$diff_point)
+```
+
+The exploded model predicts the top-3 finishing order with skill clearly
+above chance, yet on neither ranking metric does it match the market. That is
+the same pattern papers 1 and 2a found on the win objective — a model with
+genuine signal that the starting price nonetheless out-scores — now repeated
+on the ranking objective. The reading carries over unchanged: the market
+price aggregates information the pre-race feature set does not contain, and
+moving from a win objective to a ranking one does not narrow that gap.
+
+The second question applies the ranking-fitted model to the win objective,
+and here the result is new to the series. Trained on the finishing order
+rather than on the winner alone, the model is a better winner-picker than
+paper 2a's model: a paired race-level bootstrap puts the gain at
+`r roi_gain`, with a 90% interval that lies above zero — the first
+distinguishable improvement across the three papers. The mechanism is
+supervision, not specification. Depth-3 explosion turns each race into three
+nested choice problems — the winner from the full field, the runner-up from
+the rest, the third from what remains — so the same races and the same
+functional form are estimated from roughly three times as many contrasts, and
+the coefficients come back sharper. Wolverhampton is the clean illustration:
+its draw term was too noisy to retain under win supervision (Wald
+$p \approx 0.066$) but is estimated sharply under the ranking objective
+($p =$ `r sprintf("%.4f", p_rank)`), with the same sign and a similar
+magnitude. The reading is the narrow one — the ranking objective estimates
+the same draw effect paper 2a saw, sharply enough to retain it — not a new
+effect uncovered. None of this makes the model profitable, and the gap to the
+market is no smaller; the improvement is over paper 2a, not over the price.
+
+Paper 3 changes the model class. A tree-based learner accommodates
+non-linearities and feature interactions directly — among them a horse's
+going affinity, which the conditional logit can express only through explicit
+interaction terms — without the modeller specifying each one in advance.

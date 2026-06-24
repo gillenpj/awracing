@@ -2,19 +2,36 @@
 title: "Ranking models for UK All-Weather Flat handicaps: the exploded conditional logit and the place market"
 subtitle: "Paper 2b in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: today
+date: "2026-06-24"
 abstract: |
   Paper 2a established a win-prediction model on UK All-Weather Flat
   handicaps using an extended feature set and race-level interactions.
-  This paper asks a different question: can the same feature set, fitted
-  under a ranking objective rather than a win objective, predict the top-3
-  finishing order better than the betting market? We fit the exploded
-  conditional logit — equivalent to maximising the Plackett–Luce
-  likelihood over the top-3 — using the feature set defined in paper 2a.
-  We evaluate against a market baseline derived from win starting prices
-  via discounted Harville (Lo & Bacon-Shone). [Results to be completed.]
+  This paper holds that feature set fixed and asks two questions in turn.
+  First (Q1), refitted under a ranking objective — the exploded conditional
+  logit, equivalent to maximising the Plackett–Luce likelihood over the
+  top-3 finishing order — how well does the model predict that order? We
+  measure it with P1_rank and a top-3 Brier score, taking a
+  discounted-Harville place-market baseline derived from starting prices as
+  the yardstick: the model predicts the finishing order with clear skill
+  above chance, and the market scores higher on both metrics. Second (Q2),
+  because the model is now fitted on richer depth-3 ranking supervision, how
+  does it pick *winners* compared with 2a's win-fitted model? On the
+  depth-1 win backtest it returns
+  `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
+  against 2a's
+  `r scales::percent(targets::tar_read(backtest_naive_w_final)$roi, accuracy = 0.1)`;
+  a paired race-level bootstrap puts the difference at
+  `r sprintf("%+.1f pp", 100 * targets::tar_read(roi_difference_2b_vs_2a)$diff_point)`
+  (90% CI
+  `r sprintf("%+.1f", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_lo)` to
+  `r sprintf("%+.1f pp", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_hi)`),
+  an interval that lies above zero but close to it; both models remain a net
+  loss against the market.
 format:
   html: default
+  pdf:
+    toc: true
+    number-sections: true
 bibliography: references.bib
 ---
 
@@ -36,26 +53,58 @@ tar_config_set(store = file.path(
   "_targets"
 ))
 
-# TODO: tar_load() the paper-2b targets here once they exist, so that
-# tarchetypes::tar_quarto() picks them up as render dependencies.
+# tar_load() the paper-2b targets centrally here so tarchetypes::tar_quarto()
+# picks them up as render dependencies (files pulled in via {{< include >}}
+# are not auto-scanned).
+tar_load(c(
+  # base + draw fits and the reduction record (_02)
+  model_p2_reduced,
+  model_2b_exploded_base,
+  exploded_interactions_data,
+  model_2b_exploded_draw_full,
+  model_2b_exploded_draw_final,
+  model_2b_draw_reduction_steps,
+  model_w_ed,                     # 2a 4-course win block, for the Wolverhampton contrast
+  # ranking + win evaluation (_03)
+  ranking_metrics_2b,
+  ranking_eval_runners_2b,
+  model_market_ratio_2b_win,
+  backtest_naive_2b_win,
+  backtest_sweep_2b_win,
+  backtest_naive_w_final,         # 2a win-fitted headline, for the Q2 comparison
+  roi_difference_2b_vs_2a
+))
 ```
 
 # Introduction {#sec-intro}
 
-This is the second of the two papers that split the original paper 2. Its
-companion, paper 2a, fixed the prediction objective as the *win* and asked
-how far an enriched feature set could narrow the gap to the betting
-market; the answer was a modest improvement, with the market still
-leading. This paper holds that feature set fixed and changes the
-*objective*: instead of predicting which horse wins, we predict the top-3
-finishing *order*, fitting the exploded conditional logit — the
-Plackett–Luce ranking model — on the same features. The question is
-whether a ranking objective recovers more of the market's edge than the
-win objective did. @sec-data points to paper 2a for the shared data and
-feature set and constructs the place-market baseline against which the
-model is judged; @sec-exploded-model fits the ranking model;
-@sec-evaluation evaluates it on ranking metrics; and @sec-discussion draws
-the conclusions.
+Paper 2a fixed the prediction objective as the *win* and asked how far an
+enriched feature set could narrow the gap to the betting market on UK
+All-Weather Flat handicaps. This paper holds that feature set fixed and asks
+two questions in order.
+
+**Q1 — ranking performance.** Refitting the same features from scratch under
+a ranking objective — the exploded conditional logit, which maximises the
+Plackett–Luce likelihood over the top-3 finishing order — how well does the
+model predict that order? We re-estimate the whole model on the ranking
+objective, noting where its feature picture departs from paper 2a's (the
+draw×course block, re-searched here, retains three courses where 2a kept
+two; @sec-exploded-model), and measure performance with two ranking metrics,
+P1_rank and a top-3 Brier score, against a discounted-Harville place-market
+baseline. The model predicts the finishing order with clear skill above
+chance, and the market scores higher on both metrics.
+
+**Q2 — win performance as a byproduct.** Because the model is now fitted on
+richer depth-3 ranking supervision rather than depth-1 win supervision, how
+does it pick *winners* compared with 2a's win-fitted model? On the depth-1
+win backtest the ranking-fitted model returns a higher (less negative) ROI,
+by a margin a paired bootstrap places above zero though close to it; both
+models remain a net loss against the market.
+
+@sec-data points to paper 2a for the shared data and feature set and
+constructs the place-market baseline; @sec-exploded-model fits the ranking
+model and re-searches the course×draw block; @sec-evaluation answers Q1 then
+Q2; and @sec-discussion draws the threads together.
 
 {{< include _01_data.qmd >}}
 

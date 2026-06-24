@@ -1,11 +1,186 @@
-# The exploded conditional logit {#sec-exploded-model}
+# The exploded conditional logit and the course×draw search {#sec-exploded-model}
 
-*Stub.* The baseline for comparison throughout this paper is the extended
-win model from paper 2a — the same 17-term reduced specification, fitted
-on the same features.
+The win model of paper 2a uses only one bit of each race's result: who
+won. The finishing order carries more. The **exploded conditional logit**
+[@henery1981] uses it by treating the observed order as a sequence of
+conditional win problems — the winner is chosen from the full field, the
+runner-up from the field minus the winner, the third from the field minus
+the first two — and pooling those sub-races into a single conditional-logit
+fit, which is exactly maximising the Plackett–Luce likelihood. We truncate
+at depth $k = 3$: only the top-3 order is modelled, the tail of the field
+being largely noise [@henery1981]. The algebra and the
+Plackett–Luce equivalence are derived in @sec-appx-derivations.
 
-<!-- Content to be lifted from the paper-2 archive
-     (papers/02_extended_features_ARCHIVE/_04_exploded_logit.qmd): the
-     exploded-data construction (prepare_exploded_data, k = 3), the
-     coefficient table (win vs exploded side by side), and the sub-race /
-     choice-set count table. -->
+The base specification is **identical to paper 2a's reduced win model** —
+the same 17 terms, the same zero-plus-slope position encoding, the same
+imputed `or_relative`/`or_missing` — so any difference at this stage is the
+explosion, not the features. The draw×course block is then searched
+**independently** of paper 2a (below); we do not assume 2a's surviving
+courses carry over.
+
+```{r}
+#| label: p2b-model-setup
+#| include: false
+# Fits loaded from targets (not fitted here) -> load mlogit's namespace so
+# summary.mlogit / coef.mlogit dispatch (CLAUDE.md note).
+loadNamespace("mlogit")
+
+win_ct  <- summary(model_p2_reduced)$CoefTable          # 2a reduced win model
+base_ct <- summary(model_2b_exploded_base)$CoefTable    # exploded, 17-term, no draw
+terms   <- rownames(win_ct)
+
+win_coef  <- stats::setNames(win_ct[, "Estimate"], terms)
+base_coef <- stats::setNames(base_ct[, "Estimate"], terms)
+win_z     <- stats::setNames(win_ct[, "z-value"],  terms)
+base_z    <- stats::setNames(base_ct[, "z-value"],  terms)
+
+# Exploded interaction data is a dfidx; access columns as plain vectors
+# (its index column breaks dplyr verbs — CLAUDE.md mlogit notes).
+exp_races <- dplyr::n_distinct(exploded_interactions_data$race_id)
+exp_sets  <- dplyr::n_distinct(exploded_interactions_data$exploded_race_id)
+exp_rows  <- nrow(exploded_interactions_data)
+
+# Final draw block coefficients (3-course) and the 4-course block.
+full_ct  <- summary(model_2b_exploded_draw_full)$CoefTable
+final_ct <- summary(model_2b_exploded_draw_final)$CoefTable
+wolf_2a  <- summary(model_w_ed)$CoefTable["stall_x_wolverhampton", ]  # 2a win 4-course block
+```
+
+## From win to ranking: the exploded construction
+
+For each race we form $k = 3$ sub-races: choice set $s$ is the horse that
+finished $s$th together with every horse not yet ranked — all finishers
+placed $s$-or-worse plus any non-finishers, which never get ranked and so
+stay in the pool at every depth. The depth-1 sub-race is therefore exactly
+the win model's choice set (the full field, winner = 1st), which makes the
+two models comparable at depth 1; each sub-race has exactly one winner.
+
+Two race filters apply. Races with any missing value in the modelling
+columns are dropped (the same rule as the win model), and races whose top-3
+positions are not each recorded exactly once — a dead-heat for 2nd or 3rd,
+or a gap — cannot be unambiguously exploded and are dropped too. Finishing
+position is the official placing, taking the amended placing where a result
+was later revised.
+
+```{r}
+#| label: tbl-exploded-size
+depth_rows <- as.integer(table(exploded_interactions_data$depth))
+tibble::tibble(
+  `Sub-race`    = paste0("depth ", seq_along(depth_rows), " (",
+                         c("full field", "field − 1st", "field − 1st,2nd"), ")"),
+  `Runner-rows` = depth_rows
+) |>
+  knitr::kable(caption = sprintf(
+    "Exploded training data (carrying the draw-course columns): %s valid races become %s choice sets (3 per race) over %s runner-rows.",
+    format(exp_races, big.mark = ","),
+    format(exp_sets,  big.mark = ","),
+    format(exp_rows,  big.mark = ",")))
+```
+
+The runner-row count falls by one per race at each successive depth: the
+same races contribute to all three sub-races, but each deeper sub-race drops
+the horses already placed above it (depth 2 removes the winner, depth 3 the
+first two), so the choice set shrinks by one runner each time.
+
+## Fitting the ranking model
+
+We carry paper 2a's reduced 17-feature specification as the base — the
+feature-by-feature selection was settled there — and re-estimate it under
+the ranking objective, entering the four-course draw×course block (Kempton,
+Lingfield, Southwell, Wolverhampton) from the start. The draw block is then
+reduced by the same per-term Wald $p < 0.05$ rule paper 2a applies to its
+win model, run fresh on this fit: the least significant non-significant
+course slope is dropped, the model refit, and the step repeated until every
+surviving slope clears the threshold.
+
+Re-estimating the base under the explosion moves the coefficients in two
+ways, shown against paper 2a's win fit on the identical specification.
+
+```{r}
+#| label: tbl-base-coef-compare
+#| code-fold: true
+block_of <- function(term) {
+  if (grepl("^pos_lag", term))                                     return("1. Position (zero-plus-slope)")
+  if (term %in% c("days_LTO_log", "trainerSR", "sireSR"))          return("2. Form / history")
+  if (term %in% c("age_diff", "entire", "gelding", "cheekpieces")) return("3. Horse characteristics")
+  "4. New features"
+}
+pretty_term <- function(t) dplyr::recode(t, days_LTO_log = "daysLTO (log)")
+tibble::tibble(
+  Block           = vapply(terms, block_of, character(1)),
+  Term            = pretty_term(terms),
+  `Win est.`      = round(win_coef[terms], 4),
+  `Win z`         = round(win_z[terms], 2),
+  `Exploded est.` = round(base_coef[terms], 4),
+  `Exploded z`    = round(base_z[terms], 2)
+) |>
+  dplyr::arrange(Block) |>
+  knitr::kable(
+    align   = c("l", "l", "r", "r", "r", "r"),
+    caption = "Paper 2a reduced win model (depth-1) vs the exploded base fit (depth-3 Plackett–Luce), same 17-term specification. Estimates and Wald z-values side by side.")
+```
+
+The estimates shrink — most coefficients are smaller in magnitude under the
+explosion, because the win model loads each feature with all of its power to
+separate the *winner* from the field, whereas the exploded model must make
+the same coefficient explain the 1-vs-rest, 2-vs-rest and 3-vs-rest
+contrasts at once. The Wald z-values mostly move the other way, rising, as
+depth-3 explosion roughly triples the number of choice problems the same
+races supply; the form and position terms, which order the whole field
+rather than just crown the winner, change the most.
+
+```{r}
+#| label: tbl-draw-reduction-2b
+#| code-fold: true
+model_2b_draw_reduction_steps |>
+  dplyr::transmute(
+    Step      = step,
+    `Dropped` = dropped,
+    `Wald p`  = signif(wald_p, 3),
+    `From → to` = paste0(n_before, "-course → ", n_after, "-course"),
+    `LR stat` = round(lr_stat, 3),
+    df        = lr_df,
+    `LR p`    = signif(lr_p, 3)
+  ) |>
+  knitr::kable(caption = "Per-term reduction of the exploded draw×course block. Each step drops the least significant non-significant course slope and refits; the 1-df likelihood-ratio drop-test is reported alongside.")
+```
+
+Only **Lingfield** drops (Wald $p =$
+`r signif(model_2b_draw_reduction_steps$wald_p[1], 2)`; the 1-df LR
+drop-test agrees, $p =$ `r signif(model_2b_draw_reduction_steps$lr_p[1], 2)`).
+The surviving block is **Kempton, Southwell and Wolverhampton** — three
+courses, where paper 2a's win model retained only **Kempton and
+Southwell**. The difference is Wolverhampton. On the exploded fit
+Wolverhampton's draw slope
+is `r sprintf("%+.3f", final_ct["stall_x_wolverhampton", "Estimate"])`
+($p =$ `r sprintf("%.4f", final_ct["stall_x_wolverhampton", "Pr(>|z|)"])`); in
+paper 2a's win model it was `r sprintf("%+.3f", wolf_2a["Estimate"])`
+($p \approx 0.066$) — the **same sign and similar
+magnitude, estimated far more sharply**. The reading is the narrow one: the
+ranking objective estimates the same draw effect paper 2a saw, sharply
+enough to retain it, rather than uncovering a new effect the win model
+missed. The negative slope (an advantage to lower draws) is the direction
+2a already found and is directionally consistent with a tight, left-handed
+All-Weather track; it is a single distance-pooled slope, so it is an average
+direction across trips, not a trip-specific law.
+
+The final paper-2b model is the exploded base plus the three retained
+course-draw slopes —
+`r length(stats::coef(model_2b_exploded_draw_final))` coefficients in all.
+
+```{r}
+#| label: tbl-draw-course-2b
+#| code-fold: true
+draw_rows  <- grepl("^stall_x_", rownames(full_ct))
+course_lab <- tools::toTitleCase(sub("stall_x_", "", rownames(full_ct)[draw_rows]))
+retained   <- rownames(full_ct)[draw_rows] %in% names(stats::coef(model_2b_exploded_draw_final))
+tibble::tibble(
+  Course       = course_lab,
+  Estimate     = round(full_ct[draw_rows, "Estimate"], 4),
+  `Std. error` = round(full_ct[draw_rows, "Std. Error"], 4),
+  `z`          = round(full_ct[draw_rows, "z-value"], 2),
+  `p-value`    = signif(full_ct[draw_rows, "Pr(>|z|)"], 3),
+  Retained     = dplyr::if_else(retained, "yes", "dropped")
+) |>
+  knitr::kable(caption = "Draw×course coefficients in the full four-course block (the selection-stage exploded fit). Kempton, Southwell and Wolverhampton are individually significant and retained; Lingfield is not and is dropped, leaving the three-course final model.")
+```

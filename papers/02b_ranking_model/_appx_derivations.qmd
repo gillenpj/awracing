@@ -1,7 +1,9 @@
 # Appendix: Derivations {#sec-appx-derivations .appendix}
 
 This appendix derives the Plackett–Luce model and its exploded-logit
-representation, the ranking machinery fitted in @sec-exploded-model. It
+representation — the ranking machinery fitted in @sec-exploded-model — and
+the Harville place-probability formula behind the market baseline of
+@sec-data. It
 builds on the conditional logit derived in paper 1's appendix, whose
 notation we reuse: race $i$ is the chooser, horse $j$ the alternative, the
 linear predictor for horse $j$ in race $i$ is
@@ -79,6 +81,72 @@ whole pool. By making fuller use of the finishing order rather than just
 the win, this yields more precise estimates of $\boldsymbol{\beta}$. The
 construction is implemented in `prepare_exploded_data()`, and the fitted
 result is @sec-exploded-model's exploded ranking model.
+
+## Harville order and place probabilities: the market baseline
+
+The exploded logit above is the *model* side of @sec-evaluation; its
+*market* side needs place probabilities — the chance a horse finishes in the
+top $k$ — from win starting prices alone. Harville [@harville1973] supplies
+them under a single assumption: once the winner is removed, the remaining
+horses re-race with win probabilities proportional to their original ones,
+so the field's relative strengths are unchanged by the result.
+
+**Order probability.** Let $p_1, \ldots, p_J$ be the win probabilities.
+Under the assumption, given that horse $i$ won, horse $j$'s conditional
+probability of winning the "race for second" is $p_j / (1 - p_i)$ — its
+share of the strength remaining once $i$ is removed. Iterating down the
+order, the probability of a full finishing sequence
+$(j_1, j_2, \ldots, j_J)$ is
+$$
+P(j_1, j_2, \ldots, j_J)
+  = \prod_{s=1}^{J} \frac{p_{j_s}}{1 - \sum_{r < s} p_{j_r}},
+$$
+each factor being the leader's share of the strength not yet placed.
+
+**Equivalence with Plackett–Luce.** This is exactly the Plackett–Luce order
+probability derived above. Writing $p_j = e^{z_j} / \sum_m e^{z_m}$, the
+denominator $1 - \sum_{r<s} p_{j_r}$ equals
+$\big(\sum_{r \ge s} e^{z_{j_r}}\big) / \sum_m e^{z_m}$; the normaliser
+$\sum_m e^{z_m}$ cancels against the one in the numerator's $p_{j_s}$,
+leaving $\prod_s e^{z_{j_s}} / \sum_{r \ge s} e^{z_{j_r}}$ — the
+Plackett–Luce expression. Undiscounted Harville and Plackett–Luce are the
+same model, reached from different starting points (sequential conditioning
+on win probabilities versus a ranking likelihood). This is why an
+undiscounted Harville baseline cannot judge a Plackett–Luce-fitted model: it
+*is* that model's formula, evaluated at the market's win probabilities
+rather than the model's.
+
+**Place probability.** The marginal probability that a given horse finishes
+in the top $k$ is the sum of the order probability over every sequence that
+places it among the first $k$. Harville's product form keeps this
+tractable: for $k = 3$ the top-3 marginal for horse $j$ is
+$$
+P(j \in \text{top 3})
+  = p_j
+  + \sum_{i \ne j} p_i\, \frac{p_j}{1 - p_i}
+  + \sum_{i \ne j} \sum_{m \ne i, j}
+       p_i\, \frac{p_m}{1 - p_i}\, \frac{p_j}{1 - p_i - p_m},
+$$
+the three terms being the probabilities that $j$ finishes first, second and
+third. The inner sums have only $O(J)$ and $O(J^2)$ terms, so the place
+probabilities are computed in closed form without enumerating the $J!$
+orders.
+
+**Discounted Harville.** Pure Harville is known to overstate favourites'
+place chances and understate longshots' — the favourite–longshot bias in the
+place dimension — because the sequential-conditional assumption hands too
+much of the remaining probability mass to the strongest horse at each step.
+Lo & Bacon-Shone [@lobaconshone1994; @lobaconshone2008] correct it by
+replacing $p_i$ with $p_i^{\alpha}$ ($\alpha < 1$, and smaller at deeper
+positions) inside the conditional steps before renormalising — $\alpha =
+0.80$ for second place and $0.65$ for third in this paper. Because each
+conditional is then built from the discounted strengths $p_i^{\alpha}$
+rather than the win probabilities themselves, the cancellation that produced
+the Plackett–Luce form no longer happens: the discounted order probability
+is not a product of plain win probabilities, and the discounted Harville and
+Plackett–Luce models cease to coincide. That break is what makes the
+discounted baseline a genuine yardstick for the exploded model rather than a
+re-expression of it.
 
 The mixed discrete-choice derivation, used in paper 2a for race-level
 interactions, is given in paper 2a's appendix.

@@ -34,7 +34,8 @@ local({
 # paper source dir (under papers/)  ->  docs/ subfolder
 papers <- c(
   "01_replication"         = "paper1",
-  "02a_extended_win_model" = "paper2a"
+  "02a_extended_win_model" = "paper2a",
+  "02b_ranking_model"      = "paper2b"
 )
 
 copied  <- character(0)
