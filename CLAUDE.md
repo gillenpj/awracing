@@ -720,16 +720,33 @@ Pre-split draft archived at `papers/02_extended_features_ARCHIVE/`.
 Paper 2a and 2b are now the active branches.
 
 ## Paper 3 plan
-- **Switch model class entirely** to a class that handles
-  non-linearities and interactions gracefully — conditional logit
-  in its linear-predictor form does neither natively. The specific
-  model is the user's call; theory worked through but not yet
-  documented in this repo. The user believes it is novel as an
-  application to horse racing.
-- Comparison plan: keep the same data scope, train/test split, and
-  diagnostic suite (Owen Table 3 / Figure 7 / Figure 8 / §3.4
-  backtest) so paper 1, paper 2, and paper 3 are directly
-  comparable.
+- **Model classes: two, in one paper.** A tree-based ensemble (random
+  forest or gradient boosted trees, decision TBD) AND a neural ranking
+  network. Both handle non-linearities and feature interactions
+  gracefully — conditional logit in its linear-predictor form does
+  neither natively.
+- **Objective: listwise ranking** — the Plackett–Luce likelihood on the
+  exploded top-k order, the same objective as paper 2b. Applied to *both*
+  model classes, so paper 3's results are directly comparable to paper 2b
+  as well as to papers 1 / 2a.
+- **Key mechanism for both classes:** raw horse-level scores are
+  converted to per-race win probabilities via a **softmax over the
+  field**, giving a proper probability distribution over a variable-size
+  choice set. This is the standard trick that makes tree / NN scores
+  compatible with the PL objective.
+- **Features: same base set as papers 2a / 2b, PLUS going affinity** — a
+  horse-specific going win rate from a career-history sub-query, the
+  feature deferred from paper 2 by design. Trees and NNs take it as a raw
+  feature without requiring an explicit interaction term (the constraint
+  that kept it out of the conditional-logit papers).
+- **Comparison plan:** keep the same data scope, train/test split, and
+  diagnostic suite (Owen Table 3 / Figure 7 / Figure 8 / §3.4 backtest)
+  so all four papers (1, 2a, 2b, 3) are directly comparable.
+- **Status: research phase.** Model-class details and architecture TBD
+  pending literature review. Implementation not started.
+- **Scope note:** paper 1 already committed publicly to "a Plackett–Luce
+  R² tree" as paper 3's direction — the neural-ranking-network extension
+  is new scope added at paper 2b completion.
 
 ## Longer-term direction (post-paper-3, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
