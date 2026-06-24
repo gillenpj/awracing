@@ -30,9 +30,21 @@ forward plan below.
     Southwell) — Wolverhampton and Lingfield dropped — giving a
     −25.4% backtest ROI. See "Paper 2a plan" and "Paper 2a
     corrections" below.
-  - **Paper 2b — scaffolded.** *Exploded conditional logit as a
-    ranking model, evaluated on ranking metrics.* Source:
-    `papers/02b_ranking_model/`. See "Paper 2b plan" below.
+  - **Paper 2b — complete and PUBLISHED.** *Exploded conditional logit
+    as a ranking model, evaluated on ranking metrics.* Source:
+    `papers/02b_ranking_model/`. Live at
+    <https://gillenpj.github.io/awracing/paper2b/> (HTML + PDF), pinned
+    date 2026-06-24. The paper is built around **two questions in
+    order**: (Q1) under a ranking objective, how well does the model
+    predict the top-3 finishing order? — it beats chance but the
+    discounted-Harville place market scores higher on both metrics
+    (P1_rank 0.00402 model vs 0.00543 market; Brier_place 0.2013 vs
+    0.1875); and (Q2) does depth-3 ranking supervision make a better
+    *win*-picker than 2a's depth-1 fit? — yes, −17.4% vs −25.4% ROI,
+    a paired bootstrap difference of +8.0 pp [+1.0, +14.8] (90% CI
+    excludes zero), the first statistically distinguishable improvement
+    in the series, though still a loss to the market. See "Paper 2b
+    plan" below.
   - **Pre-split draft archived.** `papers/02_extended_features_ARCHIVE/`
     is the combined pre-split paper-2 draft, kept for reference (not
     rendered).
@@ -519,7 +531,7 @@ correction.)*
   reduction on the exploded fit retains **Kempton, Southwell,
   Wolverhampton** (3 courses) vs 2a's Kempton + Southwell — only Lingfield
   drops (p=0.91). Does it beat the market on ranking metrics? **No** —
-  market wins both on the test split: **P1_rank 0.00402 (model) vs 0.00537
+  market wins both on the test split: **P1_rank 0.00402 (model) vs 0.00543
   (market); Brier_place 0.2013 vs 0.1875**. Consistent with papers 1/2a's
   market-trails-throughout pattern — reported, not chased. Targets:
   `model_2b_exploded_draw_full`/`_final`, `model_2b_draw_reduction`
@@ -535,9 +547,10 @@ correction.)*
   clear loss to the market. Targets: `model_market_ratio_2b_win`,
   `backtest_naive_2b_win`, `backtest_sweep_2b_win`,
   `roi_difference_2b_vs_2a`.
-- **Market baseline:** discounted Harville place probs (Lo & Bacon-Shone,
-  α=0.80/0.65) for Brier_place; **pure Harville (α=1)** order probability
-  for the P1_rank market baseline. `compute_harville_place_probs()` +
+- **Market baseline:** discounted Harville (Lo & Bacon-Shone, α=0.80/0.65)
+  throughout — place probs for Brier_place, depth-3 order probability for the
+  P1_rank market baseline. One consistent market baseline for both metrics;
+  the model side of each uses its own α=1 (no discounting) PL implication. `compute_harville_place_probs()` +
   `compute_pl_order_probs()` in `R/scoring.R`; `score_p1_rank()` /
   `score_brier_place()` implemented; eval module `R/ranking_eval_p2b.R`.
 - **Wolverhampton (sign sanity-checked).** Draw slope −0.182 (p=0.0003)
@@ -550,11 +563,15 @@ correction.)*
   going code in 2b; paper 3's tree-model rationale depends on it being
   untouched.
 - **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
-- **qmd structure (prose pending):** `_02` model build + independent draw
-  search + Wolverhampton; `_03` Q1 (ranking vs market) then Q2 (win/ROI vs
-  2a) as **separate** subsections; `_04` both discussed honestly.
-- **Status:** analysis built and run clean; numbers reviewed; prose
-  pending.
+- **qmd structure:** `_01` data pointer + discounted-Harville market
+  baseline; `_02` model build + independent draw search + Wolverhampton;
+  `_03` Q1 (ranking vs market) then Q2 (win/ROI vs 2a) as **separate**
+  subsections; `_04` discussion (three paragraphs, two-question framing);
+  `_appx_derivations` Plackett–Luce / exploded-logit + Harville derivation.
+- **Status: COMPLETE and PUBLISHED** (2026-06-24, HTML + PDF). Live at
+  <https://gillenpj.github.io/awracing/paper2b/>; landing-page entry and
+  `docs/paper2b/` committed. Both market baselines use discounted Harville
+  (α=0.80/0.65); model P1_rank market figure is 0.00543.
 
 ## Paper 2 feature decisions
 
