@@ -20,13 +20,7 @@ abstract: |
   `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
   against 2a's
   `r scales::percent(targets::tar_read(backtest_naive_w_final)$roi, accuracy = 0.1)`;
-  a paired race-level bootstrap puts the difference at
-  `r sprintf("%+.1f pp", 100 * targets::tar_read(roi_difference_2b_vs_2a)$diff_point)`
-  (90% CI
-  `r sprintf("%+.1f", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_lo)` to
-  `r sprintf("%+.1f pp", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_hi)`),
-  an interval that lies above zero but close to it; both models remain a net
-  loss against the market. Third (Q3), turned into place and each-way bets on
+  both models remain a net loss against the market. Third (Q3), turned into place and each-way bets on
   the real industry-SP book — the same margin-laden prices the win backtest
   pays out against — the model's place selections return
   `r scales::percent(targets::tar_read(backtest_place_2b)$roi, accuracy = 0.1)`,
