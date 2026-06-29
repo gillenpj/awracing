@@ -563,10 +563,23 @@ correction.)*
   going code in 2b; paper 3's tree-model rationale depends on it being
   untouched.
 - **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
+- **Q3 betting application: place + each-way only.** Exacta/trifecta were
+  dropped — their real price is the CSF (computer straight forecast) dividend
+  and, for the trifecta, the Tote pool, not a Harville construction, and we
+  have no dividend data, so they are out of scope rather than scored on a
+  synthetic baseline. Q3 pays out on the **real industry-SP book** (observed
+  ~16% over-round), the same basis as the Q2 win backtest; a zero-margin
+  pure-Harville fair book is retained as a secondary reference. Selection is
+  the discounted-Harville (α=0.80/0.65) value ratio (unchanged); only the
+  payout basis distinguishes the headline (real SP) from the reference (fair
+  book). Place model ROI −17.6% (vs bet-all baseline −14.1%) sits alongside
+  Q2's win −17.4%; each-way −27.6% (vs −18.5%). Targets in
+  `R/value_bets_p2b.R` + `value_bet_baselines_2b`.
 - **qmd structure:** `_01` data pointer + discounted-Harville market
   baseline; `_02` model build + independent draw search + Wolverhampton;
-  `_03` Q1 (ranking vs market) then Q2 (win/ROI vs 2a) as **separate**
-  subsections; `_04` discussion (three paragraphs, two-question framing);
+  `_03` Q1 (ranking vs market), Q2 (win/ROI vs 2a), Q3 (place/each-way
+  betting value, real-SP basis) as **separate** subsections; `_04`
+  discussion (three paragraphs, three-question framing);
   `_appx_derivations` Plackett–Luce / exploded-logit + Harville derivation.
 - **Status: COMPLETE and PUBLISHED** (2026-06-24, HTML + PDF). Live at
   <https://gillenpj.github.io/awracing/paper2b/>; landing-page entry and

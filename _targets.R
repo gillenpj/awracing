@@ -557,6 +557,67 @@ list(
       dplyr::mutate(contrast = "2b ranking-fitted - 2a win-fitted", .before = 1)
   ),
 
+  # -- Paper 2b Q3: place / each-way value bets ------------------------------
+  # Selection is the discounted-Harville (alpha 0.80/0.65) model-vs-market
+  # value ratio, swept; the payout is the REAL industry-SP book (with its
+  # over-round), the same raw SP prices Q2 bets against, so Q3 sits on one
+  # footing with Q2. The bet-all baseline is therefore negative (it carries
+  # the real margin), and the model ROI is read against it. A zero-margin
+  # pure-Harville fair-book payout is retained alongside (ret_fair) as a
+  # secondary reference. Exacta / trifecta are out of scope: their real price
+  # is the CSF / Tote-pool dividend, not a Harville construction, and we have
+  # no dividend data. value_bet_runners_2b is the base (complete win vectors +
+  # SP); each builder needs a clean 3-horse place set (each-way also a unique
+  # winner). Model place-probability floor 0.10.
+  tar_target(
+    value_bet_runners_2b,
+    build_value_bet_runners(test_predictions_2b, qualifying_runners)
+  ),
+  # Place
+  tar_target(
+    value_bets_place_2b,
+    build_place_value_bets(value_bet_runners_2b)
+  ),
+  tar_target(
+    backtest_place_2b,
+    run_value_backtest(value_bets_place_2b, prob_floor = 0.10, ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_place_2b,
+    run_value_backtest_sweep(value_bets_place_2b, prob_floor = 0.10,
+                             tau_seq = seq(0.9, 2.0, by = 0.05),
+                             n_boot = 2000L, seed = 42L)
+  ),
+  # Each-way (1/5 odds, top-3)
+  tar_target(
+    value_bets_eachway_2b,
+    build_eachway_value_bets(value_bet_runners_2b)
+  ),
+  tar_target(
+    backtest_eachway_2b,
+    run_value_backtest(value_bets_eachway_2b, prob_floor = 0.10, ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_sweep_eachway_2b,
+    run_value_backtest_sweep(value_bets_eachway_2b, prob_floor = 0.10,
+                             tau_seq = seq(0.9, 2.0, by = 0.05),
+                             n_boot = 2000L, seed = 42L)
+  ),
+  # Neutral baselines (bet-all on real-SP and fair-book bases, drop-top-payout
+  # robustness, max payout, universe Ns, observed SP over-round) — Q3 reads
+  # model ROIs against these.
+  tar_target(
+    value_bet_baselines_2b,
+    build_value_bet_baselines(value_bets_place_2b, value_bets_eachway_2b,
+                              value_bet_runners_2b)
+  ),
+  # Place over-round sensitivity (+/-5pp around the observed book): shows the
+  # model - baseline gap is insensitive to the exact margin level.
+  tar_target(
+    place_or_sensitivity_2b,
+    build_place_or_sensitivity(value_bet_runners_2b)
+  ),
+
   # Non-exploded train/test data carrying the draw-course columns (drops the
   # one draw-less race). Consumed by paper 2a's win interaction fits below
   # and paper 2b's test predictions above.

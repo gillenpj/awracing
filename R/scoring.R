@@ -407,19 +407,51 @@ compute_harville_place_probs <- function(market_probs,
     dplyr::select(race_id, horse_ref, harville_place_prob)
 }
 
+#' Discounted-Harville probability of ordered finishing tuples (paper 2b)
+#'
+#' The single Harville / Plackett–Luce *order*-probability formula, shared by
+#' every paper-2b consumer (the P1_rank order metric and the exacta / trifecta
+#' value backtests) so the discounting logic lives in exactly one place.
+#' Vectorised over a set of ordered index tuples *within one race*: given the
+#' race's win-probability vector `p` and equal-length index vectors picking
+#' the 1st (`i1`), 2nd (`i2`) and optionally 3rd (`i3`) finisher of each tuple,
+#' returns the sequential-conditional probability
+#' \eqn{\frac{p_{i_1}}{S}\cdot\frac{q^{(2)}_{i_2}}{S_{q2}-q^{(2)}_{i_1}}\cdot
+#' \frac{q^{(3)}_{i_3}}{S_{q3}-q^{(3)}_{i_1}-q^{(3)}_{i_2}}}, where
+#' \eqn{S=\sum_k p_k}, \eqn{q^{(m)}=p^{\alpha_m}} and the denominators are the
+#' field strength not yet placed. `i3 = NULL` gives the depth-2 (exacta)
+#' truncation. With `alpha_2nd = alpha_3rd = 1` this is the pure
+#' PL / Harville order probability; `alpha < 1` the Lo & Bacon-Shone
+#' discounted form.
+#'
+#' @param p Numeric win-probability vector for one race (summing to one).
+#' @param i1,i2 Integer index vectors (into `p`) of the 1st / 2nd finishers.
+#' @param i3 Integer index vector of the 3rd finisher, or `NULL` for depth-2.
+#' @param alpha_2nd,alpha_3rd Discount exponents on the 2nd / 3rd conditionals.
+#' @return Numeric vector of order probabilities, one per input tuple.
+harville_order_probs_vec <- function(p, i1, i2, i3 = NULL,
+                                     alpha_2nd = 0.80, alpha_3rd = 0.65) {
+  q2  <- p^alpha_2nd
+  S   <- sum(p)
+  Sq2 <- sum(q2)
+  out <- (p[i1] / S) * (q2[i2] / (Sq2 - q2[i1]))
+  if (!is.null(i3)) {
+    q3  <- p^alpha_3rd
+    Sq3 <- sum(q3)
+    out <- out * (q3[i3] / (Sq3 - q3[i1] - q3[i2]))
+  }
+  out
+}
+
 #' Plackett–Luce probability of the observed top-3 order (paper 2b)
 #'
 #' Per race, the depth-3 Plackett–Luce probability of the observed top-3
 #' finishing order, built from a win-probability vector via the sequential
-#' conditional (Harville) form:
-#' \eqn{P(j_1,j_2,j_3) = \frac{p_{j_1}}{S}\cdot
-#' \frac{q^{(2)}_{j_2}}{\sum_{k\neq j_1} q^{(2)}_k}\cdot
-#' \frac{q^{(3)}_{j_3}}{\sum_{k\neq j_1,j_2} q^{(3)}_k}}, where
-#' \eqn{S=\sum_k p_k} and \eqn{q^{(m)} = p^{\alpha_m}}. With
-#' `alpha_2nd = alpha_3rd = 1` this is the pure PL / Harville order
-#' probability — the exploded model's own depth-3 likelihood; `alpha < 1`
-#' gives the Lo & Bacon-Shone discounted form, used for the paper-2b market
-#' baseline.
+#' conditional (Harville) form (the shared `harville_order_probs_vec()`
+#' applied to the single observed tuple). With `alpha_2nd = alpha_3rd = 1`
+#' this is the pure PL / Harville order probability — the exploded model's own
+#' depth-3 likelihood; `alpha < 1` gives the Lo & Bacon-Shone discounted form,
+#' used for the paper-2b market baseline.
 #'
 #' Only races with a clean top-3 (positions 1, 2, 3 each present exactly
 #' once) are scored; any other race is dropped (returns no row). This is the
@@ -442,10 +474,8 @@ compute_pl_order_probs <- function(predictions, alpha_2nd = 1, alpha_3rd = 1) {
         if (length(i1) != 1L || length(i2) != 1L || length(i3) != 1L) {
           NA_real_
         } else {
-          q2 <- p^alpha_2nd; q3 <- p^alpha_3rd
-          (p[i1] / sum(p)) *
-            (q2[i2] / sum(q2[-i1])) *
-            (q3[i3] / sum(q3[-c(i1, i2)]))
+          harville_order_probs_vec(p, i1, i2, i3,
+                                   alpha_2nd = alpha_2nd, alpha_3rd = alpha_3rd)
         }
       },
       .groups = "drop"
@@ -569,4 +599,132 @@ bootstrap_roi_difference <- function(ratio_df_a, ratio_df_b,
     n_common   = n,
     n_boot     = n_boot
   )
+}
+
+# -- Generic value-bet backtest (paper 2b exotic markets) -------------------
+# A small generalisation of run_backtest() / run_backtest_sweep() /
+# bootstrap_roi() for the place / each-way / exacta / trifecta value bets,
+# where the stake is not always one unit (each-way stakes two) and the gross
+# return on a bet is not always `won * starting_price_decimal` (a placed
+# horse, a matched pair / triple, paid at the market's Harville-derived fair
+# odds). Each builder in R/value_bets_p2b.R emits a tibble of *bet units*
+# with the columns these functions consume — `race_id`, `model_prob` (for the
+# floor), `ratio` (model / market fair value, for selection), `stake`, and
+# `ret` (the realised gross return on the bet, already 0 on a loser) — so the
+# selection, ROI and race-level bootstrap logic stays in one place.
+
+#' Single-threshold value-bet backtest (paper 2b)
+#'
+#' Selects bet units with `model_prob > prob_floor` AND `ratio >
+#' ratio_threshold`, then computes ROI = `(sum(ret) - sum(stake)) /
+#' sum(stake)`. The `prob_floor` is a model-probability floor that screens out
+#' near-impossible combinations (load-bearing for trifecta, where most ordered
+#' triples have tiny probability and the ratio is dominated by estimation
+#' noise).
+#'
+#' @param bet_df Tibble of bet units: `race_id`, `model_prob`, `ratio`,
+#'   `stake`, `ret`.
+#' @param prob_floor Lower bound on the model probability of the bet.
+#' @param ratio_threshold Lower bound on the model / market fair-value ratio.
+#' @return One-row tibble: `prob_floor`, `ratio_threshold`, `n_bets`,
+#'   `n_wins`, `total_stake`, `gross_return`, `profit`, `roi` (NA if no bets).
+run_value_backtest <- function(bet_df, prob_floor, ratio_threshold) {
+  bets <- bet_df |>
+    dplyr::filter(model_prob > prob_floor, ratio > ratio_threshold)
+
+  n_bets <- nrow(bets)
+
+  if (n_bets == 0L) {
+    return(tibble::tibble(
+      prob_floor      = prob_floor,
+      ratio_threshold = ratio_threshold,
+      n_bets          = 0L,
+      n_wins          = 0L,
+      total_stake     = 0,
+      gross_return    = 0,
+      profit          = 0,
+      roi             = NA_real_
+    ))
+  }
+
+  total_stake  <- sum(bets$stake)
+  gross_return <- sum(bets$ret)
+  profit       <- gross_return - total_stake
+
+  tibble::tibble(
+    prob_floor      = prob_floor,
+    ratio_threshold = ratio_threshold,
+    n_bets          = as.integer(n_bets),
+    n_wins          = as.integer(sum(bets$ret > 0)),
+    total_stake     = total_stake,
+    gross_return    = gross_return,
+    profit          = profit,
+    roi             = profit / total_stake
+  )
+}
+
+#' Race-level bootstrap of value-bet ROI at one threshold (paper 2b)
+#'
+#' Resamples races (not bet units) with replacement, summing stake and return
+#' per race so the within-race correlation is preserved, exactly as
+#' `bootstrap_roi()` does for the win backtest.
+#'
+#' @param bet_df,prob_floor,ratio_threshold As `run_value_backtest()`.
+#' @param n_boot Number of resamples (default 2000).
+#' @return Numeric vector of `n_boot` bootstrap ROI replicates (NA where a
+#'   draw selects zero stake).
+bootstrap_value_roi <- function(bet_df, prob_floor, ratio_threshold,
+                                n_boot = 2000L) {
+  per_race <- bet_df |>
+    dplyr::filter(model_prob > prob_floor, ratio > ratio_threshold) |>
+    dplyr::group_by(race_id) |>
+    dplyr::summarise(stake = sum(stake), ret = sum(ret), .groups = "drop")
+
+  if (nrow(per_race) == 0L) return(rep(NA_real_, n_boot))
+
+  stake_vec <- per_race$stake
+  ret_vec   <- per_race$ret
+  n_races   <- nrow(per_race)
+
+  vapply(seq_len(n_boot), function(b) {
+    idx <- sample.int(n_races, size = n_races, replace = TRUE)
+    st  <- sum(stake_vec[idx])
+    if (st == 0) return(NA_real_)
+    (sum(ret_vec[idx]) - st) / st
+  }, numeric(1))
+}
+
+#' Bootstrap-CI value-bet ROI sweep across ratio thresholds (paper 2b)
+#'
+#' The exotic-market analogue of `run_backtest_sweep()`: for each `tau` in
+#' `tau_seq`, the point ROI plus a `n_boot`-replicate race-level bootstrap
+#' (5th / 95th percentiles = a 90% CI), the model-probability floor held
+#' fixed. Seed set once so the whole sweep is reproducible.
+#'
+#' @param bet_df Tibble of bet units (see `run_value_backtest()`).
+#' @param prob_floor Model-probability floor, held fixed across the sweep.
+#' @param tau_seq Numeric vector of ratio thresholds.
+#' @param n_boot,seed Bootstrap replicate count and RNG seed.
+#' @return Long tibble: `tau`, `n_bets`, `n_wins`, `total_stake`, `roi`,
+#'   `ci_lo`, `ci_hi`.
+run_value_backtest_sweep <- function(bet_df, prob_floor, tau_seq,
+                                     n_boot = 2000L, seed = 42L) {
+  set.seed(seed)
+
+  point <- purrr::map_dfr(tau_seq, \(tau) {
+    run_value_backtest(bet_df, prob_floor = prob_floor, ratio_threshold = tau) |>
+      dplyr::transmute(tau = tau, n_bets, n_wins, total_stake, roi)
+  })
+
+  ci <- purrr::map_dfr(tau_seq, \(tau) {
+    boot <- bootstrap_value_roi(bet_df, prob_floor = prob_floor,
+                                ratio_threshold = tau, n_boot = n_boot)
+    tibble::tibble(
+      tau   = tau,
+      ci_lo = stats::quantile(boot, 0.05, na.rm = TRUE, names = FALSE),
+      ci_hi = stats::quantile(boot, 0.95, na.rm = TRUE, names = FALSE)
+    )
+  })
+
+  dplyr::left_join(point, ci, by = "tau")
 }

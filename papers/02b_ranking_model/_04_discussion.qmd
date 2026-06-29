@@ -14,7 +14,11 @@ the same pattern papers 1 and 2a found on the win objective — a model with
 genuine signal that the starting price nonetheless out-scores — now repeated
 on the ranking objective. The reading carries over unchanged: the market
 price aggregates information the pre-race feature set does not contain, and
-moving from a win objective to a ranking one does not narrow that gap.
+moving from a win objective to a ranking one does not narrow that gap. Turned
+into bets, the same picture holds: priced on the real industry-SP book, the
+model's place selections return below both a zero-margin fair book and
+indiscriminate betting at the market's own prices, so its disagreements with
+the market are, where they can be priced, on the losing side.
 
 The second question applies the ranking-fitted model to the win objective,
 and here the result is new to the series. Trained on the finishing order
@@ -39,3 +43,6 @@ Paper 3 changes the model class. A tree-based learner accommodates
 non-linearities and feature interactions directly — among them a horse's
 going affinity, which the conditional logit can express only through explicit
 interaction terms — without the modeller specifying each one in advance.
+Evaluating the exotic markets — the exacta and trifecta — is left to future
+work: their real prices are the CSF and Tote-pool dividends, which this paper
+does not have.

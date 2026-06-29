@@ -1,12 +1,13 @@
 # Evaluation on ranking metrics {#sec-evaluation}
 
-This paper asks two questions, in order. **Q1** is the ranking question the
+This paper asks three questions, in order. **Q1** is the ranking question the
 paper is built around: how well does the exploded model predict the top-3
 finishing order, measured against the market? **Q2** is a byproduct:
 because the model is fitted on richer (depth-3) ranking supervision rather
 than depth-1 win supervision, how does it pick *winners* compared with paper
-2a's win-fitted model? The two are answered with different baselines and
-reported separately.
+2a's win-fitted model? **Q3** is the applied question: turned into bets, does
+that place-probability accuracy translate into betting value? The three are
+answered with different baselines and reported separately.
 
 ## Ranking metrics
 
@@ -165,5 +166,119 @@ ggplot2::ggplot(backtest_sweep_2b_win, ggplot2::aes(x = tau, y = roi)) +
   ggplot2::geom_line(linewidth = 0.8, colour = "darkgreen") +
   ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   ggplot2::labs(x = "Ratio threshold (model_prob / market_prob)", y = "ROI") +
+  ggplot2::theme_minimal()
+```
+
+## Q3 — Does place-probability accuracy translate into betting value?
+
+Q1 and Q2 read the model against the market on scoring rules. The applied
+question is whether that accuracy translates into betting value: priced and
+selected as bets, do the model's probabilities return more than the market's?
+We ask it of two bet types — a horse to finish in the top three (**place**)
+and the same horse staked win-and-place at standard each-way terms
+(**each-way**) — each priced and selected entirely from win starting prices,
+with no separate place or each-way market prices used or needed.
+
+```{r}
+#| label: p2b-q3-setup
+#| include: false
+vb    <- value_bet_baselines_2b
+vget  <- function(type, col) vb[[col]][vb$bet_type == type]
+comma <- function(x) format(x, big.mark = ",")
+orpc  <- function(x) scales::percent(x - 1, accuracy = 1)   # book sum -> over-round %
+# model ROI minus the bet-all baseline, in points (place and each-way)
+place_gap   <- sprintf("%.1f", 100 * (vget("place", "betall_roi") - backtest_place_2b$roi))
+eachway_gap <- sprintf("%.1f", 100 * (vget("eachway", "betall_roi") - backtest_eachway_2b$roi))
+or_sens <- place_or_sensitivity_2b
+```
+
+Selection and payout play separate roles. **Selection** — the value ratio
+that decides which bets to place — uses the discounted Harville probabilities
+($\alpha = 0.80/0.65$), the bias-corrected place construction Q1 is scored
+against; a bet is placed when the discounted model probability exceeds the
+discounted market probability by a swept ratio threshold $\tau$, Owen's naive
+rule from papers 1 and 2a applied to these bets. **Payout** — what a winning
+bet returns — is the real industry-SP book, the same margin-laden starting
+prices the Q2 win backtest pays out against, so Q3 sits on one footing with
+Q2. The place price is derived from the raw SP-implied win probabilities via
+Harville, inheriting the win book's margin; the each-way win leg pays the raw
+SP win odds and the place leg one fifth of those odds on a top-3 finish,
+standard terms. The industry SP book on these races carries an observed
+average over-round of `r orpc(vget("place", "over_round"))` — measured from
+the data, not assumed — which every payout reflects.
+
+Because the payout carries the real margin, the neutral reference — betting
+indiscriminately at these prices — is itself negative, not zero, and each
+model ROI is read against that bet-all baseline. This is exactly the basis of
+the Q2 win backtest: the headline place return below sits alongside Q2's
+`r roi_pct(backtest_naive_2b_win$roi)`. Alongside it we retain a zero-margin
+*fair-book* figure — the same bets priced at a normalised pure-Harville book —
+as a secondary reference that isolates the model's selection skill from the
+margin.
+
+```{r}
+#| label: tbl-value-bets
+#| code-fold: true
+model_sp   <- c(backtest_place_2b$roi, backtest_eachway_2b$roi)
+betall_sp  <- c(vget("place", "betall_roi"),  vget("eachway", "betall_roi"))
+model_fair <- c(vget("place", "model_fair"),  vget("eachway", "model_fair"))
+betall_fr  <- c(vget("place", "betall_fair"), vget("eachway", "betall_fair"))
+tibble::tibble(
+  `Bet type`           = c("Place", "Each-way"),
+  `Races`              = comma(c(vget("place", "n_bet_races"), vget("eachway", "n_bet_races"))),
+  `Bets`               = comma(c(backtest_place_2b$n_bets, backtest_eachway_2b$n_bets)),
+  `Model ROI (SP)`     = roi_pct(model_sp),
+  `Bet-all (SP)`       = roi_pct(betall_sp),
+  `Model − baseline`   = pp(model_sp - betall_sp),
+  `Model ROI (fair)`   = roi_pct(model_fair),
+  `Bet-all (fair)`     = roi_pct(betall_fr)
+) |>
+  knitr::kable(
+    align   = c("l", rep("r", 7)),
+    caption = sprintf("Place and each-way value bets at Owen's naive rule (ratio > 1.3). Headline columns price the payout at the real industry-SP book (observed average over-round %.0f%%), the same basis as the Q2 win backtest, so the bet-all baseline is negative; the fair-book columns (zero-margin pure Harville) are a secondary reference isolating model skill from the margin. Selection is identical across both bases.", 100 * (vget("place", "over_round") - 1)))
+```
+
+**Place.** On the real-SP book, betting every runner to place returns
+`r roi_pct(vget("place", "betall_roi"))` — the over-round, carried through into
+the derived place price. The model's place value-selections return
+`r roi_pct(backtest_place_2b$roi)` on `r comma(backtest_place_2b$n_bets)` bets,
+about `r place_gap` percentage points below that baseline, and the headline
+return sits alongside the Q2 win backtest's
+`r roi_pct(backtest_naive_2b_win$roi)`: the market's place prices are the more
+accurate, the same finding Q1's Brier_place reported. Three things make the
+reading robust. Place payouts are short, so no single result drives it —
+dropping the largest winning bet leaves the return at
+`r roi_pct(vget("place", "roi_drop_top1"))` — and the bootstrap intervals are
+tight. The model−baseline gap is insensitive to the margin: scaling the SP
+over-round across a ±5-point range (`r orpc(min(or_sens$or_level))` to
+`r orpc(max(or_sens$or_level))`) holds it at about `r pp(mean(or_sens$gap))`
+(`r pp(max(or_sens$gap))` to `r pp(min(or_sens$gap))`), so the result does not
+depend on the exact margin. And the sweep (@fig-value-sweeps) shows the
+model's return falling as the ratio threshold rises, so the place bets it most
+strongly prefers to the market are the ones it does worst on.
+
+**Each-way.** Betting every runner each-way returns
+`r roi_pct(vget("eachway", "betall_roi"))`, a baseline pushed below zero by two
+effects together: the real SP margin, as for place, and the structural
+each-way terms, the place leg paying one fifth of the win odds — shorter than
+the fair place price. The model returns `r roi_pct(backtest_eachway_2b$roi)`,
+about `r eachway_gap` percentage points below that baseline; as with place, its
+selections sit below indiscriminate betting.
+
+```{r}
+#| label: fig-value-sweeps
+#| fig-cap: "Real-SP ROI vs ratio threshold for the place and each-way value bets, 90% bootstrap CI shaded; dashed line at break-even. Free vertical scales. Both fall further below the (negative) real-SP baseline as selection tightens."
+dplyr::bind_rows(
+  backtest_sweep_place_2b   |> dplyr::mutate(bet = "Place"),
+  backtest_sweep_eachway_2b |> dplyr::mutate(bet = "Each-way")
+) |>
+  dplyr::mutate(bet = factor(bet, levels = c("Place", "Each-way"))) |>
+  ggplot2::ggplot(ggplot2::aes(x = tau, y = roi)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "steelblue", alpha = 0.18) +
+  ggplot2::geom_line(linewidth = 0.7, colour = "steelblue") +
+  ggplot2::facet_wrap(~ bet, scales = "free_y") +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::labs(x = "Ratio threshold (discounted model_prob / market_prob)", y = "ROI") +
   ggplot2::theme_minimal()
 ```

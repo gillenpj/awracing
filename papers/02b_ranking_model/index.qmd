@@ -6,7 +6,7 @@ date: "2026-06-24"
 abstract: |
   Paper 2a established a win-prediction model on UK All-Weather Flat
   handicaps using an extended feature set and race-level interactions.
-  This paper holds that feature set fixed and asks two questions in turn.
+  This paper holds that feature set fixed and asks three questions in turn.
   First (Q1), refitted under a ranking objective — the exploded conditional
   logit, equivalent to maximising the Plackett–Luce likelihood over the
   top-3 finishing order — how well does the model predict that order? We
@@ -26,7 +26,16 @@ abstract: |
   `r sprintf("%+.1f", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_lo)` to
   `r sprintf("%+.1f pp", 100 * targets::tar_read(roi_difference_2b_vs_2a)$ci_hi)`),
   an interval that lies above zero but close to it; both models remain a net
-  loss against the market.
+  loss against the market. Third (Q3), turned into place and each-way bets on
+  the real industry-SP book — the same margin-laden prices the win backtest
+  pays out against — the model's place selections return
+  `r scales::percent(targets::tar_read(backtest_place_2b)$roi, accuracy = 0.1)`,
+  alongside the win backtest's
+  `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
+  and below a bet-everything baseline of
+  `r scales::percent(targets::tar_read(value_bet_baselines_2b)$betall_roi[1], accuracy = 0.1)`;
+  the model's selections return less than indiscriminate betting, consistent
+  with the ranking result.
 format:
   html: default
   pdf:
@@ -72,7 +81,11 @@ tar_load(c(
   backtest_naive_2b_win,
   backtest_sweep_2b_win,
   backtest_naive_w_final,         # 2a win-fitted headline, for the Q2 comparison
-  roi_difference_2b_vs_2a
+  roi_difference_2b_vs_2a,
+  # value-bet application (_03 Q3): place + each-way + their baselines
+  backtest_place_2b,    backtest_sweep_place_2b,
+  backtest_eachway_2b,  backtest_sweep_eachway_2b,
+  value_bet_baselines_2b, place_or_sensitivity_2b
 ))
 ```
 
@@ -81,7 +94,7 @@ tar_load(c(
 Paper 2a fixed the prediction objective as the *win* and asked how far an
 enriched feature set could narrow the gap to the betting market on UK
 All-Weather Flat handicaps. This paper holds that feature set fixed and asks
-two questions in order.
+three questions in order.
 
 **Q1 — ranking performance.** Refitting the same features from scratch under
 a ranking objective — the exploded conditional logit, which maximises the
@@ -101,10 +114,17 @@ win backtest the ranking-fitted model returns a higher (less negative) ROI,
 by a margin a paired bootstrap places above zero though close to it; both
 models remain a net loss against the market.
 
+**Q3 — betting value.** Does the model's place-probability accuracy translate
+into betting value? Turned into place and each-way bets priced on the real
+industry-SP book — the same margin-laden basis as the win backtest — do the
+model's selections return more than betting indiscriminately? They return
+less, and on the place bet the return sits alongside the win backtest's,
+consistent with the ranking result.
+
 @sec-data points to paper 2a for the shared data and feature set and
 constructs the place-market baseline; @sec-exploded-model fits the ranking
-model and re-searches the course×draw block; @sec-evaluation answers Q1 then
-Q2; and @sec-discussion draws the threads together.
+model and re-searches the course×draw block; @sec-evaluation answers Q1, then
+Q2, then Q3; and @sec-discussion draws the threads together.
 
 {{< include _01_data.qmd >}}
 
