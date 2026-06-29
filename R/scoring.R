@@ -316,30 +316,6 @@ run_backtest_sweep <- function(ratio_df, prob_threshold, tau_seq,
   dplyr::left_join(point, ci, by = "tau")
 }
 
-#' Plot ROI vs ratio threshold with bootstrap CI band
-#'
-#' Owen's Figure 9 analogue: x = ratio threshold, y = ROI, point
-#' estimate as a solid line, 90% CI as a shaded ribbon. A horizontal
-#' reference line at zero marks break-even.
-#'
-#' @param sweep_df  Output of `run_backtest_sweep()`.
-#' @return A ggplot object.
-plot_roi_sweep <- function(sweep_df) {
-  ggplot2::ggplot(sweep_df, ggplot2::aes(x = tau, y = roi)) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-    ggplot2::geom_ribbon(
-      ggplot2::aes(ymin = ci_lo, ymax = ci_hi),
-      fill  = "steelblue", alpha = 0.20
-    ) +
-    ggplot2::geom_line(linewidth = 0.8, colour = "steelblue") +
-    ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-    ggplot2::labs(
-      x = "Ratio threshold (model_prob / market_prob)",
-      y = "ROI"
-    ) +
-    ggplot2::theme_minimal()
-}
-
 #' Discounted-Harville market place probabilities (paper 2b)
 #'
 #' Converts over-round-adjusted starting-price *win* probabilities into

@@ -6,8 +6,8 @@ forward plan below.
 
 ## Series status (read this first)
 
-- **Paper 1 — DONE.** *Replicating Owen (2019) on UK All-Weather
-  Flat handicaps, 2006–2015.*
+- **Paper 1 — complete and PUBLISHED.** *Replicating Owen (2019) on
+  UK All-Weather Flat handicaps, 2006–2015* (pinned date 2026-06-06).
   - Source: `papers/01_replication/`
   - Rendered output (committed): `docs/paper1/index.html` and
     `docs/paper1/index.pdf`
@@ -24,27 +24,32 @@ forward plan below.
     the conditional-logit win model (including mixed-logit /
     race-level interactions).* Source:
     `papers/02a_extended_win_model/`. Live at
-    <https://gillenpj.github.io/awracing/paper2a/> (HTML + PDF). One
+    <https://gillenpj.github.io/awracing/paper2a/> (HTML + PDF), pinned
+    date 2026-06-21. One
     headline change from the first draft: the draw×course block is
     reduced per-term to the two significant courses (Kempton,
     Southwell) — Wolverhampton and Lingfield dropped — giving a
     −25.4% backtest ROI. See "Paper 2a plan" and "Paper 2a
     corrections" below.
   - **Paper 2b — complete and PUBLISHED.** *Exploded conditional logit
-    as a ranking model, evaluated on ranking metrics.* Source:
-    `papers/02b_ranking_model/`. Live at
+    as a ranking model, evaluated on ranking metrics; plus a betting
+    application.* Source: `papers/02b_ranking_model/`. Live at
     <https://gillenpj.github.io/awracing/paper2b/> (HTML + PDF), pinned
-    date 2026-06-29. The paper is built around **two questions in
+    date 2026-06-29. The paper is built around **three questions in
     order**: (Q1) under a ranking objective, how well does the model
     predict the top-3 finishing order? — it beats chance but the
     discounted-Harville place market scores higher on both metrics
     (P1_rank 0.00402 model vs 0.00543 market; Brier_place 0.2013 vs
-    0.1875); and (Q2) does depth-3 ranking supervision make a better
+    0.1875); (Q2) does depth-3 ranking supervision make a better
     *win*-picker than 2a's depth-1 fit? — yes, −17.4% vs −25.4% ROI,
     a paired bootstrap difference of +8.0 pp [+1.0, +14.8] (90% CI
     excludes zero), the first statistically distinguishable improvement
-    in the series, though still a loss to the market. See "Paper 2b
-    plan" below.
+    in the series, though still a loss to the market; and (Q3) does that
+    place accuracy translate into betting value? — no: priced on the real
+    industry-SP book (place + each-way only), the model's place
+    selections return −17.6% (vs a −14.1% bet-all baseline), below both
+    a fair book and indiscriminate betting, consistent with Q1. See
+    "Paper 2b plan" below.
   - **Pre-split draft archived.** `papers/02_extended_features_ARCHIVE/`
     is the combined pre-split paper-2 draft, kept for reference (not
     rendered).
@@ -515,12 +520,12 @@ observations are documented in §4.3 of paper 1.
   backtest diagnostics.
 - **Mirror paper-1 paper structure** under
   `papers/02a_extended_win_model/`. Reuse the layout, helpers, and
-  rendering bootstrap. (Done — scaffolded; section bodies are stubs.)
+  rendering bootstrap. (Done — complete and published.)
 
 ## Paper 2b plan
 Exploded conditional logit as a **ranking** model, then its win
-performance as a byproduct. See `papers/02b_ranking_model/`. **Two
-questions, in order.** *(Supersedes the earlier "wrong objective, better
+performance as a byproduct, then a betting application. See
+`papers/02b_ranking_model/`. **Three questions, in order.** *(Supersedes the earlier "wrong objective, better
 ROI" framing, which was written against pre-rebuild numbers on a stale
 draw spec; the exploded fits were rebuilt after the 2a draw-block
 correction.)*
