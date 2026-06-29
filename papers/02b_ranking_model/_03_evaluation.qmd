@@ -232,10 +232,18 @@ and the bootstrap interval is correspondingly tight. The sweep
 the place bets the model most strongly prefers to the market are the ones it
 does worst on.
 
-**Each-way.** The each-way strategy returns
-`r roi_pct(backtest_eachway_2b$roi)`, a deeper loss than place: the standard
-each-way terms — the place leg paying one fifth of the win odds — compound the
-SP margin, so the structural cost is higher before any selection effect.
+**Each-way.** Backing every horse each-way loses
+`r roi_pct(backtest_betall_eachway$roi)` — the SP margin compounded by the
+1/5 place terms, which in large-field All-Weather handicaps typically pay less
+than the fair place price. The strategy itself returns
+`r roi_pct(backtest_eachway_2b$roi)`, about
+`r round(100 * (backtest_betall_eachway$roi - backtest_eachway_2b$roi))` pp
+below that floor: unlike the place result, where the selections barely added
+to the structural loss, the each-way selections actively make things worse.
+This is consistent with Q1 — the model's place probabilities are less accurate
+than the market's — and that mis-ranking tells most in a bet that penalises
+place mispricing twice: once through the selection ratio, once through the
+place payout.
 
 ```{r}
 #| label: fig-value-sweeps

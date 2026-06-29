@@ -622,6 +622,13 @@ list(
     backtest_favourite_win,
     run_favourite_win_backtest(test_predictions_2b)
   ),
+  # Zero-skill each-way floor: back every horse each-way at real SP (the same
+  # 1/5-odds top-3, stake-2 payout build_eachway_value_bets() uses), no
+  # selection — bet-all over the each-way bet units.
+  tar_target(
+    backtest_betall_eachway,
+    run_value_backtest(value_bets_eachway_2b, prob_floor = -Inf, ratio_threshold = -Inf)
+  ),
 
   # Non-exploded train/test data carrying the draw-course columns (drops the
   # one draw-less race). Consumed by paper 2a's win interaction fits below

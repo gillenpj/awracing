@@ -574,7 +574,11 @@ correction.)*
   industry-SP book** (observed ~16% over-round), same basis as Q2 — the
   question is simply *is the strategy profitable?* **Neither is:** place
   −17.6% (with a race-level bootstrap 90% CI), alongside Q2's win −17.4%;
-  each-way −27.6% (the 1/5 each-way terms compound the SP margin). The Q3
+  each-way −27.6% (the 1/5 each-way terms compound the SP margin; the
+  `_03` each-way paragraph now quotes the bet-all each-way floor −18.5%
+  (`backtest_betall_eachway`) and notes the selections sit ~9pp *below* it —
+  unlike place, the each-way selections actively worsen the structural loss).
+  The Q3
   table is Q2-style (ROI + bootstrap CI) — the earlier bet-all and fair-book
   reference columns were dropped as redundant on the SP basis (and the place
   over-round-sensitivity target removed with them). `_04` contextualises with
@@ -588,7 +592,7 @@ correction.)*
   margin (place fair-book near breakeven) — which **motivates the early-market /
   Betfair convergence direction** (lower friction → smaller headwind), not a
   profitability claim. Targets in `R/value_bets_p2b.R`, `value_bet_baselines_2b`,
-  `backtest_betall_win`, `backtest_favourite_win`.
+  `backtest_betall_win`, `backtest_favourite_win`, `backtest_betall_eachway`.
 - **qmd structure:** `_01` data pointer + discounted-Harville market
   baseline; `_02` model build + independent draw search + Wolverhampton;
   `_03` Q1 (ranking vs market), Q2 (win/ROI vs 2a), Q3 (place/each-way
