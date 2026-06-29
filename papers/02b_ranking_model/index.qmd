@@ -78,7 +78,9 @@ tar_load(c(
   # value-bet application (_03 Q3): place + each-way + their baselines
   backtest_place_2b,    backtest_sweep_place_2b,
   backtest_eachway_2b,  backtest_sweep_eachway_2b,
-  value_bet_baselines_2b
+  value_bet_baselines_2b,
+  # context benchmarks for the _04 discussion
+  backtest_betall_win, backtest_favourite_win
 ))
 ```
 

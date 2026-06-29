@@ -577,6 +577,62 @@ bootstrap_roi_difference <- function(ratio_df_a, ratio_df_b,
   )
 }
 
+#' Zero-skill SP baseline: back every test runner at SP (paper 2b context)
+#'
+#' Backs every runner in the test set at its starting price, flat one-unit
+#' stake — no selection at all. The ROI is the structural floor any SP bettor
+#' faces from the over-round alone, before skill; it is approximately
+#' \eqn{-(B-1)/B} for a book summing to \eqn{B}. Used in paper 2b's discussion
+#' to contextualise the win backtest's loss.
+#'
+#' @param test_predictions Per-runner test tibble carrying `won` and
+#'   `starting_price_decimal` (e.g. `test_predictions_2b`).
+#' @return One-row tibble: `n_bets`, `n_wins`, `gross_return`, `profit`, `roi`.
+run_betall_win_backtest <- function(test_predictions) {
+  bets <- test_predictions |>
+    dplyr::filter(!is.na(starting_price_decimal), starting_price_decimal > 1)
+  n     <- nrow(bets)
+  gross <- sum(dplyr::if_else(bets$won == 1L, bets$starting_price_decimal, 0))
+  tibble::tibble(
+    n_bets       = as.integer(n),
+    n_wins       = as.integer(sum(bets$won == 1L)),
+    gross_return = gross,
+    profit       = gross - n,
+    roi          = (gross - n) / n
+  )
+}
+
+#' Back-the-favourite SP baseline (paper 2b context)
+#'
+#' Backs the SP favourite (lowest decimal odds) in each test race at SP, flat
+#' one-unit stake. Ties for favourite are broken by the lower `runner_id`, and
+#' the number of tied-favourite races is reported (`n_tie_races`) so the
+#' tie-handling can be judged.
+#'
+#' @param test_predictions As `run_betall_win_backtest()` (also needs
+#'   `race_id`, `runner_id`).
+#' @return One-row tibble: `n_bets`, `n_wins`, `gross_return`, `profit`, `roi`,
+#'   `n_tie_races`.
+run_favourite_win_backtest <- function(test_predictions) {
+  fav <- test_predictions |>
+    dplyr::filter(!is.na(starting_price_decimal), starting_price_decimal > 1) |>
+    dplyr::group_by(race_id) |>
+    dplyr::mutate(n_at_min = sum(starting_price_decimal == min(starting_price_decimal))) |>
+    dplyr::arrange(starting_price_decimal, runner_id, .by_group = TRUE) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup()
+  n     <- nrow(fav)
+  gross <- sum(dplyr::if_else(fav$won == 1L, fav$starting_price_decimal, 0))
+  tibble::tibble(
+    n_bets       = as.integer(n),
+    n_wins       = as.integer(sum(fav$won == 1L)),
+    gross_return = gross,
+    profit       = gross - n,
+    roi          = (gross - n) / n,
+    n_tie_races  = as.integer(sum(fav$n_at_min > 1))
+  )
+}
+
 # -- Generic value-bet backtest (paper 2b exotic markets) -------------------
 # A small generalisation of run_backtest() / run_backtest_sweep() /
 # bootstrap_roi() for the place / each-way / exacta / trifecta value bets,

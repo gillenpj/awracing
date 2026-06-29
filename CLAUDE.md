@@ -577,12 +577,18 @@ correction.)*
   each-way −27.6% (the 1/5 each-way terms compound the SP margin). The Q3
   table is Q2-style (ROI + bootstrap CI) — the earlier bet-all and fair-book
   reference columns were dropped as redundant on the SP basis (and the place
-  over-round-sensitivity target removed with them). The zero-margin fair-book
-  place figure (−3.6%, near breakeven) survives only as a discussion point in
-  `_04`: the losses are predominantly the ~16% SP margin, not mis-selection,
-  which **motivates the early-market / Betfair convergence direction** (lower
-  friction → smaller structural headwind). Targets in `R/value_bets_p2b.R` +
-  `value_bet_baselines_2b`.
+  over-round-sensitivity target removed with them). `_04` contextualises with
+  the zero-margin fair-book place figure (−3.6%, near breakeven) plus two SP
+  benchmarks on the same test set: **bet-all win −22.8%** (the zero-skill
+  over-round + favourite–longshot-bias floor, worse than the ~14% the
+  over-round alone implies) and **back-the-favourite −6.6%** (a trivial
+  heuristic that *beats* the model's −17.4%; ties = 9.1% of races, broken by
+  lower runner_id). The honest reading: the model beats indiscriminate betting
+  but trails the favourite, and the residual loss is predominantly the ~16% SP
+  margin (place fair-book near breakeven) — which **motivates the early-market /
+  Betfair convergence direction** (lower friction → smaller headwind), not a
+  profitability claim. Targets in `R/value_bets_p2b.R`, `value_bet_baselines_2b`,
+  `backtest_betall_win`, `backtest_favourite_win`.
 - **qmd structure:** `_01` data pointer + discounted-Harville market
   baseline; `_02` model build + independent draw search + Wolverhampton;
   `_03` Q1 (ranking vs market), Q2 (win/ROI vs 2a), Q3 (place/each-way

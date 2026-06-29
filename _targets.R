@@ -611,6 +611,17 @@ list(
     build_value_bet_baselines(value_bets_place_2b, value_bets_eachway_2b,
                               value_bet_runners_2b)
   ),
+  # Context benchmarks for the _04 discussion: the zero-skill SP floor
+  # (back every runner) and back-the-favourite, both on the same test set as
+  # the Q2 win backtest, for direct comparability with the model's win ROI.
+  tar_target(
+    backtest_betall_win,
+    run_betall_win_backtest(test_predictions_2b)
+  ),
+  tar_target(
+    backtest_favourite_win,
+    run_favourite_win_backtest(test_predictions_2b)
+  ),
 
   # Non-exploded train/test data carrying the draw-course columns (drops the
   # one draw-less race). Consumed by paper 2a's win interaction fits below

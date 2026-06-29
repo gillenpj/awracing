@@ -8,6 +8,8 @@ p_rank   <- summary(model_2b_exploded_draw_final)$CoefTable["stall_x_wolverhampt
 roi_gain <- sprintf("%+.1f pp", 100 * roi_difference_2b_vs_2a$diff_point)
 or_over_disc   <- scales::percent(value_bet_baselines_2b$over_round[1] - 1, accuracy = 1)
 place_fair_roi <- value_bet_baselines_2b$model_fair[value_bet_baselines_2b$bet_type == "place"]
+fav_tie_pct    <- scales::percent(backtest_favourite_win$n_tie_races /
+                                  backtest_favourite_win$n_bets, accuracy = 0.1)
 ```
 
 The exploded model predicts the top-3 finishing order with skill clearly
@@ -45,18 +47,27 @@ non-linearities and feature interactions directly — among them a horse's
 going affinity, which the conditional logit can express only through explicit
 interaction terms — without the modeller specifying each one in advance.
 
-The betting results reframe the headline losses. The win model's
-`r scales::percent(backtest_naive_2b_win$roi, accuracy = 0.1)` is
-predominantly the SP margin — an over-round of about `r or_over_disc` on these
-races — not systematic mis-selection: against a zero-margin fair book the
+The betting results put the headline losses in context. Backing every runner
+at SP loses `r scales::percent(backtest_betall_win$roi, accuracy = 0.1)` —
+worse than the ~`r or_over_disc` over-round alone, the favourite–longshot bias
+making longer-priced horses especially costly — while backing the favourite in
+every race returns `r scales::percent(backtest_favourite_win$roi, accuracy = 0.1)`
+on `r format(backtest_favourite_win$n_bets, big.mark = ",")` races[^fav-ties];
+the win model's `r scales::percent(backtest_naive_2b_win$roi, accuracy = 0.1)`
+sits between them, beating indiscriminate betting but short of the trivial
+favourite strategy. That the residual is mostly margin rather than
+mis-selection shows in the place result: against a zero-margin fair book the
 model's place selections return
 `r scales::percent(place_fair_roi, accuracy = 0.1)`, close to breakeven.
-Against a lower-friction market — a Betfair exchange, where commission is
-around 5% rather than a ~16% SP over-round — the model's selection skill would
-face a much smaller structural headwind. This motivates the early-market
-convergence strategy as the natural live-trading direction: the model is not
-fundamentally broken, it is being tested against a margin it cannot currently
-overcome.
+Against a lower-friction market — a Betfair exchange, ~5% commission versus a
+~`r or_over_disc` SP over-round — that structural headwind shrinks sharply,
+which motivates the early-market convergence strategy as the natural
+live-trading direction: not that the model is already profitable, but that it
+is being tested against a margin it cannot currently overcome.
+
+[^fav-ties]: Ties for favourite — the lowest decimal starting price shared by
+two or more runners — occur in `r fav_tie_pct` of test races and are broken
+here by taking the lower-numbered runner.
 
 Evaluating the exotic markets — the exacta and trifecta — is left to future
 work: their real prices are the CSF and Tote-pool dividends, which this paper
