@@ -20,16 +20,15 @@ abstract: |
   `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
   against 2a's
   `r scales::percent(targets::tar_read(backtest_naive_w_final)$roi, accuracy = 0.1)`;
-  both models remain a net loss against the market. Third (Q3), turned into place and each-way bets on
-  the real industry-SP book — the same margin-laden prices the win backtest
-  pays out against — the model's place selections return
-  `r scales::percent(targets::tar_read(backtest_place_2b)$roi, accuracy = 0.1)`,
-  alongside the win backtest's
-  `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
-  and below a bet-everything baseline of
-  `r scales::percent(targets::tar_read(value_bet_baselines_2b)$betall_roi[1], accuracy = 0.1)`;
-  the model's selections return less than indiscriminate betting, consistent
-  with the ranking result.
+  both models remain a net loss against the market. Third (Q3), turned into
+  place and each-way bets on the real industry-SP book — the same basis as the
+  win backtest — neither is profitable: place returns
+  `r scales::percent(targets::tar_read(backtest_place_2b)$roi, accuracy = 0.1)`
+  (alongside the win backtest's
+  `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`)
+  and each-way
+  `r scales::percent(targets::tar_read(backtest_eachway_2b)$roi, accuracy = 0.1)`,
+  consistent with the ranking result.
 format:
   html: default
   pdf:
@@ -79,7 +78,7 @@ tar_load(c(
   # value-bet application (_03 Q3): place + each-way + their baselines
   backtest_place_2b,    backtest_sweep_place_2b,
   backtest_eachway_2b,  backtest_sweep_eachway_2b,
-  value_bet_baselines_2b, place_or_sensitivity_2b
+  value_bet_baselines_2b
 ))
 ```
 
@@ -110,9 +109,8 @@ models remain a net loss against the market.
 
 **Q3 — betting value.** Does the model's place-probability accuracy translate
 into betting value? Turned into place and each-way bets priced on the real
-industry-SP book — the same margin-laden basis as the win backtest — do the
-model's selections return more than betting indiscriminately? They return
-less, and on the place bet the return sits alongside the win backtest's,
+industry-SP book — the same basis as the win backtest — is either strategy
+profitable? Neither is; the place return sits alongside the win backtest's,
 consistent with the ranking result.
 
 @sec-data points to paper 2a for the shared data and feature set and

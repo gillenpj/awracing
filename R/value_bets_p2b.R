@@ -77,24 +77,21 @@ build_value_bet_runners <- function(test_predictions_2b, qualifying_runners) {
 #' Place value bets: top-3, real-SP payout (paper 2b)
 #'
 #' Selection (discounted Harville place ratio) is unchanged; the payout is the
-#' real SP book. `or_scale` multiplies the raw SP win probabilities before the
-#' payout Harville (1 = observed book), used only for the over-round
-#' sensitivity check — it does not touch selection.
+#' real SP book.
 #'
 #' @param runners Output of `build_value_bet_runners()`.
 #' @param alpha_2nd,alpha_3rd Discounted-Harville place exponents (selection).
 #' @param prob_floor Model place-probability floor.
-#' @param or_scale Multiplier on the raw SP win book for the payout (default 1).
 #' @return Bet units: `race_id`, `horse_ref`, `model_prob`, `market_prob`,
 #'   `ratio`, `stake`, `ret` (real-SP payout), `ret_fair` (fair-book payout).
 build_place_value_bets <- function(runners,
                                    alpha_2nd = 0.80, alpha_3rd = 0.65,
-                                   prob_floor = 0, or_scale = 1) {
+                                   prob_floor = 0) {
   clean <- runners |>
     dplyr::group_by(race_id) |>
     dplyr::filter(sum(placed) == 3L) |>
     dplyr::ungroup() |>
-    dplyr::mutate(raw_win = or_scale / starting_price_decimal)
+    dplyr::mutate(raw_win = 1 / starting_price_decimal)
 
   # selection probabilities: discounted Harville (unchanged)
   mp <- compute_harville_place_probs(
@@ -261,38 +258,4 @@ build_value_bet_baselines <- function(value_bets_place_2b, value_bets_eachway_2b
                       max_pay(value_bets_eachway_2b, floors[["eachway"]])),
     over_round    = over_round
   )
-}
-
-#' Place over-round sensitivity (paper 2b)
-#'
-#' Re-prices the place payout at the observed average SP over-round and at
-#' +/- `delta` around it (the win book scaled uniformly via `or_scale`), and
-#' reports the naive-rule model ROI, the bet-all baseline, and their gap at
-#' each level. Selection is untouched (the scale acts only on the payout), so
-#' this isolates how the margin level moves the result — a robustness note,
-#' not a paper sweep.
-#'
-#' @param value_bet_runners_2b Base per-runner test tibble.
-#' @param floor Model place-probability floor (matches the place backtest).
-#' @param delta Over-round shift in book-sum points (default 0.05 = 5pp).
-#' @return Tibble, one row per level: `or_level` (book sum), `model_roi`,
-#'   `betall_roi`, `gap` (model − bet-all).
-build_place_or_sensitivity <- function(value_bet_runners_2b,
-                                       floor = 0.10, delta = 0.05) {
-  M <- value_bet_runners_2b |>
-    dplyr::group_by(race_id) |>
-    dplyr::filter(sum(placed) == 3L) |>
-    dplyr::summarise(book = sum(1 / starting_price_decimal), .groups = "drop") |>
-    dplyr::pull(book) |>
-    mean()
-
-  one <- function(d) {
-    b <- build_place_value_bets(value_bet_runners_2b, or_scale = (M + d) / M)
-    model  <- run_value_backtest(b, prob_floor = floor, ratio_threshold = 1.3)$roi
-    betall <- run_value_backtest(b, prob_floor = -Inf, ratio_threshold = -Inf)$roi
-    tibble::tibble(or_level = M + d, model_roi = model,
-                   betall_roi = betall, gap = model - betall)
-  }
-
-  dplyr::bind_rows(one(-delta), one(0), one(delta))
 }

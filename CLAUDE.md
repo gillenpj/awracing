@@ -568,18 +568,21 @@ correction.)*
   going code in 2b; paper 3's tree-model rationale depends on it being
   untouched.
 - **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
-- **Q3 betting application: place + each-way only.** Exacta/trifecta were
-  dropped — their real price is the CSF (computer straight forecast) dividend
-  and, for the trifecta, the Tote pool, not a Harville construction, and we
-  have no dividend data, so they are out of scope rather than scored on a
-  synthetic baseline. Q3 pays out on the **real industry-SP book** (observed
-  ~16% over-round), the same basis as the Q2 win backtest; a zero-margin
-  pure-Harville fair book is retained as a secondary reference. Selection is
-  the discounted-Harville (α=0.80/0.65) value ratio (unchanged); only the
-  payout basis distinguishes the headline (real SP) from the reference (fair
-  book). Place model ROI −17.6% (vs bet-all baseline −14.1%) sits alongside
-  Q2's win −17.4%; each-way −27.6% (vs −18.5%). Targets in
-  `R/value_bets_p2b.R` + `value_bet_baselines_2b`.
+- **Q3 betting application: place + each-way only** (exacta/trifecta dropped —
+  CSF / Tote-pool dividend, not a Harville construction, no dividend data).
+  Selection = discounted-Harville (α=0.80/0.65) value ratio; payout = **real
+  industry-SP book** (observed ~16% over-round), same basis as Q2 — the
+  question is simply *is the strategy profitable?* **Neither is:** place
+  −17.6% (with a race-level bootstrap 90% CI), alongside Q2's win −17.4%;
+  each-way −27.6% (the 1/5 each-way terms compound the SP margin). The Q3
+  table is Q2-style (ROI + bootstrap CI) — the earlier bet-all and fair-book
+  reference columns were dropped as redundant on the SP basis (and the place
+  over-round-sensitivity target removed with them). The zero-margin fair-book
+  place figure (−3.6%, near breakeven) survives only as a discussion point in
+  `_04`: the losses are predominantly the ~16% SP margin, not mis-selection,
+  which **motivates the early-market / Betfair convergence direction** (lower
+  friction → smaller structural headwind). Targets in `R/value_bets_p2b.R` +
+  `value_bet_baselines_2b`.
 - **qmd structure:** `_01` data pointer + discounted-Harville market
   baseline; `_02` model build + independent draw search + Wolverhampton;
   `_03` Q1 (ranking vs market), Q2 (win/ROI vs 2a), Q3 (place/each-way

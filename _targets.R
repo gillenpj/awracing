@@ -611,12 +611,6 @@ list(
     build_value_bet_baselines(value_bets_place_2b, value_bets_eachway_2b,
                               value_bet_runners_2b)
   ),
-  # Place over-round sensitivity (+/-5pp around the observed book): shows the
-  # model - baseline gap is insensitive to the exact margin level.
-  tar_target(
-    place_or_sensitivity_2b,
-    build_place_or_sensitivity(value_bet_runners_2b)
-  ),
 
   # Non-exploded train/test data carrying the draw-course columns (drops the
   # one draw-less race). Consumed by paper 2a's win interaction fits below

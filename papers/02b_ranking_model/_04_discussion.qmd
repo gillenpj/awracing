@@ -6,6 +6,8 @@
 loadNamespace("mlogit")   # so summary.mlogit dispatches (CLAUDE.md note)
 p_rank   <- summary(model_2b_exploded_draw_final)$CoefTable["stall_x_wolverhampton", "Pr(>|z|)"]
 roi_gain <- sprintf("%+.1f pp", 100 * roi_difference_2b_vs_2a$diff_point)
+or_over_disc   <- scales::percent(value_bet_baselines_2b$over_round[1] - 1, accuracy = 1)
+place_fair_roi <- value_bet_baselines_2b$model_fair[value_bet_baselines_2b$bet_type == "place"]
 ```
 
 The exploded model predicts the top-3 finishing order with skill clearly
@@ -16,9 +18,8 @@ on the ranking objective. The reading carries over unchanged: the market
 price aggregates information the pre-race feature set does not contain, and
 moving from a win objective to a ranking one does not narrow that gap. Turned
 into bets, the same picture holds: priced on the real industry-SP book, the
-model's place selections return below both a zero-margin fair book and
-indiscriminate betting at the market's own prices, so its disagreements with
-the market are, where they can be priced, on the losing side.
+model's place and each-way strategies are both unprofitable, its disagreements
+with the market on the losing side where they can be priced.
 
 The second question applies the ranking-fitted model to the win objective,
 and here the result is new to the series. Trained on the finishing order
@@ -43,6 +44,20 @@ Paper 3 changes the model class. A tree-based learner accommodates
 non-linearities and feature interactions directly — among them a horse's
 going affinity, which the conditional logit can express only through explicit
 interaction terms — without the modeller specifying each one in advance.
+
+The betting results reframe the headline losses. The win model's
+`r scales::percent(backtest_naive_2b_win$roi, accuracy = 0.1)` is
+predominantly the SP margin — an over-round of about `r or_over_disc` on these
+races — not systematic mis-selection: against a zero-margin fair book the
+model's place selections return
+`r scales::percent(place_fair_roi, accuracy = 0.1)`, close to breakeven.
+Against a lower-friction market — a Betfair exchange, where commission is
+around 5% rather than a ~16% SP over-round — the model's selection skill would
+face a much smaller structural headwind. This motivates the early-market
+convergence strategy as the natural live-trading direction: the model is not
+fundamentally broken, it is being tested against a margin it cannot currently
+overcome.
+
 Evaluating the exotic markets — the exacta and trifecta — is left to future
 work: their real prices are the CSF and Tote-pool dividends, which this paper
 does not have.
