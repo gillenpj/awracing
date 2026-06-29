@@ -2,7 +2,7 @@
 title: "Ranking models for UK All-Weather Flat handicaps: the exploded conditional logit and the place market"
 subtitle: "Paper 2b in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: "2026-06-24"
+date: "2026-06-29"
 abstract: |
   Paper 2a established a win-prediction model on UK All-Weather Flat
   handicaps using an extended feature set and race-level interactions.

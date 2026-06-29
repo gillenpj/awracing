@@ -34,7 +34,7 @@ forward plan below.
     as a ranking model, evaluated on ranking metrics.* Source:
     `papers/02b_ranking_model/`. Live at
     <https://gillenpj.github.io/awracing/paper2b/> (HTML + PDF), pinned
-    date 2026-06-24. The paper is built around **two questions in
+    date 2026-06-29. The paper is built around **two questions in
     order**: (Q1) under a ranking objective, how well does the model
     predict the top-3 finishing order? — it beats chance but the
     discounted-Harville place market scores higher on both metrics
@@ -581,7 +581,7 @@ correction.)*
   betting value, real-SP basis) as **separate** subsections; `_04`
   discussion (three paragraphs, three-question framing);
   `_appx_derivations` Plackett–Luce / exploded-logit + Harville derivation.
-- **Status: COMPLETE and PUBLISHED** (2026-06-24, HTML + PDF). Live at
+- **Status: COMPLETE and PUBLISHED** (2026-06-29, HTML + PDF). Live at
   <https://gillenpj.github.io/awracing/paper2b/>; landing-page entry and
   `docs/paper2b/` committed. Both market baselines use discounted Harville
   (α=0.80/0.65); model P1_rank market figure is 0.00543.
