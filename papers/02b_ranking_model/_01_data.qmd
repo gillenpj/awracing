@@ -41,6 +41,3 @@ corrects it by replacing each win probability $p_k$ with $p_k^{\alpha}$
 smaller $\alpha$ at deeper positions; we use $\alpha = 0.80$ for second place
 and $\alpha = 0.65$ for third, Lo & Bacon-Shone's recommended values for
 starting-price inputs.
-
-<!-- Implementation note to be added: compute_harville_place_probs() in
-     R/scoring.R. -->
