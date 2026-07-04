@@ -760,3 +760,156 @@ run_value_backtest_sweep <- function(bet_df, prob_floor, tau_seq,
 
   dplyr::left_join(point, ci, by = "tau")
 }
+
+# -- Single-bet-per-race backtests (series-wide, papers 2a onwards) ----------
+# The Owen naive rule can back several horses per race; the single-bet rule
+# instead backs the one qualifying horse with the highest model win probability
+# — a more realistic strategy. select_single_win_bet() does the selection,
+# single_bet_units() turns it into per-race stake/return units (win settled
+# directly at SP, place / each-way settled from a value-bet payout tibble),
+# run_single_*_backtest() summarise, and run_single_sweep() adds a race-level
+# bootstrap CI across the ratio threshold.
+
+#' Select one bet per race: the highest model-win-prob qualifier
+#'
+#' Among the horses in each race that clear Owen's naive win rule (model win
+#' probability > `prob_threshold` and model / market win ratio > `ratio_threshold`),
+#' keep the single horse with the highest model win probability (ties broken by
+#' the lower `runner_id`). Races with no qualifier contribute no row.
+#'
+#' @param ratio_df Per-runner win ratio tibble with `model_prob`, `ratio`,
+#'   `won`, `starting_price_decimal`, `race_id`, `runner_id`, `horse_ref`
+#'   (e.g. `model_market_ratio_2b_win` or `model_market_ratio_w_final`).
+#' @param prob_threshold,ratio_threshold Owen's naive win thresholds.
+#' @return One row per qualifying race (the selected horse).
+select_single_win_bet <- function(ratio_df, prob_threshold = 0.15,
+                                   ratio_threshold = 1.3) {
+  ratio_df |>
+    dplyr::filter(model_prob > prob_threshold, ratio > ratio_threshold) |>
+    dplyr::group_by(race_id) |>
+    dplyr::arrange(dplyr::desc(model_prob), runner_id, .by_group = TRUE) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup()
+}
+
+#' Per-race stake / return units for the single-bet rule
+#'
+#' Win bets settle directly (return the SP on a winner, else zero); place and
+#' each-way bets settle from the real-SP payout already carried by a value-bet
+#' tibble (`value_bets_place_2b` / `value_bets_eachway_2b`), joined on
+#' `race_id` / `horse_ref`.
+#'
+#' @param ratio_df Win ratio tibble (for the selection).
+#' @param value_bets_bet_units `NULL` for a win bet, otherwise the value-bet
+#'   payout tibble carrying `stake` and the real-SP `ret`.
+#' @param prob_threshold,ratio_threshold Owen's naive win thresholds.
+#' @return Tibble of per-race bet units: `race_id`, `stake`, `ret`.
+single_bet_units <- function(ratio_df, value_bets_bet_units = NULL,
+                             prob_threshold = 0.15, ratio_threshold = 1.3) {
+  sel <- select_single_win_bet(ratio_df, prob_threshold, ratio_threshold)
+  if (is.null(value_bets_bet_units)) {
+    dplyr::transmute(
+      sel, race_id, stake = 1,
+      ret = dplyr::if_else(won == 1L, starting_price_decimal, 0)
+    )
+  } else {
+    sel |>
+      dplyr::select(race_id, horse_ref) |>
+      dplyr::inner_join(
+        dplyr::select(value_bets_bet_units, race_id, horse_ref, stake, ret),
+        by = c("race_id", "horse_ref")
+      )
+  }
+}
+
+#' Summarise per-race single-bet units into a one-row backtest result
+#'
+#' @param bets Output of `single_bet_units()`.
+#' @return One-row tibble: `n_bets`, `n_wins`, `total_stake`, `gross_return`,
+#'   `profit`, `roi` (NA if no bets).
+summarise_single_bets <- function(bets) {
+  n     <- nrow(bets)
+  ts    <- sum(bets$stake)
+  gross <- sum(bets$ret)
+  drop1 <- if (n <= 1L) NA_real_ else {
+    keep <- dplyr::slice(bets, -which.max(bets$ret))
+    (sum(keep$ret) - sum(keep$stake)) / sum(keep$stake)
+  }
+  tibble::tibble(
+    n_bets        = as.integer(n),
+    n_wins        = as.integer(sum(bets$ret > 0)),
+    total_stake   = ts,
+    gross_return  = gross,
+    profit        = gross - ts,
+    roi           = if (n == 0L) NA_real_ else (gross - ts) / ts,
+    roi_drop_top1 = drop1
+  )
+}
+
+#' Single-bet-per-race win backtest
+#'
+#' @param ratio_df Win ratio tibble.
+#' @param prob_threshold,ratio_threshold Owen's naive win thresholds.
+#' @return One-row backtest tibble (see `summarise_single_bets()`).
+run_single_win_backtest <- function(ratio_df, prob_threshold = 0.15,
+                                    ratio_threshold = 1.3) {
+  summarise_single_bets(
+    single_bet_units(ratio_df, NULL, prob_threshold, ratio_threshold)
+  )
+}
+
+#' Single-bet-per-race place / each-way backtest
+#'
+#' @param ratio_df Win ratio tibble (for the selection).
+#' @param value_bets_bet_units Value-bet payout tibble (place or each-way).
+#' @param prob_threshold,ratio_threshold Owen's naive win thresholds.
+#' @return One-row backtest tibble.
+run_single_settled_backtest <- function(ratio_df, value_bets_bet_units,
+                                        prob_threshold = 0.15,
+                                        ratio_threshold = 1.3) {
+  summarise_single_bets(
+    single_bet_units(ratio_df, value_bets_bet_units, prob_threshold, ratio_threshold)
+  )
+}
+
+#' Single-bet ROI sweep across the ratio threshold, with bootstrap CI
+#'
+#' Point ROI plus a race-level bootstrap 90% CI (each race contributes one bet)
+#' at each `tau`, the model-probability floor held fixed. Seed set once so the
+#' sweep is reproducible, matching the multi-bet sweep style.
+#'
+#' @param ratio_df Win ratio tibble.
+#' @param value_bets_bet_units `NULL` for win, else the place / each-way payout
+#'   tibble.
+#' @param tau_seq Ratio thresholds to sweep.
+#' @param prob_threshold Model win-probability floor, held fixed.
+#' @param n_boot,seed Bootstrap replicate count and RNG seed.
+#' @return Long tibble: `tau`, `n_bets`, `roi`, `ci_lo`, `ci_hi`.
+run_single_sweep <- function(ratio_df, value_bets_bet_units = NULL,
+                             tau_seq = seq(0.9, 2.0, by = 0.05),
+                             prob_threshold = 0.15, n_boot = 2000L, seed = 42L) {
+  set.seed(seed)
+  purrr::map_dfr(tau_seq, function(tau) {
+    bets <- single_bet_units(ratio_df, value_bets_bet_units, prob_threshold, tau)
+    n    <- nrow(bets)
+    if (n == 0L) {
+      return(tibble::tibble(tau = tau, n_bets = 0L, roi = NA_real_,
+                            ci_lo = NA_real_, ci_hi = NA_real_))
+    }
+    st    <- bets$stake
+    rt    <- bets$ret
+    total <- sum(st)
+    boot <- purrr::map_dbl(seq_len(n_boot), function(b) {
+      idx <- sample.int(n, n, replace = TRUE)
+      s   <- sum(st[idx])
+      if (s == 0) NA_real_ else (sum(rt[idx]) - s) / s
+    })
+    tibble::tibble(
+      tau    = tau,
+      n_bets = n,
+      roi    = (sum(rt) - total) / total,
+      ci_lo  = stats::quantile(boot, 0.05, na.rm = TRUE, names = FALSE),
+      ci_hi  = stats::quantile(boot, 0.95, na.rm = TRUE, names = FALSE)
+    )
+  })
+}

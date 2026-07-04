@@ -205,7 +205,7 @@ build_eachway_value_bets <- function(runners,
 #'   `max_payout`, `over_round`.
 build_value_bet_baselines <- function(value_bets_place_2b, value_bets_eachway_2b,
                                       value_bet_runners_2b,
-                                      floors = c(place = 0.10, eachway = 0.10)) {
+                                      floors = c(place = 0.15, eachway = 0.15)) {
   roi_on <- function(b, retcol, floor, thr) {
     sel <- dplyr::filter(b, model_prob > floor, ratio > thr)
     if (nrow(sel) == 0L) return(NA_real_)
@@ -259,3 +259,5 @@ build_value_bet_baselines <- function(value_bets_place_2b, value_bets_eachway_2b
     over_round    = over_round
   )
 }
+
+# Single-bet-per-race backtests live in R/scoring.R (series-wide, generic).

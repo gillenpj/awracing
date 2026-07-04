@@ -70,6 +70,8 @@ tar_load(c(
 ))
 ```
 
+*Revised 2026-07-03.*^[This revision adds a clarification of Owen's betting-selection rule: it can qualify more than one horse per race, and this paper backs all qualifiers.]
+
 # Introduction {#sec-intro}
 
 Modelling the outcome of a horse race is a long-running problem in

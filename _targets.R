@@ -548,7 +548,7 @@ list(
   ),
   tar_target(
     backtest_sweep_2b_win,
-    run_backtest_sweep(model_market_ratio_2b_win, prob_threshold = 0.13,
+    run_backtest_sweep(model_market_ratio_2b_win, prob_threshold = 0.15,
                        tau_seq = seq(0.9, 2.0, by = 0.05), n_boot = 2000L, seed = 42L)
   ),
   tar_target(
@@ -568,7 +568,7 @@ list(
   # is the CSF / Tote-pool dividend, not a Harville construction, and we have
   # no dividend data. value_bet_runners_2b is the base (complete win vectors +
   # SP); each builder needs a clean 3-horse place set (each-way also a unique
-  # winner). Model place-probability floor 0.10.
+  # winner). Model place-probability floor 0.15 (standardised across paper 2b).
   tar_target(
     value_bet_runners_2b,
     build_value_bet_runners(test_predictions_2b, qualifying_runners)
@@ -580,11 +580,11 @@ list(
   ),
   tar_target(
     backtest_place_2b,
-    run_value_backtest(value_bets_place_2b, prob_floor = 0.10, ratio_threshold = 1.3)
+    run_value_backtest(value_bets_place_2b, prob_floor = 0.15, ratio_threshold = 1.3)
   ),
   tar_target(
     backtest_sweep_place_2b,
-    run_value_backtest_sweep(value_bets_place_2b, prob_floor = 0.10,
+    run_value_backtest_sweep(value_bets_place_2b, prob_floor = 0.15,
                              tau_seq = seq(0.9, 2.0, by = 0.05),
                              n_boot = 2000L, seed = 42L)
   ),
@@ -595,11 +595,11 @@ list(
   ),
   tar_target(
     backtest_eachway_2b,
-    run_value_backtest(value_bets_eachway_2b, prob_floor = 0.10, ratio_threshold = 1.3)
+    run_value_backtest(value_bets_eachway_2b, prob_floor = 0.15, ratio_threshold = 1.3)
   ),
   tar_target(
     backtest_sweep_eachway_2b,
-    run_value_backtest_sweep(value_bets_eachway_2b, prob_floor = 0.10,
+    run_value_backtest_sweep(value_bets_eachway_2b, prob_floor = 0.15,
                              tau_seq = seq(0.9, 2.0, by = 0.05),
                              n_boot = 2000L, seed = 42L)
   ),
@@ -628,6 +628,35 @@ list(
   tar_target(
     backtest_betall_eachway,
     run_value_backtest(value_bets_eachway_2b, prob_floor = -Inf, ratio_threshold = -Inf)
+  ),
+  # Single-bet-per-race robustness: back only the highest-model-win-prob horse
+  # among Owen's naive qualifiers (win prob > 0.15, ratio > 1.3) in each race,
+  # settled win / place / each-way at real SP.
+  tar_target(
+    backtest_single_win_2b,
+    run_single_win_backtest(model_market_ratio_2b_win)
+  ),
+  tar_target(
+    backtest_single_place_2b,
+    run_single_settled_backtest(model_market_ratio_2b_win, value_bets_place_2b)
+  ),
+  tar_target(
+    backtest_single_eachway_2b,
+    run_single_settled_backtest(model_market_ratio_2b_win, value_bets_eachway_2b)
+  ),
+  # Single-bet ROI sweeps (win / place / each-way) with race-level bootstrap CI,
+  # for the single-vs-multi overlay figure in Q3.
+  tar_target(
+    backtest_single_win_sweep_2b,
+    run_single_sweep(model_market_ratio_2b_win)
+  ),
+  tar_target(
+    backtest_single_place_sweep_2b,
+    run_single_sweep(model_market_ratio_2b_win, value_bets_place_2b)
+  ),
+  tar_target(
+    backtest_single_eachway_sweep_2b,
+    run_single_sweep(model_market_ratio_2b_win, value_bets_eachway_2b)
   ),
 
   # Non-exploded train/test data carrying the draw-course columns (drops the
@@ -734,6 +763,14 @@ list(
     run_backtest(model_market_ratio_w_final,
                  prob_threshold  = 0.15,
                  ratio_threshold = 1.3)
+  ),
+  # Single-bet-per-race win backtest: among each race's naive qualifiers
+  # (win prob > 0.15, ratio > 1.3), back only the highest-model-win-prob horse.
+  # Adopted as the primary rule from paper 2a onwards; same test set as
+  # backtest_naive_w_final.
+  tar_target(
+    backtest_single_win_2a,
+    run_single_win_backtest(model_market_ratio_w_final)
   ),
   tar_target(
     backtest_sweep_w_final,

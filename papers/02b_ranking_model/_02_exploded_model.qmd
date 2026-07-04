@@ -11,9 +11,9 @@ at depth $k = 3$: only the top-3 order is modelled, the tail of the field
 being largely noise [@henery1981]. The algebra and the
 Plackett–Luce equivalence are derived in @sec-appx-derivations.
 
-The base specification is **identical to paper 2a's reduced win model** —
-the same 17 terms, the same zero-plus-slope position encoding, the same
-imputed `or_relative`/`or_missing` — so any difference at this stage is the
+The specification is the same 17 terms that survived paper 2a's feature
+reduction — the same zero-plus-slope position encoding, the same imputed
+`or_relative`/`or_missing` — so any difference at this stage is the
 explosion, not the features. The draw×course block is then searched
 **independently** of paper 2a (below); we do not assume 2a's surviving
 courses carry over.
@@ -68,7 +68,7 @@ depth_rows <- as.integer(table(exploded_interactions_data$depth))
 tibble::tibble(
   `Sub-race`    = paste0("depth ", seq_along(depth_rows), " (",
                          c("full field", "field − 1st", "field − 1st,2nd"), ")"),
-  `Runner-rows` = depth_rows
+  `Runner-rows` = format(depth_rows, big.mark = ",")
 ) |>
   knitr::kable(caption = sprintf(
     "Exploded training data (carrying the draw-course columns): %s valid races become %s choice sets (3 per race) over %s runner-rows.",
@@ -84,17 +84,18 @@ first two), so the choice set shrinks by one runner each time.
 
 ## Fitting the ranking model
 
-We carry paper 2a's reduced 17-feature specification as the base — the
+We carry paper 2a's reduced 17-feature specification — the
 feature-by-feature selection was settled there — and re-estimate it under
 the ranking objective, entering the four-course draw×course block (Kempton,
 Lingfield, Southwell, Wolverhampton) from the start. The draw block is then
-reduced by the same per-term Wald $p < 0.05$ rule paper 2a applies to its
+reduced by the same per-term $p < 0.05$ rule paper 2a applies to its
 win model, run fresh on this fit: the least significant non-significant
 course slope is dropped, the model refit, and the step repeated until every
 surviving slope clears the threshold.
 
-Re-estimating the base under the explosion moves the coefficients in two
-ways, shown against paper 2a's win fit on the identical specification.
+Re-estimating under the explosion moves the coefficients in two ways: the
+estimates shrink in magnitude, and the z-values mostly rise. Both are shown
+against paper 2a's win fit on the identical specification.
 
 ```{r}
 #| label: tbl-base-coef-compare
@@ -103,7 +104,7 @@ block_of <- function(term) {
   if (grepl("^pos_lag", term))                                     return("1. Position (zero-plus-slope)")
   if (term %in% c("days_LTO_log", "trainerSR", "sireSR"))          return("2. Form / history")
   if (term %in% c("age_diff", "entire", "gelding", "cheekpieces")) return("3. Horse characteristics")
-  "4. New features"
+  "4. New features (introduced in paper 2a)"
 }
 pretty_term <- function(t) dplyr::recode(t, days_LTO_log = "daysLTO (log)")
 tibble::tibble(
@@ -117,14 +118,14 @@ tibble::tibble(
   dplyr::arrange(Block) |>
   knitr::kable(
     align   = c("l", "l", "r", "r", "r", "r"),
-    caption = "Paper 2a reduced win model (depth-1) vs the exploded base fit (depth-3 Plackett–Luce), same 17-term specification. Estimates and Wald z-values side by side.")
+    caption = "Paper 2a reduced win model (depth-1) vs the exploded fit on the same 17 terms (depth-3 Plackett–Luce). Estimates and z-values side by side.")
 ```
 
 The estimates shrink — most coefficients are smaller in magnitude under the
 explosion, because the win model loads each feature with all of its power to
 separate the *winner* from the field, whereas the exploded model must make
 the same coefficient explain the 1-vs-rest, 2-vs-rest and 3-vs-rest
-contrasts at once. The Wald z-values mostly move the other way, rising, as
+contrasts at once. The z-values mostly move the other way, rising, as
 depth-3 explosion roughly triples the number of choice problems the same
 races supply; the form and position terms, which order the whole field
 rather than just crown the winner, change the most.
@@ -136,7 +137,7 @@ model_2b_draw_reduction_steps |>
   dplyr::transmute(
     Step      = step,
     `Dropped` = dropped,
-    `Wald p`  = signif(wald_p, 3),
+    `p`       = signif(wald_p, 3),
     `From → to` = paste0(n_before, "-course → ", n_after, "-course"),
     `LR stat` = round(lr_stat, 3),
     df        = lr_df,
@@ -145,7 +146,7 @@ model_2b_draw_reduction_steps |>
   knitr::kable(caption = "Per-term reduction of the exploded draw×course block. Each step drops the least significant non-significant course slope and refits; the 1-df likelihood-ratio drop-test is reported alongside.")
 ```
 
-Only **Lingfield** drops (Wald $p =$
+Only **Lingfield** drops ($p =$
 `r signif(model_2b_draw_reduction_steps$wald_p[1], 2)`; the 1-df LR
 drop-test agrees, $p =$ `r signif(model_2b_draw_reduction_steps$lr_p[1], 2)`).
 The surviving block is **Kempton, Southwell and Wolverhampton** — three
@@ -164,7 +165,7 @@ missed. The negative slope (an advantage to lower draws) is the direction
 All-Weather track; it is a single distance-pooled slope, so it is an average
 direction across trips, not a trip-specific law.
 
-The final paper-2b model is the exploded base plus the three retained
+The final paper-2b model is the 17-term exploded fit plus the three retained
 course-draw slopes —
 `r length(stats::coef(model_2b_exploded_draw_final))` coefficients in all.
 

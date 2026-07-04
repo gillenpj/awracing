@@ -332,7 +332,15 @@ ggplot2::ggplot(backtest_sweep_w_final, ggplot2::aes(x = tau, y = roi)) +
 The final model's naive
 backtest ROI is **`r roi_pct(backtest_naive_w_final$roi)`**, against the
 extended win model's `r roi_pct(backtest_naive_p2$roi)` and paper 1's
-−28.2%. The point estimates improve at every step; the extended feature
+−28.2%. Restricting to one bet per race — among the qualifiers, the horse
+with the highest model win probability — gives
+`r roi_pct(backtest_single_win_2a$roi)` on
+`r format(backtest_single_win_2a$n_bets, big.mark = ",")` bets, marginally
+worse than backing all qualifiers. We nonetheless adopt this single-bet rule
+as the primary, more realistic strategy from this paper onwards: on the win
+market it makes no material difference, but it matters for the place and
+each-way markets examined in paper 2b. The point estimates improve at every
+step; the extended feature
 set — chiefly the official rating — accounts for most of that gain, with
 the course-specific draw effect adding a smaller further increment. But the
 improvement is small relative to its sampling noise: a paired race-level

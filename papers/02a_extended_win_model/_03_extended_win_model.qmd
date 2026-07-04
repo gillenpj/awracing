@@ -386,7 +386,9 @@ when the model gives it more than a 15% chance of winning
 ($\hat{P} > 0.15$) and the model's probability is at least 1.3 times the
 market-implied probability (ratio $> 1.3$) — that is, the model must be
 both confident in absolute terms and clearly more bullish than the market.
-We then sweep the ratio
+The rule can qualify more than one horse in a race; Owen does not specify
+whether he backs one qualifier or all, and here we back all (the multi-bet
+rule). We then sweep the ratio
 threshold from 0.9 to 2.0 with the model-probability filter held at 0.13
 and a 90% bootstrap CI (race-level resampling, $B = 2000$, seed 42) —
 the same procedure paper 1 ran, so the ROI is directly comparable to

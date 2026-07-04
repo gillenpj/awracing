@@ -7,7 +7,7 @@ because the model is fitted on richer (depth-3) ranking supervision rather
 than depth-1 win supervision, how does it pick *winners* compared with paper
 2a's win-fitted model? **Q3** is the applied question: turned into bets, does
 that place-probability accuracy translate into betting value? The three are
-answered with different baselines and reported separately.
+answered separately, each against its own comparison.
 
 ## Ranking metrics
 
@@ -24,7 +24,11 @@ $$
 $$
 where $P(j_1, j_2, j_3)$ is the depth-3 Plackett–Luce probability of the
 observed order under the model or market. Higher is better. This is the
-ranking analogue of Owen's P1.
+ranking analogue of Owen's P1. Working in log-space — summing
+log-probabilities rather than multiplying probabilities directly — avoids
+floating-point underflow when the product of many small probabilities would
+otherwise round to zero; the geometric mean is recovered by exponentiating at
+the end.
 
 **Brier_place** (place calibration): the mean squared error between the
 predicted place probability and the binary place outcome (top-3 or not),
@@ -38,12 +42,13 @@ $i$, and $p^{\text{place}}_{ij}$ is the model- or market-implied
 probability of a top-3 finish. Lower is better; a proper scoring rule,
 analogous to Owen's P2.
 
-Both market baselines use discounted Harville ($\alpha = 0.80$ for the
-second-place conditional, $0.65$ for the third; @sec-data): the place
-probabilities for Brier_place and the depth-3 order probability for P1_rank
-are both built from the same discounted starting-price win probabilities. The
-model side of each metric uses its own ($\alpha = 1$) Plackett–Luce
-implication.
+The market's probabilities for both metrics use discounted Harville
+($\alpha = 0.80$ for the second-place conditional, $0.65$ for the third;
+@sec-data): the place probabilities for Brier_place and the depth-3 order
+probability for P1_rank are both built from the same discounted starting-price
+win probabilities. For each metric, the model's fitted win probabilities are
+substituted into the same Plackett–Luce formula (with $\alpha = 1$, no
+discounting) to produce its predicted ordering and place probabilities.
 
 ```{r}
 #| label: p2b-eval-setup
@@ -62,7 +67,8 @@ rd <- roi_difference_2b_vs_2a
 ## Q1 — Ranking performance against the market
 
 The model is scored on `r format(q1_races, big.mark = ",")` test
-races[^nfilter] against the discounted-Harville market baseline.
+races[^nfilter] against the market's discounted-Harville ordering
+probabilities.
 
 [^nfilter]: Q1 scores `r format(q1_races, big.mark = ",")` races and Q2
 below scores `r format(q2_races, big.mark = ",")`; the difference is that
@@ -84,18 +90,18 @@ ranking_metrics_2b |>
       (metric == "Brier_place" & model < market), "model", "market")
   ) |>
   knitr::kable(caption = sprintf(
-    "Ranking metrics on the %s scorable test races: exploded model vs discounted-Harville market baseline.",
+    "Ranking metrics on the %s scorable test races: exploded model vs the market's discounted-Harville probabilities.",
     format(q1_races, big.mark = ",")))
 ```
 
-The model predicts the top-3 order with clear skill above chance. A
-random-guessing baseline scores about 0.003 on P1_rank — roughly the
+The model predicts the top-3 order with clear skill above chance. Random
+guessing scores about 0.003 on P1_rank — roughly the
 reciprocal of the number of possible top-3 orderings in a typical field —
 and about 0.23 on Brier_place, the score from predicting every horse's place
 chance at the base rate. The model scores `r signif(p1$model, 3)` on P1_rank
 (higher is better) and `r signif(brp$model, 3)` on Brier_place (lower is
-better), well inside the skilled range on both. Measured against the
-discounted-Harville market baseline, the market scores higher on each —
+better), well inside the skilled range on both. Measured against the market's
+discounted-Harville probabilities, the market scores higher on each —
 `r signif(p1$market, 3)` on P1_rank and `r signif(brp$market, 3)` on
 Brier_place. The model has genuine ranking skill; the market, here as in
 papers 1 and 2a, sets the higher mark, consistent with the starting price
@@ -127,10 +133,11 @@ backtest_naive_2b_win |>
 The ranking-fitted model returns a naive win ROI of
 **`r roi_pct(backtest_naive_2b_win$roi)`**, against paper 2a's win-fitted
 headline of **`r roi_pct(backtest_naive_w_final$roi)`** — both struck on the
-identical `r format(q2_races, big.mark = ",")`-race test set. Because the
-two models are evaluated on the same races we can pair the resampling: a
-race-level ROI-difference bootstrap (B = 2000, seed 42) restricted to the
-common races gives a point difference of
+identical `r format(q2_races, big.mark = ",")`-race test set. Since both
+models are evaluated on the same test races, we compare them race by race —
+computing the difference in per-race profit between the two models — and
+bootstrap the mean of those differences (B = 2000, seed 42) to get a
+confidence interval on the average gain: a point difference of
 **`r pp(rd$diff_point)`** in the ranking model's favour, with a 90%
 interval of **[`r pp(rd$ci_lo)`, `r pp(rd$ci_hi)`]**.
 
@@ -154,20 +161,14 @@ than depth-1 win supervision. Two things keep it in proportion: the lower
 bound of the interval (`r pp(rd$ci_lo)`) sits close to zero, so this is a
 distinguishable difference rather than a wide one; and both models return a
 negative ROI (`r roi_pct(backtest_naive_2b_win$roi)` here), so the gain is
-relative to paper 2a, not a profit against the market. The ratio-threshold
-sweep below shows the win ROI across selection thresholds.
-
-```{r}
-#| label: fig-roi-sweep-2b-win
-#| fig-cap: "Depth-1 win ROI vs ratio threshold on the AW test set (ranking-fitted exploded model), 90% bootstrap CI shaded. Model-probability filter held at 0.13; dashed line at zero marks break-even."
-ggplot2::ggplot(backtest_sweep_2b_win, ggplot2::aes(x = tau, y = roi)) +
-  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "darkgreen", alpha = 0.18) +
-  ggplot2::geom_line(linewidth = 0.8, colour = "darkgreen") +
-  ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  ggplot2::labs(x = "Ratio threshold (model_prob / market_prob)", y = "ROI") +
-  ggplot2::theme_minimal()
-```
+relative to paper 2a, not a profit against the market. A threshold sweep
+(varying $\tau$ from 0.9 to 2.0, as in papers 1 and 2a) shows the win ROI
+falling further below zero as selection tightens. Restricting to one bet per
+race changes nothing here: single-bet win returns
+`r roi_pct(backtest_single_win_2b$roi)` (2b) against
+`r roi_pct(backtest_single_win_2a$roi)` for paper 2a's win-fitted model — no
+distinguishable improvement over backing all qualifiers, since the single-bet
+effect is confined to the place and each-way markets (Q3).
 
 ## Q3 — Does place-probability accuracy translate into betting value?
 
@@ -191,74 +192,86 @@ ci_at <- function(sweep, tau0 = 1.3) {
   r <- sweep[abs(sweep$tau - tau0) < 1e-9, ]
   sprintf("[%s, %s]", roi_pct(r$ci_lo), roi_pct(r$ci_hi))
 }
+# single-bet each-way CI upper bound at tau = 1.3 (grazes zero)
+ew_hi <- roi_pct(
+  dplyr::filter(backtest_single_eachway_sweep_2b, abs(tau - 1.3) < 1e-9)$ci_hi
+)
 ```
 
-As in Q2, a bet is placed when the discounted-Harville value ratio — the
-model's discounted place probability over the market's ($\alpha = 0.80/0.65$,
-the bias-corrected construction Q1 is scored against) — exceeds a swept ratio
-threshold $\tau$, Owen's naive rule from papers 1 and 2a. It pays out at the
-real industry-SP book, the same margin-laden starting prices the Q2 win
-backtest uses: the place price is derived from the raw SP-implied win
-probabilities via Harville, and the each-way win leg pays the raw SP win odds
-with the place leg at one fifth of those odds on a top-3 finish (standard
-terms). The industry SP book on these races carries an observed average
-over-round of `r orpc(vget("place", "over_round"))`, measured from the data.
-The question is the one Q2 asks of the win market: is the strategy profitable?
+Owen's naive rule backs every horse clearing both thresholds (win probability
+above 0.15 and model/market ratio above 1.3), which can mean several bets in
+one race. A more realistic strategy places one bet per race: among the
+qualifiers, back the single horse with the highest model win probability. We
+take this **single-bet** rule as primary and report the **multi-bet** rule
+(back all qualifiers) alongside for continuity with papers 1 and 2a — Owen
+does not specify which he used. Both are priced at the real industry-SP book
+(observed average over-round `r orpc(vget("place", "over_round"))`), the same
+basis as the Q2 win backtest: the place price is derived from the raw
+SP-implied win probabilities via Harville, and the each-way win leg pays the
+raw SP win odds with the place leg at one fifth of those odds on a top-3
+finish (standard terms). Both are swept over the ratio threshold $\tau$.
 
 ```{r}
 #| label: tbl-value-bets
 #| code-fold: true
 tibble::tibble(
-  `Bet type`  = c("Place", "Each-way"),
-  `Races`     = comma(c(vget("place", "n_bet_races"), vget("eachway", "n_bet_races"))),
-  `Bets`      = comma(c(backtest_place_2b$n_bets, backtest_eachway_2b$n_bets)),
-  `Model ROI` = roi_pct(c(backtest_place_2b$roi, backtest_eachway_2b$roi)),
-  `90% CI`    = c(ci_at(backtest_sweep_place_2b), ci_at(backtest_sweep_eachway_2b))
+  `Bet type`       = c("Place", "Each-way"),
+  `Bets`           = comma(c(backtest_single_place_2b$n_bets, backtest_single_eachway_2b$n_bets)),
+  `Single-bet ROI` = roi_pct(c(backtest_single_place_2b$roi, backtest_single_eachway_2b$roi)),
+  `90% CI`         = c(ci_at(backtest_single_place_sweep_2b), ci_at(backtest_single_eachway_sweep_2b)),
+  `Multi-bet ROI`  = roi_pct(c(backtest_place_2b$roi, backtest_eachway_2b$roi))
 ) |>
   knitr::kable(
     align   = c("l", "r", "r", "r", "r"),
-    caption = sprintf("Place and each-way value bets at Owen's naive rule (ratio > 1.3), priced on the real industry-SP book (observed average over-round %s), the same basis as the Q2 win backtest. 90%% CI from a race-level bootstrap (B = 2000, seed 42).", orpc(vget("place", "over_round"))))
+    caption = sprintf("Place and each-way betting at Owen's naive thresholds (ratio > 1.3), priced on the real industry-SP book (observed average over-round %s). Single-bet (one bet per race, the highest-model-win-probability qualifier) is the primary rule; multi-bet (all qualifiers) is shown for continuity with papers 1/2a. 90%% CI from a race-level bootstrap (B = 2000, seed 42).", orpc(vget("place", "over_round"))))
 ```
 
-**Place.** The place strategy returns `r roi_pct(backtest_place_2b$roi)` on
-`r comma(backtest_place_2b$n_bets)` bets — essentially the Q2 win backtest's
-`r roi_pct(backtest_naive_2b_win$roi)` again, on the same SP basis and with the
-same conclusion: it is not profitable, the market's place prices are the more
-accurate, consistent with Q1's Brier_place. The reading is robust: place
-payouts are short, so no single result drives it — dropping the largest
-winning bet leaves the return at `r roi_pct(vget("place", "roi_drop_top1"))` —
-and the bootstrap interval is correspondingly tight. The sweep
-(@fig-value-sweeps) shows the return falling as the ratio threshold rises, so
-the place bets the model most strongly prefers to the market are the ones it
-does worst on.
-
-**Each-way.** Backing every horse each-way loses
-`r roi_pct(backtest_betall_eachway$roi)` — the SP margin compounded by the
-1/5 place terms, which in large-field All-Weather handicaps typically pay less
-than the fair place price. The strategy itself returns
-`r roi_pct(backtest_eachway_2b$roi)`, about
-`r round(100 * (backtest_betall_eachway$roi - backtest_eachway_2b$roi))` pp
-below that floor: unlike the place result, where the selections barely added
-to the structural loss, the each-way selections actively make things worse.
-This is consistent with Q1 — the model's place probabilities are less accurate
-than the market's — and that mis-ranking tells most in a bet that penalises
-place mispricing twice: once through the selection ratio, once through the
-place payout.
+**Single bet per race.** With one bet per race, place returns
+`r roi_pct(backtest_single_place_2b$roi)` on
+`r comma(backtest_single_place_2b$n_bets)` bets and each-way
+`r roi_pct(backtest_single_eachway_2b$roi)` on
+`r comma(backtest_single_eachway_2b$n_bets)` bets — far smaller losses than the
+multi-bet equivalents, and for place roughly half the ~16% structural SP
+margin (against a zero-margin fair book, place selections return
+`r roi_pct(vget("place", "model_fair"))`). @fig-single-vs-multi-sweep shows
+these hold across the threshold range: the single-bet curve sits consistently
+above the multi-bet curve for both bet types, the gap widening as $\tau$
+tightens. The place result is robust to the tail — dropping the single-bet
+strategy's largest winning place bet leaves
+`r roi_pct(backtest_single_place_2b$roi_drop_top1)` (the single-bet recompute,
+not the multi-bet figure). The each-way result is the more marginal: at
+$\tau = 1.3$ its 90% interval runs to `r ew_hi` at the upper end, grazing zero,
+so while it clearly improves on multi-bet we do not read it as comfortably
+below zero.
 
 ```{r}
-#| label: fig-value-sweeps
-#| fig-cap: "Real-SP ROI vs ratio threshold for the place and each-way value bets, 90% bootstrap CI shaded; dashed line at break-even. Free vertical scales. Both fall further below break-even as selection tightens."
+#| label: fig-single-vs-multi-sweep
+#| fig-cap: "Single-bet (coloured) vs multi-bet (grey) ROI across the ratio threshold, place and each-way, 90% race-level bootstrap CI shaded; dashed line at break-even. Single-bet sits consistently above multi-bet, the gap widening as selection tightens. The win market (not shown) shows no distinguishable difference between the two."
 dplyr::bind_rows(
-  backtest_sweep_place_2b   |> dplyr::mutate(bet = "Place"),
-  backtest_sweep_eachway_2b |> dplyr::mutate(bet = "Each-way")
+  backtest_single_place_sweep_2b   |> dplyr::transmute(tau, roi, ci_lo, ci_hi, bet = "Place",    Strategy = "single-bet"),
+  backtest_single_eachway_sweep_2b |> dplyr::transmute(tau, roi, ci_lo, ci_hi, bet = "Each-way", Strategy = "single-bet"),
+  backtest_sweep_place_2b          |> dplyr::transmute(tau, roi, ci_lo, ci_hi, bet = "Place",    Strategy = "multi-bet"),
+  backtest_sweep_eachway_2b        |> dplyr::transmute(tau, roi, ci_lo, ci_hi, bet = "Each-way", Strategy = "multi-bet")
 ) |>
   dplyr::mutate(bet = factor(bet, levels = c("Place", "Each-way"))) |>
-  ggplot2::ggplot(ggplot2::aes(x = tau, y = roi)) +
-  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), fill = "steelblue", alpha = 0.18) +
-  ggplot2::geom_line(linewidth = 0.7, colour = "steelblue") +
-  ggplot2::facet_wrap(~ bet, scales = "free_y") +
+  ggplot2::ggplot(ggplot2::aes(x = tau, y = roi, colour = Strategy, fill = Strategy)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = ci_lo, ymax = ci_hi), alpha = 0.15, colour = NA) +
+  ggplot2::geom_line(linewidth = 0.8) +
+  ggplot2::facet_wrap(~ bet) +
   ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  ggplot2::scale_colour_manual(values = c("single-bet" = "firebrick", "multi-bet" = "grey45")) +
+  ggplot2::scale_fill_manual(values   = c("single-bet" = "firebrick", "multi-bet" = "grey45")) +
   ggplot2::labs(x = "Ratio threshold (discounted model_prob / market_prob)", y = "ROI") +
   ggplot2::theme_minimal()
 ```
+
+**Backing all qualifiers.** For continuity with papers 1 and 2a, the multi-bet
+rule — backing every qualifier — returns `r roi_pct(backtest_place_2b$roi)` on
+place and `r roi_pct(backtest_eachway_2b$roi)` on each-way, both worse than
+single-bet because the additional qualifiers are lower-conviction picks.
+Each-way is worse still. Backing every horse each-way at these terms loses
+`r roi_pct(backtest_betall_eachway$roi)` before any selection — the 1/5 place
+terms pay less than the fair place price in large fields — and the model's
+weaker place selections, exposed twice (once in choosing which horses, once in
+the place leg's payout), push multi-bet each-way below that floor.

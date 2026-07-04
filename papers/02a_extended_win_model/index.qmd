@@ -72,6 +72,7 @@ tar_load(c(
   interaction_lr_tests_w,
   test_predictions_w_final,
   backtest_naive_w_final,
+  backtest_single_win_2a,
   backtest_sweep_w_final,
   roi_difference_bootstrap,
   # paper-1 targets, for the introduction and the discussion progression table
@@ -80,6 +81,8 @@ tar_load(c(
   backtest_naive
 ))
 ```
+
+*Revised 2026-07-03.*^[This revision clarifies Owen's betting rule (multiple horses may qualify per race; we back all) and reports the single-bet win backtest, adopting single-bet as the primary rule from this paper onwards.]
 
 # Introduction {#sec-intro}
 

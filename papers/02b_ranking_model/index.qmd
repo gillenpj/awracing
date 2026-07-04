@@ -2,7 +2,7 @@
 title: "Ranking models for UK All-Weather Flat handicaps: the exploded conditional logit and the place market"
 subtitle: "Paper 2b in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: "2026-06-29"
+date: "2026-07-03"
 abstract: |
   Paper 2a established a win-prediction model on UK All-Weather Flat
   handicaps using an extended feature set and race-level interactions.
@@ -10,9 +10,10 @@ abstract: |
   First (Q1), refitted under a ranking objective — the exploded conditional
   logit, equivalent to maximising the Plackett–Luce likelihood over the
   top-3 finishing order — how well does the model predict that order? We
-  measure it with P1_rank and a top-3 Brier score, taking a
-  discounted-Harville place-market baseline derived from starting prices as
-  the yardstick: the model predicts the finishing order with clear skill
+  measure it with P1_rank and a top-3 Brier score, using
+  market-implied ordering probabilities derived from starting prices via
+  Harville's sequential-conditioning formula as the comparison: the model
+  predicts the finishing order with clear skill
   above chance, and the market scores higher on both metrics. Second (Q2),
   because the model is now fitted on richer depth-3 ranking supervision, how
   does it pick *winners* compared with 2a's win-fitted model? On the
@@ -20,15 +21,16 @@ abstract: |
   `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`
   against 2a's
   `r scales::percent(targets::tar_read(backtest_naive_w_final)$roi, accuracy = 0.1)`;
-  both models remain a net loss against the market. Third (Q3), turned into
-  place and each-way bets on the real industry-SP book — the same basis as the
-  win backtest — neither is profitable: place returns
-  `r scales::percent(targets::tar_read(backtest_place_2b)$roi, accuracy = 0.1)`
-  (alongside the win backtest's
-  `r scales::percent(targets::tar_read(backtest_naive_2b_win)$roi, accuracy = 0.1)`)
+  both models remain a net loss against the market. Third (Q3), turned into a
+  realistic one-bet-per-race strategy — backing the single highest-probability
+  qualifier, priced at real starting prices — place returns
+  `r scales::percent(targets::tar_read(backtest_single_place_2b)$roi, accuracy = 0.1)`
   and each-way
-  `r scales::percent(targets::tar_read(backtest_eachway_2b)$roi, accuracy = 0.1)`,
-  consistent with the ranking result.
+  `r scales::percent(targets::tar_read(backtest_single_eachway_2b)$roi, accuracy = 0.1)`,
+  roughly half the drag of backing every qualifier and, for place, about half
+  the ~16% structural SP margin. As Q1 predicts, the market's place
+  probabilities remain the more accurate, and on the win market single-bet
+  makes no difference.
 format:
   html: default
   pdf:
@@ -72,13 +74,16 @@ tar_load(c(
   ranking_eval_runners_2b,
   model_market_ratio_2b_win,
   backtest_naive_2b_win,
-  backtest_sweep_2b_win,
   backtest_naive_w_final,         # 2a win-fitted headline, for the Q2 comparison
   roi_difference_2b_vs_2a,
-  # value-bet application (_03 Q3): place + each-way + their baselines
+  # value-bet application (_03 Q3): place + each-way
   backtest_place_2b,    backtest_sweep_place_2b,
   backtest_eachway_2b,  backtest_sweep_eachway_2b,
   value_bet_baselines_2b, backtest_betall_eachway,
+  # single-bet-per-race (primary rule; _03 Q3) + sweeps for the overlay figure
+  backtest_single_win_2b, backtest_single_place_2b, backtest_single_eachway_2b,
+  backtest_single_place_sweep_2b, backtest_single_eachway_sweep_2b,
+  backtest_single_win_2a,   # paper 2a single-bet win, for the Q2 comparison
   # context benchmarks for the _04 discussion
   backtest_betall_win, backtest_favourite_win
 ))
@@ -95,12 +100,13 @@ three questions in order.
 a ranking objective — the exploded conditional logit, which maximises the
 Plackett–Luce likelihood over the top-3 finishing order — how well does the
 model predict that order? We re-estimate the whole model on the ranking
-objective, noting where its feature picture departs from paper 2a's (the
+objective, noting where its feature selection departs from paper 2a's (the
 draw×course block, re-searched here, retains three courses where 2a kept
 two; @sec-exploded-model), and measure performance with two ranking metrics,
-P1_rank and a top-3 Brier score, against a discounted-Harville place-market
-baseline. The model predicts the finishing order with clear skill above
-chance, and the market scores higher on both metrics.
+P1_rank and a top-3 Brier score, against the market's ordering probabilities
+derived from starting prices via Harville. The model predicts the finishing
+order with clear skill above chance, and the market scores higher on both
+metrics.
 
 **Q2 — win performance as a byproduct.** Because the model is now fitted on
 richer depth-3 ranking supervision rather than depth-1 win supervision, how
@@ -110,13 +116,15 @@ by a margin a paired bootstrap places above zero though close to it; both
 models remain a net loss against the market.
 
 **Q3 — betting value.** Does the model's place-probability accuracy translate
-into betting value? Turned into place and each-way bets priced on the real
-industry-SP book — the same basis as the win backtest — is either strategy
-profitable? Neither is; the place return sits alongside the win backtest's,
-consistent with the ranking result.
+into betting value under a realistic strategy — one bet per race, the single
+highest-probability qualifier, priced at real starting prices? On the place
+and each-way markets it returns better than backing every qualifier, though
+still short of a profit; on the win market it makes no difference. As Q1
+predicts, the market's place probabilities are the more accurate.
 
 @sec-data points to paper 2a for the shared data and feature set and
-constructs the place-market baseline; @sec-exploded-model fits the ranking
+constructs the market's ordering probabilities from starting prices;
+@sec-exploded-model fits the ranking
 model and re-searches the course×draw block; @sec-evaluation answers Q1, then
 Q2, then Q3; and @sec-discussion draws the threads together.
 

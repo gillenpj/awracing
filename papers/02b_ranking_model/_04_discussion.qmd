@@ -7,7 +7,6 @@ loadNamespace("mlogit")   # so summary.mlogit dispatches (CLAUDE.md note)
 p_rank   <- summary(model_2b_exploded_draw_final)$CoefTable["stall_x_wolverhampton", "Pr(>|z|)"]
 roi_gain <- sprintf("%+.1f pp", 100 * roi_difference_2b_vs_2a$diff_point)
 or_over_disc   <- scales::percent(value_bet_baselines_2b$over_round[1] - 1, accuracy = 1)
-place_fair_roi <- value_bet_baselines_2b$model_fair[value_bet_baselines_2b$bet_type == "place"]
 fav_tie_pct    <- scales::percent(backtest_favourite_win$n_tie_races /
                                   backtest_favourite_win$n_bets, accuracy = 0.1)
 ```
@@ -17,58 +16,58 @@ above chance, yet on neither ranking metric does it match the market. That is
 the same pattern papers 1 and 2a found on the win objective — a model with
 genuine signal that the starting price nonetheless out-scores — now repeated
 on the ranking objective. The reading carries over unchanged: the market
-price aggregates information the pre-race feature set does not contain, and
-moving from a win objective to a ranking one does not narrow that gap. Turned
-into bets, the same picture holds: priced on the real industry-SP book, the
-model's place and each-way strategies are both unprofitable, its disagreements
-with the market on the losing side where they can be priced.
+price aggregates information the pre-race feature set does not contain. On
+ranking accuracy (Q1), the market leads on both metrics — the ranking
+objective does not close that gap. On win prediction (Q2), the ranking-fitted
+model does better than paper 2a's win-fitted model, the first improvement in
+the series that clears zero. Turned into bets, the model's place and each-way
+strategies both lose.
 
 The second question applies the ranking-fitted model to the win objective,
 and here the result is new to the series. Trained on the finishing order
 rather than on the winner alone, the model is a better winner-picker than
 paper 2a's model: a paired race-level bootstrap puts the gain at
 `r roi_gain`, with a 90% interval that lies above zero — the first
-distinguishable improvement across the three papers. The mechanism is
-supervision, not specification. Depth-3 explosion turns each race into three
-nested choice problems — the winner from the full field, the runner-up from
-the rest, the third from what remains — so the same races and the same
-functional form are estimated from roughly three times as many contrasts, and
-the coefficients come back sharper. Wolverhampton is the clean illustration:
-its draw term was too noisy to retain under win supervision (Wald
-$p \approx 0.066$) but is estimated sharply under the ranking objective
-($p =$ `r sprintf("%.4f", p_rank)`), with the same sign and a similar
-magnitude. The reading is the narrow one — the ranking objective estimates
-the same draw effect paper 2a saw, sharply enough to retain it — not a new
-effect uncovered. None of this makes the model profitable, and the gap to the
-market is no smaller; the improvement is over paper 2a, not over the price.
+distinguishable improvement across the three papers. The improvement comes
+from richer training data, not a different model. Depth-3 explosion gives
+roughly three times as many choice problems from the same races, producing
+sharper coefficient estimates for the same features. Wolverhampton is the
+clean illustration: its draw term was too noisy to retain when the model was
+fitted on wins alone ($p \approx 0.066$) but is estimated sharply under the
+ranking objective ($p =$ `r sprintf("%.4f", p_rank)`), with the same sign and
+a similar magnitude. The reading is the narrow one — the ranking objective
+estimates the same draw effect paper 2a saw, sharply enough to retain it — not
+a new effect uncovered. Both models still lose money; the
+`r scales::percent(backtest_naive_2b_win$roi, accuracy = 0.1)` is better than
+2a's `r scales::percent(backtest_naive_w_final$roi, accuracy = 0.1)`, but
+neither beats the market.
 
-Paper 3 changes the model class. A tree-based learner accommodates
+Paper 3 will change the model class. A tree-based learner accommodates
 non-linearities and feature interactions directly — among them a horse's
 going affinity, which the conditional logit can express only through explicit
 interaction terms — without the modeller specifying each one in advance.
 
-The betting results put the headline losses in context. Backing every runner
-at SP loses `r scales::percent(backtest_betall_win$roi, accuracy = 0.1)` —
-worse than the ~`r or_over_disc` over-round alone, the favourite–longshot bias
-making longer-priced horses especially costly — while backing the favourite in
-every race returns `r scales::percent(backtest_favourite_win$roi, accuracy = 0.1)`
-on `r format(backtest_favourite_win$n_bets, big.mark = ",")` races[^fav-ties];
-the win model's `r scales::percent(backtest_naive_2b_win$roi, accuracy = 0.1)`
-sits between them, beating indiscriminate betting but short of the trivial
-favourite strategy. That the residual is mostly margin rather than
-mis-selection shows in the place result: against a zero-margin fair book the
-model's place selections return
-`r scales::percent(place_fair_roi, accuracy = 0.1)`, close to breakeven.
-Against a lower-friction market — a Betfair exchange, ~5% commission versus a
-~`r or_over_disc` SP over-round — that structural headwind shrinks sharply,
-which motivates the early-market convergence strategy as the natural
-live-trading direction: not that the model is already profitable, but that it
-is being tested against a margin it cannot currently overcome.
+Turned into bets, a realistic one-bet-per-race strategy is materially better
+than backing every qualifier: place returns
+`r scales::percent(backtest_single_place_2b$roi, accuracy = 0.1)` and each-way
+`r scales::percent(backtest_single_eachway_2b$roi, accuracy = 0.1)`, against
+`r scales::percent(backtest_place_2b$roi, accuracy = 0.1)` and
+`r scales::percent(backtest_eachway_2b$roi, accuracy = 0.1)` for the multi-bet
+rule — the paper's applied finding, and a place/each-way effect only (on the
+win market single-bet gives no advantage:
+`r scales::percent(backtest_single_win_2b$roi, accuracy = 0.1)` here,
+`r scales::percent(backtest_single_win_2a$roi, accuracy = 0.1)` for paper 2a).
+The losses are still dominated by the SP margin, not mis-selection: backing
+every runner at SP loses
+`r scales::percent(backtest_betall_win$roi, accuracy = 0.1)` and backing the
+favourite `r scales::percent(backtest_favourite_win$roi, accuracy = 0.1)`[^fav-ties],
+so the model's win selections sit between a zero-skill floor and a trivial
+heuristic. But single-bet place at
+`r scales::percent(backtest_single_place_2b$roi, accuracy = 0.1)` against a
+~`r or_over_disc` SP over-round is roughly half the structural drag, and
+against a lower-friction market such as a Betfair exchange (~5% commission)
+that margin is far smaller — a direction worth testing, left to a future paper.
 
 [^fav-ties]: Ties for favourite — the lowest decimal starting price shared by
 two or more runners — occur in `r fav_tie_pct` of test races and are broken
 here by taking the lower-numbered runner.
-
-Evaluating the exotic markets — the exacta and trifecta — is left to future
-work: their real prices are the CSF and Tote-pool dividends, which this paper
-does not have.

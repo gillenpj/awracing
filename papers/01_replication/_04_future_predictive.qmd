@@ -57,6 +57,14 @@ $$
 \text{ratio}_{jk} > 1.3.
 $$
 
+This rule can qualify more than one horse in a race; Owen does not specify
+whether he backs one qualifier or all of them, and we back all (the multi-bet
+rule).[^onebet]
+
+[^onebet]: From paper 2a onwards we adopt the single-bet variant — backing
+only the highest-model-probability qualifier per race — as the primary, more
+realistic rule.
+
 On Owen's Turf test set this rule places 264 bets and returns +54
 units, an ROI of approximately +20.5%. Applied to our AW test set
 with the reduced model fit, the same rule gives:

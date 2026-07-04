@@ -7,7 +7,10 @@ forward plan below.
 ## Series status (read this first)
 
 - **Paper 1 — complete and PUBLISHED.** *Replicating Owen (2019) on
-  UK All-Weather Flat handicaps, 2006–2015* (pinned date 2026-06-06).
+  UK All-Weather Flat handicaps, 2006–2015* (pinned date 2026-06-06,
+  revised 2026-07-03 — added a one-line clarification that Owen's naive
+  rule can qualify several horses per race and this paper backs all, the
+  multi-bet rule).
   - Source: `papers/01_replication/`
   - Rendered output (committed): `docs/paper1/index.html` and
     `docs/paper1/index.pdf`
@@ -25,17 +28,23 @@ forward plan below.
     race-level interactions).* Source:
     `papers/02a_extended_win_model/`. Live at
     <https://gillenpj.github.io/awracing/paper2a/> (HTML + PDF), pinned
-    date 2026-06-21. One
+    date 2026-06-21, revised 2026-07-03. One
     headline change from the first draft: the draw×course block is
     reduced per-term to the two significant courses (Kempton,
     Southwell) — Wolverhampton and Lingfield dropped — giving a
-    −25.4% backtest ROI. See "Paper 2a plan" and "Paper 2a
+    −25.4% backtest ROI (multi-bet). The 2026-07-03 revision adds the
+    Owen betting-rule clarification and the **single-bet win** figure
+    (−25.9% on 1,305 bets, marginally worse than multi-bet), adopting
+    single-bet — one bet per race, the highest-model-win-prob qualifier —
+    as the **primary rule from this paper onwards** (for realism; no
+    win-market advantage). See "Paper 2a plan" and "Paper 2a
     corrections" below.
   - **Paper 2b — complete and PUBLISHED.** *Exploded conditional logit
     as a ranking model, evaluated on ranking metrics; plus a betting
     application.* Source: `papers/02b_ranking_model/`. Live at
     <https://gillenpj.github.io/awracing/paper2b/> (HTML + PDF), pinned
-    date 2026-06-29. The paper is built around **three questions in
+    date 2026-07-03 (re-published, single-bet overhaul; was 2026-06-29).
+    The paper is built around **three questions in
     order**: (Q1) under a ranking objective, how well does the model
     predict the top-3 finishing order? — it beats chance but the
     discounted-Harville place market scores higher on both metrics
@@ -45,11 +54,11 @@ forward plan below.
     a paired bootstrap difference of +8.0 pp [+1.0, +14.8] (90% CI
     excludes zero), the first statistically distinguishable improvement
     in the series, though still a loss to the market; and (Q3) does that
-    place accuracy translate into betting value? — no: priced on the real
-    industry-SP book (place + each-way only), the model's place
-    selections return −17.6% (vs a −14.1% bet-all baseline), below both
-    a fair book and indiscriminate betting, consistent with Q1. See
-    "Paper 2b plan" below.
+    place accuracy translate into betting value? — under the **single-bet**
+    primary rule (one bet per race, priced at real SP), place returns
+    −9.8% and each-way −7.7% — materially better than the multi-bet rule
+    (−17.3% / −26.3%), a place/each-way effect only (no win advantage),
+    but still a loss; consistent with Q1. See "Paper 2b plan" below.
   - **Pre-split draft archived.** `papers/02_extended_features_ARCHIVE/`
     is the combined pre-split paper-2 draft, kept for reference (not
     rendered).
@@ -568,31 +577,34 @@ correction.)*
   going code in 2b; paper 3's tree-model rationale depends on it being
   untouched.
 - **New references:** Harville (1973), Lo & Bacon-Shone (1994, 2008).
-- **Q3 betting application: place + each-way only** (exacta/trifecta dropped —
-  CSF / Tote-pool dividend, not a Harville construction, no dividend data).
-  Selection = discounted-Harville (α=0.80/0.65) value ratio; payout = **real
-  industry-SP book** (observed ~16% over-round), same basis as Q2 — the
-  question is simply *is the strategy profitable?* **Neither is:** place
-  −17.6% (with a race-level bootstrap 90% CI), alongside Q2's win −17.4%;
-  each-way −27.6% (the 1/5 each-way terms compound the SP margin; the
-  `_03` each-way paragraph now quotes the bet-all each-way floor −18.5%
-  (`backtest_betall_eachway`) and notes the selections sit ~9pp *below* it —
-  unlike place, the each-way selections actively worsen the structural loss).
-  The Q3
-  table is Q2-style (ROI + bootstrap CI) — the earlier bet-all and fair-book
-  reference columns were dropped as redundant on the SP basis (and the place
-  over-round-sensitivity target removed with them). `_04` contextualises with
-  the zero-margin fair-book place figure (−3.6%, near breakeven) plus two SP
-  benchmarks on the same test set: **bet-all win −22.8%** (the zero-skill
-  over-round + favourite–longshot-bias floor, worse than the ~14% the
-  over-round alone implies) and **back-the-favourite −6.6%** (a trivial
-  heuristic that *beats* the model's −17.4%; ties = 9.1% of races, broken by
-  lower runner_id). The honest reading: the model beats indiscriminate betting
-  but trails the favourite, and the residual loss is predominantly the ~16% SP
-  margin (place fair-book near breakeven) — which **motivates the early-market /
-  Betfair convergence direction** (lower friction → smaller headwind), not a
-  profitability claim. Targets in `R/value_bets_p2b.R`, `value_bet_baselines_2b`,
-  `backtest_betall_win`, `backtest_favourite_win`, `backtest_betall_eachway`.
+- **Q3 betting application: place + each-way, SINGLE-BET primary**
+  (exacta/trifecta dropped — CSF / Tote-pool dividend, no dividend data).
+  Selection = discounted-Harville (α=0.80/0.65) value ratio; **prob floor
+  standardised to 0.15 across all 2b betting targets** (was 0.10 place/each-way
+  naive+sweep, 0.13 win sweep). Payout = **real industry-SP book** (observed
+  ~16% over-round), same basis as Q2. **Single-bet** (one bet/race, the
+  highest-model-win-prob qualifier) is the primary, more realistic rule;
+  **multi-bet** (back all qualifiers) reported for continuity with papers 1/2a
+  (Owen does not specify his own rule). Single-bet **place −9.8%, each-way
+  −7.7%** — far smaller losses than multi-bet **place −17.3%, each-way −26.3%**
+  (multi-bet each-way compounded by the 1/5 terms: bet-all each-way floor −18.5%
+  `backtest_betall_eachway`, weaker qualifiers push below it). **Win: no
+  single-bet advantage** — −15.1% (2b) / −25.9% (2a) vs multi-bet, within CIs;
+  the single-bet effect is place/each-way only. Robustness: single-bet place
+  drop-largest-winner −10.4%; each-way τ=1.3 90% CI upper bound −0.1% (grazes
+  zero — framed cautiously, "not comfortably below zero"). The
+  `fig-single-vs-multi-sweep` overlay (place + each-way, single vs multi, CI
+  ribbons) shows single-bet above multi-bet across τ, gap widening; win omitted
+  (indistinguishable). `_04` contextualises with **bet-all win −22.8%** and
+  **back-the-favourite −6.6%** (ties 9.1%, lower runner_id), and the **Betfair
+  convergence motivation** (single place −9.8% ≈ half the ~16% margin; ~5%
+  exchange commission → smaller headwind; left to a future paper). Single-bet
+  machinery in `R/scoring.R` (`select_single_win_bet`, `single_bet_units`,
+  `summarise_single_bets` (now returns `roi_drop_top1`), `run_single_win_backtest`,
+  `run_single_settled_backtest`, `run_single_sweep`). Targets:
+  `backtest_single_{win,place,eachway}_2b` (+`_sweep_2b`), `backtest_single_win_2a`,
+  `value_bet_baselines_2b`, `backtest_betall_{win,eachway}`,
+  `backtest_favourite_win`.
 - **qmd structure:** `_01` data pointer + discounted-Harville market
   baseline; `_02` model build + independent draw search + Wolverhampton;
   `_03` Q1 (ranking vs market), Q2 (win/ROI vs 2a), Q3 (place/each-way

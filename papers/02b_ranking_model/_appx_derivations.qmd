@@ -2,8 +2,8 @@
 
 This appendix derives the Plackett–Luce model and its exploded-logit
 representation — the ranking machinery fitted in @sec-exploded-model — and
-the Harville place-probability formula behind the market baseline of
-@sec-data. It
+the Harville place-probability formula behind the market's ordering
+probabilities in @sec-data. It
 builds on the conditional logit derived in paper 1's appendix, whose
 notation we reuse: race $i$ is the chooser, horse $j$ the alternative, the
 linear predictor for horse $j$ in race $i$ is
@@ -78,11 +78,9 @@ fictitious race consisting only of those that finished third or worse;
 and so on. These $nk$ races — real and fictitious — are pooled into a
 single dataset, and a single conditional-logit model is fit across the
 whole pool. By making fuller use of the finishing order rather than just
-the win, this yields more precise estimates of $\boldsymbol{\beta}$. The
-construction is implemented in `prepare_exploded_data()`, and the fitted
-result is @sec-exploded-model's exploded ranking model.
+the win, this yields more precise estimates of $\boldsymbol{\beta}$.
 
-## Harville order and place probabilities: the market baseline
+## Harville order and place probabilities: the market comparison
 
 The exploded logit above is the *model* side of @sec-evaluation; its
 *market* side needs place probabilities — the chance a horse finishes in the
@@ -112,8 +110,8 @@ leaving $\prod_s e^{z_{j_s}} / \sum_{r \ge s} e^{z_{j_r}}$ — the
 Plackett–Luce expression. Undiscounted Harville and Plackett–Luce are the
 same model, reached from different starting points (sequential conditioning
 on win probabilities versus a ranking likelihood). This is why an
-undiscounted Harville baseline cannot judge a Plackett–Luce-fitted model: it
-*is* that model's formula, evaluated at the market's win probabilities
+undiscounted Harville comparison cannot judge a Plackett–Luce-fitted model:
+it *is* that model's formula, evaluated at the market's win probabilities
 rather than the model's.
 
 **Place probability.** The marginal probability that a given horse finishes
@@ -145,8 +143,8 @@ rather than the win probabilities themselves, the cancellation that produced
 the Plackett–Luce form no longer happens: the discounted order probability
 is not a product of plain win probabilities, and the discounted Harville and
 Plackett–Luce models cease to coincide. That break is what makes the
-discounted baseline a genuine yardstick for the exploded model rather than a
-re-expression of it.
+discounted comparison a genuine yardstick for the exploded model rather than
+a re-expression of it.
 
 The mixed discrete-choice derivation, used in paper 2a for race-level
 interactions, is given in paper 2a's appendix.
