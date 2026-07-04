@@ -2418,6 +2418,7 @@ window.Quarto = {
 </header>
 
 
+<p><em>Revised 2026-07-03.</em><a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
 <section id="sec-intro" class="level1" data-number="1">
 <h1 data-number="1"><span class="header-section-number">1</span> Introduction</h1>
 <p>Modelling the outcome of a horse race is a long-running problem in applied statistics and a useful proving ground for discrete-choice methods more generally. <span class="citation" data-cites="owen2019">Owen (<a href="#ref-owen2019" role="doc-biblioref">2019</a>)</span> fits a conditional-logit win model to UK Turf Flat racing over 2014–2016 and reports both the parameter estimates (his Table 3) and a small suite of probabilistic diagnostics: a calibration plot (his Figure 7) and two scoring rules (his Figure 8). Owen’s headline finding is that the model and the betting market track each other closely on calibration, with the market modestly sharper on the scoring rules.</p>
@@ -2429,7 +2430,7 @@ window.Quarto = {
 <h1 data-number="2"><span class="header-section-number">2</span> Data and race selection</h1>
 <section id="source-the-smartform-database" class="level2" data-number="2.1">
 <h2 data-number="2.1" class="anchored" data-anchor-id="source-the-smartform-database"><span class="header-section-number">2.1</span> Source: the Smartform database</h2>
-<p>All race data come from the Smartform MySQL database. The two tables we draw on are <code>historic_races</code>, which holds one row per race, and <code>historic_runners</code>, which holds one row per declared runner per race. A horse is identified by its <code>runner_id</code>, which is stable across races and surfaces, so the same horse’s runs at AW and turf courses can be linked. The full extraction is driven from <code>sql/qualifying_races.sql</code>, <code>sql/runners_for_races.sql</code> and <code>sql/horse_full_history.sql</code>; pull-and-clean functions in <code>R/</code> lift the resulting tibbles<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> into the <code>targets</code> pipeline.</p>
+<p>All race data come from the Smartform MySQL database. The two tables we draw on are <code>historic_races</code>, which holds one row per race, and <code>historic_runners</code>, which holds one row per declared runner per race. A horse is identified by its <code>runner_id</code>, which is stable across races and surfaces, so the same horse’s runs at AW and turf courses can be linked. The full extraction is driven from <code>sql/qualifying_races.sql</code>, <code>sql/runners_for_races.sql</code> and <code>sql/horse_full_history.sql</code>; pull-and-clean functions in <code>R/</code> lift the resulting tibbles<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a> into the <code>targets</code> pipeline.</p>
 </section>
 <section id="the-british-class-system-and-why-we-begin-in-2006" class="level2" data-number="2.2">
 <h2 data-number="2.2" class="anchored" data-anchor-id="the-british-class-system-and-why-we-begin-in-2006"><span class="header-section-number">2.2</span> The British class system, and why we begin in 2006</h2>
@@ -4482,6 +4483,7 @@ P^{\text{mkt}}_{jk} \;=\;
 \hat{P}_{jk} &gt; 0.15 \qquad\text{and}\qquad
 \text{ratio}_{jk} &gt; 1.3.
 \]</span></p>
+<p>This rule can qualify more than one horse in a race; Owen does not specify whether he backs one qualifier or all of them, and we back all (the multi-bet rule).<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a></p>
 <p>On Owen’s Turf test set this rule places 264 bets and returns +54 units, an ROI of approximately +20.5%. Applied to our AW test set with the reduced model fit, the same rule gives:</p>
 <div class="cell">
 <div id="tbl-backtest-naive" class="cell quarto-float quarto-figure quarto-figure-center anchored">
@@ -4898,7 +4900,9 @@ z_{ij} = \sum_{l=1}^k \beta_l x_{ilj},
 </div></section><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
 
 <ol>
-<li id="fn1"><p>A <em>tibble</em> is the tidyverse’s tidy data frame — strict about column types and printing, otherwise behaves like a <code>data.frame</code>. See <a href="#sec-appx-software" class="quarto-xref">Section 7</a> for the full software stack.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn1"><p>This revision adds a clarification of Owen’s betting-selection rule: it can qualify more than one horse per race, and this paper backs all qualifiers.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>A <em>tibble</em> is the tidyverse’s tidy data frame — strict about column types and printing, otherwise behaves like a <code>data.frame</code>. See <a href="#sec-appx-software" class="quarto-xref">Section 7</a> for the full software stack.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>From paper 2a onwards we adopt the single-bet variant — backing only the highest-model-probability qualifier per race — as the primary, more realistic rule.<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
 </section></div></main>
 <!-- /main column -->
