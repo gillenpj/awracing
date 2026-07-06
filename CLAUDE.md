@@ -611,7 +611,7 @@ correction.)*
   betting value, real-SP basis) as **separate** subsections; `_04`
   discussion (three paragraphs, three-question framing);
   `_appx_derivations` Plackett–Luce / exploded-logit + Harville derivation.
-- **Status: COMPLETE and PUBLISHED** (2026-06-29, HTML + PDF). Live at
+- **Status: COMPLETE and PUBLISHED** (2026-07-03, HTML + PDF). Live at
   <https://gillenpj.github.io/awracing/paper2b/>; landing-page entry and
   `docs/paper2b/` committed. Both market baselines use discounted Harville
   (α=0.80/0.65); model P1_rank market figure is 0.00543.
