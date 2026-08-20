@@ -923,32 +923,65 @@ stage $s$, win probabilities a softmax over the field — matches papers
     the grid, with the count and the grid corner(s) affected (from
     `gbt_tuning_divergence.csv`) — this belongs in the same paragraph as
     the capacity-and-selection asymmetry disclosure, not left implicit.
-  - **Root cause, found and fixed same day:** the first real (unbounded)
-    run hit 255 divergence events on grid point 1 (`max_depth = 2`,
-    `eta = 0.01`, `min_child_weight = 1`, `subsample = 0.7`) — every
-    fold, from round 1. This looked exactly like the "low-`eta` = real
-    problem" case flagged above, so it was investigated before letting
-    the grid continue rather than assumed benign. **`fit_one_fold()` was
-    never calling `set.seed()`** (the original tuning-grid spec said
-    "Seed 42 throughout" and this one call site was missed) — confirmed
-    by calling `run_grid_point()` twice, unseeded, on the identical grid
-    point: 255 divergence events one run, 0 the next. Root mechanism:
-    `min_child_weight = 1` is the WEAKEST value in that dimension (not
-    `eta`, which was the axis this guard was watching), and combined
-    with `subsample = 0.7`'s random row selection, occasionally lets a
-    leaf fit to a handful of subsampled rows and take an extreme value —
-    real GBT tail behaviour under weak regularisation, not an objective
-    bug (the loss itself is unaffected; `scripts/verify_pl_objective.R`
-    never touches `xgb.train()`'s subsampling). Fixed by adding
-    `set.seed(42L)` immediately before every `xgb.train()` call in
-    `fit_one_fold()`; re-ran the same grid point twice after the fix —
-    identical `fold_mean_pl_r2`, zero divergence, both times. **Revises
-    the "low `eta` = suspect" framing above**: the axis that actually
-    matters for divergence risk in this grid is `min_child_weight`
-    (weak leaf regularisation), not `eta` — worth knowing when reading
-    the final `gbt_tuning_divergence.csv`, and worth mentioning in §6
-    alongside the flooring disclosure if any events remain under the
-    now-seeded run.
+  - **Root cause, found 2026-08-20, CORRECTED 2026-08-21 — the original
+    fix below was verified wrong.** The first real (unbounded) run hit
+    255 divergence events on grid point 1 (`max_depth = 2`, `eta = 0.01`,
+    `min_child_weight = 1`, `subsample = 0.7`) — every fold, from round
+    1. The same-day investigation added `set.seed(42L)` immediately
+    before the `xgb.train()` call in `fit_one_fold()` (the "Seed 42
+    throughout" spec had missed this one call site) and declared it
+    fixed, verified by calling `run_grid_point()` twice on the identical
+    grid point and getting identical, non-diverging results both times.
+    **That verification was too narrow and the conclusion was wrong.** A
+    machine reboot mid-run on 2026-08-20 (Windows Update, unrelated)
+    forced a resume, and re-investigation of the resumed run's checkpoint
+    found the SAME point diverging 100% again — all 6 completed grid
+    points (all `eta = 0.01`, the first-in-order slice of the grid, no
+    comparison group) fully diverged. Root-caused properly this time,
+    with a fresh-process reproducibility check rather than a same-session
+    rerun: **R's `set.seed()` only controls R-level RNG. `xgb.train()`'s
+    own `subsample`/`colsample_bytree` row/column draws are governed by
+    xgboost's OWN internal RNG, which is separate and is NOT reset by
+    R's `set.seed()` unless `seed` is also passed inside xgboost's
+    `params` list** — `fit_one_fold()`'s `full_params` never did.
+    Mechanically this explains the original "fix": within one R process,
+    two sequential `xgb.train()` calls draw from the SAME un-seeded,
+    process-constant xgboost RNG state, so they agree with each other —
+    that agreement was mistaken for proof the fix worked, when it only
+    proved same-process determinism. A fresh process gets a different,
+    unpredictable draw from that internal RNG: sometimes benign,
+    sometimes landing in the pathological corner (shallow trees, very
+    slow `eta`, `min_child_weight = 1` giving essentially no leaf
+    regularisation, `subsample = 0.7` drawing which rows a leaf sees) —
+    confirmed directly: calling the real `fit_one_fold()`/`run_grid_point()`
+    with `set.seed(42L)` present (the "verified" 2026-08-20 fix) on a
+    freshly booted, idle machine gave a clean, sane result
+    (`fold_mean_pl_r2 = 0.0640`, zero divergence events) for the exact
+    point that had 100% diverged, twice, bit-for-bit identically, in the
+    earlier session. **Actual fix:** `seed = 42L` added to `full_params`
+    in `fit_one_fold()` (`R/gbt_tuning.R`), i.e. inside xgboost's own
+    params list, not just via R's `set.seed()`. Verified by running the
+    same 20-round check in two separate fresh `Rscript` processes and
+    diffing the resulting tree structure and `pl_r2` trajectory
+    byte-for-byte identical both times — genuine cross-process
+    reproducibility, which the original fix never had.
+    `scripts/verify_pl_objective.R`'s full 8-assertion gate still passes
+    unchanged (this fix is in `gbt_tuning.R`'s params construction, not
+    `pl_objective.R`'s math — the loss itself was never the bug).
+    **General lesson, worth restating because it cost a full
+    investigation to relearn:** a fix verified only by rerunning inside
+    the same process is not verified — same-process reruns share
+    whatever process-level state (including a library's own un-seeded
+    internal RNG) caused the bug, so they will agree with each other
+    regardless of whether the fix does anything. Verification needs a
+    fresh process. **Whether `min_child_weight = 1` is genuinely the
+    dominant risk axis for this objective (vs. `eta`, vs. it just being
+    which grid points happened to get an unlucky draw before the fix) is
+    now an open question again**, not a settled finding — the earlier
+    "min_child_weight, not eta, is the real axis" conclusion was drawn
+    from the same flawed same-session comparison and needs re-examining
+    against the seeded grid's actual `gbt_tuning_divergence.csv` once it
+    re-runs to completion, rather than assumed correct.
 - **Tuning grid budget — fixed 2026-08-20, before any test-set number,
   supporting the §6 capacity-and-selection disclosure.** Full factorial:
   `max_depth` {2,3,4,6} x `eta` {0.01,0.03,0.1} x `min_child_weight`

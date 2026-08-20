@@ -78,15 +78,22 @@ fit_one_fold <- function(X_train, y_train, train_group,
       colsample_bytree = params$colsample_bytree,
       base_score       = 0,
       objective        = obj_fn,
-      nthread          = nthread
+      nthread          = nthread,
+      seed             = 42L
     )
   )
 
-  # Seed 42 throughout (original tuning-grid spec) -- also what makes the
-  # divergence investigation below reproducible: xgb.train()'s row-level
-  # `subsample` draws from R's RNG, and without an explicit seed here the
-  # SAME grid point could diverge on one run and not the next (confirmed
-  # empirically 2026-08-20 -- see CLAUDE.md "Divergence guard").
+  # Seed 42 throughout (original tuning-grid spec). R's set.seed() only
+  # controls R-level RNG -- xgb.train()'s own `subsample`/`colsample_bytree`
+  # row/column draws are governed by xgboost's OWN internal RNG, which is
+  # NOT reset by R's set.seed() unless `seed` is also passed inside
+  # `params` (see CLAUDE.md "Divergence guard" for the discovery story:
+  # an earlier fix here set only R's seed, which looked verified because
+  # xgboost's un-seeded internal RNG happens to be process-constant across
+  # sequential calls in the SAME R session -- reproducible within a
+  # session, not across sessions). `params$seed` above is the actual fix;
+  # this call keeps R-level randomness (nothing else in this function uses
+  # it directly, but xgboost's R binding may still consult it) pinned too.
   set.seed(42L)
   bst <- xgboost::xgb.train(
     params                = full_params,
@@ -132,13 +139,19 @@ fit_one_fold <- function(X_train, y_train, train_group,
 #' @param folds Tibble from `make_race_folds()` (`race_id`, `fold`).
 #' @param params One grid point (see `fit_one_fold()`).
 #' @param k Plackett-Luce depth.
+#' @param nthread Integer, passed through to `fit_one_fold()`/`xgb.train()`
+#'   for every fold. Default `parallel::detectCores()`, matching
+#'   `fit_one_fold()`'s own default -- exposed here (2026-08-20) so a
+#'   determinism diagnostic can force a fixed thread count without editing
+#'   the function body. See CLAUDE.md "Paper 3 plan" divergence-guard note.
 #' @return A list: `summary` (one-row tibble — the grid point's params,
 #'   `fold_mean_pl_r2`, `fold_sd_pl_r2`, `mean_best_iteration`, and
 #'   `fold_r2_1`..`fold_r2_5`) and `divergence_events` (tibble, possibly
 #'   zero rows, one row per floored event across all 5 folds: the grid
 #'   point's params, `fold`, plus `fit_one_fold()`'s `divergence_events`
 #'   columns).
-run_grid_point <- function(X, y, key, folds, params, k = 3L) {
+run_grid_point <- function(X, y, key, folds, params, k = 3L,
+                            nthread = parallel::detectCores()) {
   v <- max(folds$fold)
   fold_results <- vector("list", v)
 
@@ -153,7 +166,7 @@ run_grid_point <- function(X, y, key, folds, params, k = 3L) {
     fold_results[[f]] <- fit_one_fold(
       X[train_idx, ], y[train_idx], train_group,
       X[val_idx, ],   y[val_idx],   val_group,
-      params = params, k = k
+      params = params, k = k, nthread = nthread
     )
   }
 
