@@ -2,8 +2,14 @@
 --
 -- Returns the complete cross-surface career history for a set of horses.
 -- Joins historic_runners to historic_races to bring back race-level context
--- (date, course, type, class, distance) for every career run, regardless of
--- surface. Used to build form features for the qualifying AW population.
+-- (date, course, type, class, going, distance) for every career run,
+-- regardless of surface. Used to build form features for the qualifying AW
+-- population.
+--
+-- `r.going` added for paper 3's going-affinity feature (R/build_going_features.R):
+-- extends this existing path rather than adding a new query, per the
+-- project's preference for reusing an established source over writing new
+-- SQL when one already carries the needed race-level context.
 --
 -- Parameter:
 --   ?runner_ids  Comma-separated list of runner_id values, injected via
@@ -38,6 +44,7 @@ SELECT
     r.course,
     r.race_type,
     r.class,
+    r.going,
     r.distance_yards
 FROM historic_runners AS rn
 INNER JOIN historic_races AS r

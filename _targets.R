@@ -150,9 +150,18 @@ list(
   ),
 
   # -- Full cross-surface career history -------------------------------------
+  # File-tracked so edits to horse_full_history.sql (e.g. paper 3's addition
+  # of r.going) invalidate full_history automatically, matching the
+  # qualifying_races_sql / trainer_sire_cumulative_sql pattern.
+  tar_target(
+    full_history_sql,
+    "sql/horse_full_history.sql",
+    format = "file"
+  ),
   tar_target(
     full_history,
     {
+      full_history_sql  # force dep on SQL file target
       con <- connect_smartform()
       on.exit(disconnect_smartform(con))
       extract_career_history(con, aw_runner_ids)
@@ -268,17 +277,35 @@ list(
     )
   ),
 
+  # -- Paper 3 going-affinity feature -----------------------------------------
+  # going_runs_prior, going_sr_shrunk, going_sr_delta, going_ordinal. Not a
+  # paper-2 candidate feature (going was deliberately deferred from paper 2 —
+  # see CLAUDE.md "Going interaction — deferred to paper 3"); added here
+  # alongside the other runners_augmented builders because it is keyed the
+  # same way (race_id, runner_id) and needs the same full_history +
+  # qualifying_races inputs. See R/build_going_features.R.
+  tar_target(
+    going_features,
+    build_going_features(qualifying_runners, qualifying_races, full_history)
+  ),
+
   # -- Augmented runners (paper 2 modelling input) ---------------------------
   # Single tibble carrying paper 1's modelling columns plus every new
-  # paper-2 candidate feature. This is the one augmented runners target
-  # that paper 2's prepare_mlogit_data() will consume; paper 1 continues
-  # to read the narrower `features` target, so its fit is unchanged.
+  # paper-2 candidate feature, plus paper 3's going-affinity feature. This
+  # is the one augmented runners target that paper 2's prepare_mlogit_data()
+  # and paper 3's GBT feature matrix both consume; paper 1 continues to
+  # read the narrower `features` target, so its fit is unchanged. The
+  # going_* columns are exempt from paper 2/2a/2b's complete-case NA-drop
+  # rule (they are never listed in model_fitting_p2_vars()) since no
+  # paper-2/2a/2b formula references them — so their NA-bearing values do
+  # not affect any conditional-logit fit's race universe.
   tar_target(
     runners_augmented,
     features |>
       dplyr::left_join(jockey_sr_premiums,   by = c("race_id", "runner_id")) |>
       dplyr::left_join(within_race_features, by = c("race_id", "runner_id")) |>
-      dplyr::left_join(career_form_features, by = c("race_id", "runner_id"))
+      dplyr::left_join(career_form_features, by = c("race_id", "runner_id")) |>
+      dplyr::left_join(going_features,       by = c("race_id", "runner_id"))
   ),
 
   # -- Modelling-ready runners (paper 2) -------------------------------------

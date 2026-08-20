@@ -4,6 +4,38 @@ Statistical models of UK All-Weather racing outcomes, built on the
 Smartform MySQL database in R. Multi-paper series; current state and
 forward plan below.
 
+## Default to proceeding
+
+Do not stop for approval on implementation choices, performance work,
+refactors, debugging, or anything reversible under version control. Make
+the call, do the work, and report what you did and why afterwards. A stop
+costs a full turn; a reversible mistake costs a `git checkout`.
+
+Stop and ask only when one of these is true:
+- The action would change or republish a **published figure** — anything
+  under `docs/`, or any headline number in papers 1, 2a or 2b.
+- The action would **modify a model specification** that affects reported
+  results. The existing model-spec gate stands.
+- The action would **destroy or overwrite state not recoverable from
+  git**: `renv.lock`, the `_targets` store, the database, `.env`.
+- The action would **commit a large irreversible spend of wall-clock** —
+  a run projected beyond about 12 hours.
+- A prompt explicitly says to stop.
+
+Verification gates are not a reason to stop; they are the reason not to.
+Where a gate exists — `scripts/verify_pl_objective.R`,
+`scripts/verify_going_features.R`, `scripts/verify_rebuild.R` — proceed
+and let the gate catch you. If a gate fails, fix it and report. Do not
+ask permission to fix it.
+
+Two calibration examples (2026-08-20):
+- **The tuning-grid stop was CORRECT.** A 37-hour projection (before the
+  `pl_objective.R` speedup) is an irreversible spend.
+- **The performance-rewrite stop was UNNECESSARY.** The rewrite was
+  reversible and covered by a gate (`scripts/verify_pl_objective.R`).
+  The right behaviour was the rewrite-debug-fix-reverify cycle actually
+  run unprompted, reported after the fact — not pausing to ask first.
+
 ## Series status (read this first)
 
 - **Paper 1 — complete and PUBLISHED.** *Replicating Owen (2019) on
@@ -127,6 +159,12 @@ forward plan below.
   dependencies explicit and avoids namespace surprises in
   `{targets}`. `_targets.R` may use `library()` for `{targets}` and
   `{tarchetypes}` themselves.
+- **Documented exception: `{xgboost}` used directly (`xgboost::xgb.train()`),
+  not via `{tidymodels}`/`{parsnip}`, for paper 3's custom
+  Plackett–Luce objective.** `{parsnip}` has no interface for a custom
+  objective plus a custom eval metric plus group info together. Same
+  kind of exception as the `{mlogit}` route in papers 1/2 (see
+  "Modelling notes" below).
 
 ## Project structure
 - `R/` — functions, sourced by `_targets.R` via `tar_source()`.
@@ -182,6 +220,10 @@ forward plan below.
   - `paper2_seed_mixed_choice.md` — mixed discrete choice +
     race-level features mechanism, cut from paper 1's appendix.
     Ready to lift into paper 2 alongside the exploded-logit seed.
+  - `Notes on Trees-based Methods.pdf` — background theory for
+    paper 3: regression trees, pruning, bagging, random forests,
+    boosting, gradient boosting, XGBoost, and the application to
+    horse racing. See "Paper 3 theory note" below.
 - `scripts/`
   - `verify_rebuild.R` — standing read-only integrity check on
     `qualifying_races` / `qualifying_runners` / `candidate_races`.
@@ -762,34 +804,425 @@ choices where they conflict.
 Pre-split draft archived at `papers/02_extended_features_ARCHIVE/`.
 Paper 2a and 2b are now the active branches.
 
+## Paper 3 theory note
+Read `notes/Notes on Trees-based Methods.pdf` before touching paper-3
+code or prose — it is the canonical source for this paper's notation
+and framing (race $i$ the chooser, horse $j$ the alternative, latent
+score $z_{ij}$, $\mathcal{C}_{is}$ the set of horses not yet ranked at
+stage $s$, win probabilities a softmax over the field — matches papers
+1, 2a, 2b). Two things from the note are load-bearing:
+- **The structural change for racing is that the loss stops
+  factorising per observation: one term of the loss spans every runner
+  in the field.** Every other complication in the method section — the
+  grouped likelihood, the gradient/Hessian bookkeeping, the group-size
+  vs group-pointer trap in `{xgboost}` — follows from this single fact.
+- **Going affinity is a body-section modelling choice, not appendix
+  material.** It is the feature paper 2 deferred specifically because
+  conditional logit can't take it without an explicit interaction term;
+  paper 3's method section is built around removing that constraint, so
+  the feature belongs where that argument is made, not tucked into an
+  appendix as an afterthought.
+
 ## Paper 3 plan
-- **Model classes: two, in one paper.** A tree-based ensemble (random
-  forest or gradient boosted trees, decision TBD) AND a neural ranking
-  network. Both handle non-linearities and feature interactions
-  gracefully — conditional logit in its linear-predictor form does
-  neither natively.
-- **Objective: listwise ranking** — the Plackett–Luce likelihood on the
-  exploded top-k order, the same objective as paper 2b. Applied to *both*
-  model classes, so paper 3's results are directly comparable to paper 2b
-  as well as to papers 1 / 2a.
-- **Key mechanism for both classes:** raw horse-level scores are
-  converted to per-race win probabilities via a **softmax over the
-  field**, giving a proper probability distribution over a variable-size
-  choice set. This is the standard trick that makes tree / NN scores
-  compatible with the PL objective.
-- **Features: same base set as papers 2a / 2b, PLUS going affinity** — a
-  horse-specific going win rate from a career-history sub-query, the
-  feature deferred from paper 2 by design. Trees and NNs take it as a raw
-  feature without requiring an explicit interaction term (the constraint
-  that kept it out of the conditional-logit papers).
-- **Comparison plan:** keep the same data scope, train/test split, and
-  diagnostic suite (Owen Table 3 / Figure 7 / Figure 8 / §3.4 backtest)
-  so all four papers (1, 2a, 2b, 3) are directly comparable.
-- **Status: research phase.** Model-class details and architecture TBD
-  pending literature review. Implementation not started.
-- **Scope note:** paper 1 already committed publicly to "a Plackett–Luce
-  R² tree" as paper 3's direction — the neural-ranking-network extension
-  is new scope added at paper 2b completion.
+- **Trees only.** The neural-ranking-network extension floated at
+  paper 2b completion is dropped from scope — no paper number, no plan
+  for it. *(Supersedes the earlier "two model classes in one paper"
+  framing.)*
+- **One model fitted:** gradient boosted trees under a custom
+  Plackett–Luce objective, $k = 3$, via `{xgboost}`. Papers 1, 2a and
+  2b enter as stored comparators through their existing `{targets}`
+  objects — no refits of the linear models.
+- **Objective = ListMLE.** The grouped PL log-likelihood in
+  `R/pl_objective.R` is term-for-term the ListMLE objective from the
+  learning-to-rank literature. Paper 3 keeps the objective from paper
+  2b and swaps the function class from conditional logit to GBT.
+  Off-the-shelf `rank:ndcg`, `rank:pairwise`, and LambdaMART objectives
+  are **not** this objective and must not be substituted — custom
+  objective only (`make_pl_objective()` / `make_pl_eval()`).
+- **`R/pl_objective.R`'s hot path is `{data.table}`-vectorised, not
+  `dplyr`** (2026-08-20) — a pure performance rewrite, not a behaviour
+  change; `scripts/verify_pl_objective.R` (the reason this was safe to
+  do) still passes all assertions, including an added equivalence check
+  (200 synthetic races, tolerance 1e-10) against the original
+  implementation, retained as `pl_core_reference()` for exactly this
+  purpose. The original `dplyr::group_by() |> mutate()` implementation
+  cost ~900ms/call on a ~40,000-row / ~4,000-race training fold — called
+  twice per boosting round (objective + eval) — making the tuning grid
+  below an estimated 9-180+ hours depending on rounds/fit. Two rewrite
+  attempts: a hand-rolled vectorisation (global `cumsum()` with a
+  per-group offset subtraction) was tried first and **rejected** — for a
+  race late in the arbitrary processing order it cancels two large,
+  nearly-equal numbers to recover a small suffix sum, which degraded the
+  Hessian-vs-`numDeriv` verification assertion from ~7e-8 to ~1.6e-6
+  (over its 1e-6 tolerance) despite matching the reference to ~1e-14 at
+  the tested point — the finite-difference check is far more sensitive
+  to which floating-point path produced a near-identical value than a
+  point-estimate comparison is. `{data.table}`'s grouped operations
+  (`by = race`) fit each group's `rev(cumsum(rev(x)))` on a genuinely
+  isolated per-group vector — the same property that makes `dplyr`
+  numerically safe — while running in C; this restored EXACT agreement
+  with the original implementation (0 difference on the 200-race
+  equivalence check) at ~105ms/round end-to-end via `xgb.train()` — an
+  ~8.7x speedup, not the ~35-45x a purely index-arithmetic vectorisation
+  briefly appeared to give before its precision problem was caught.
+  `{data.table}` is a new direct dependency (previously present only
+  transitively via `{xgboost}`); no tidyverse-first exception note
+  needed beyond this one, since it is confined to `pl_objective.R`'s
+  internal hot path and never appears in the tidyverse-first pipeline
+  code the rest of the project is written in.
+  - **Consequences of the incident, for anyone touching this file
+    again:** `pl_core_reference()` and the current verification
+    tolerances in `scripts/verify_pl_objective.R` are **permanent, not
+    scaffolding** — they are what caught a bug that agreed with the
+    reference to ~1e-14 at a point comparison yet was still wrong. Any
+    future performance work on the objective must re-run the **full**
+    gate, not a point check; a point comparison alone would have let
+    this exact bug through.
+- **Divergence guard, added 2026-08-20 during the tuning grid's first
+  real (unbounded, up-to-2000-round) run.** A grid point can genuinely
+  diverge — scores grow until `exp(zc)` overflows or `denom` underflows
+  to exactly `0.0`, making that row's `1/denom` (hence `cuminv`/
+  `grad`/`hess`) non-finite, and `pl_r2` non-finite in turn. XGBoost's
+  early-stopping callback does a raw `score > best_score` comparison with
+  no `NA`-handling of its own, so a single non-finite `pl_r2` crashed the
+  entire `xgb.train()` call ("missing value where TRUE/FALSE needed"),
+  not just that round. Two guards, both in `R/pl_objective.R`:
+  - `pl_grad_hess()`: non-finite `grad` -> `0` (no push, either
+    direction, for that row); non-finite `hess` -> `1e-16` (the same
+    floor already used for a legitimately tiny Hessian). Keeps a
+    diverging row from corrupting that round's tree-building silently —
+    worse than a crash — rather than fixing the ranking, since these
+    values never reach the eval metric that scores a grid point.
+  - `make_pl_eval()`: non-finite `pl_r2` -> `-1e10`, a large negative
+    **finite** sentinel (not `-Inf`, specifically so no comparison is
+    ever `-Inf` vs `-Inf`, which is what caused the crash in the first
+    place). This is the value that determines grid ranking, and the
+    choice is deliberately conservative: `fold_mean_pl_r2` is the mean
+    of 5 folds, so even a SINGLE diverged fold drags a grid point's mean
+    to roughly `-2e9` — three orders of magnitude below any real `pl_r2`
+    (bounded above by 1; observed in this data around 0.06-0.07) — so a
+    diverged config cannot be masked by its other folds' good scores and
+    cannot win `select_best_config()`'s ranking. Confirmed by
+    construction, not just asserted.
+  - Both guards checked against `scripts/verify_pl_objective.R`'s full
+    gate (still passes unchanged) before being trusted.
+  - **Divergence event logging**, added alongside (not just flooring):
+    `make_pl_objective()`/`make_pl_eval()` take an optional `diag_env`;
+    `R/gbt_tuning.R::fit_one_fold()` supplies one per fold-fit and
+    returns every floored event (`round`, `source`, and either
+    `n_grad_floored`/`n_hess_floored` or the pre-floor `raw_value`).
+    `scripts/run_gbt_tuning.R` checkpoints these to
+    `gbt_tuning_divergence.csv` as they occur, tagged with the grid
+    point and fold. Purpose: divergence confined to the expected
+    high-`eta`/high-`max_depth` corner is unremarkable; divergence
+    appearing at low `eta` would mean the objective has a numerical
+    problem at scale, not just at parameter extremes, and would make the
+    whole run's results suspect — worth knowing, not just surviving.
+  - **§6 drafting note:** state plainly that divergent configurations
+    during tuning were floored to a sentinel rather than dropped from
+    the grid, with the count and the grid corner(s) affected (from
+    `gbt_tuning_divergence.csv`) — this belongs in the same paragraph as
+    the capacity-and-selection asymmetry disclosure, not left implicit.
+  - **Root cause, found and fixed same day:** the first real (unbounded)
+    run hit 255 divergence events on grid point 1 (`max_depth = 2`,
+    `eta = 0.01`, `min_child_weight = 1`, `subsample = 0.7`) — every
+    fold, from round 1. This looked exactly like the "low-`eta` = real
+    problem" case flagged above, so it was investigated before letting
+    the grid continue rather than assumed benign. **`fit_one_fold()` was
+    never calling `set.seed()`** (the original tuning-grid spec said
+    "Seed 42 throughout" and this one call site was missed) — confirmed
+    by calling `run_grid_point()` twice, unseeded, on the identical grid
+    point: 255 divergence events one run, 0 the next. Root mechanism:
+    `min_child_weight = 1` is the WEAKEST value in that dimension (not
+    `eta`, which was the axis this guard was watching), and combined
+    with `subsample = 0.7`'s random row selection, occasionally lets a
+    leaf fit to a handful of subsampled rows and take an extreme value —
+    real GBT tail behaviour under weak regularisation, not an objective
+    bug (the loss itself is unaffected; `scripts/verify_pl_objective.R`
+    never touches `xgb.train()`'s subsampling). Fixed by adding
+    `set.seed(42L)` immediately before every `xgb.train()` call in
+    `fit_one_fold()`; re-ran the same grid point twice after the fix —
+    identical `fold_mean_pl_r2`, zero divergence, both times. **Revises
+    the "low `eta` = suspect" framing above**: the axis that actually
+    matters for divergence risk in this grid is `min_child_weight`
+    (weak leaf regularisation), not `eta` — worth knowing when reading
+    the final `gbt_tuning_divergence.csv`, and worth mentioning in §6
+    alongside the flooring disclosure if any events remain under the
+    now-seeded run.
+- **Tuning grid budget — fixed 2026-08-20, before any test-set number,
+  supporting the §6 capacity-and-selection disclosure.** Full factorial:
+  `max_depth` {2,3,4,6} x `eta` {0.01,0.03,0.1} x `min_child_weight`
+  {1,5,20} x `subsample` {0.7,1.0} x `colsample_bytree` {0.7,1.0} = 144
+  points x 5 folds = 720 fits; `nrounds` up to 2000, early stopping at 50
+  rounds on fold-mean `pl_r2`. At ~105ms/round (post-rewrite), an
+  early-stopping diagnostic on 3 representative grid points (depth
+  3/eta 0.1/mcw 5; depth 2/eta 0.03/mcw 5; depth 6/eta 0.01/mcw 1/
+  subsample 0.7) needed roughly 156, 369, and 1,246 rounds respectively
+  to converge — low-eta points cost substantially more rounds by design,
+  and the 144-point grid's eta=0.01 third (48 points) weights the
+  grid-wide average toward the expensive end. Estimated full-grid
+  wall-clock from this: **~12.9 hours — not comfortably under the ~12
+  hour bar**, so the fallback ladder below was applied, per the fixed
+  rule ("stop as soon as the projection is under 12 hours, do not cut
+  further"):
+  1. `colsample_bytree` -> {0.7} only. 144 -> 72 points, 360 fits.
+     Estimated ~6.5 hours. **Stopped here** — comfortably under 12
+     hours, so steps 2-4 (dropping `subsample` to {0.7}, dropping `eta`
+     0.01, or narrowing `min_child_weight` to {1, 20}) were not applied.
+     `max_depth`, the fold count, the `nrounds` cap, and the
+     early-stopping patience are all untouched, per the fallback rule.
+  The tuning run itself (Stage C proper: the 72-point x 5-fold CV loop,
+  selection, and the Stage D final fit) had not yet been executed as of
+  this note — see the paper-3 status line below for what actually ran.
+- **Going affinity** is added as a feature and is, by design,
+  confounded with the model-class change (linear models never saw it).
+  Addressed via predictor importance (does the model use it), not an
+  ablation fit (does it help out of sample) — see the honesty
+  requirement below. Built by `R/build_going_features.R`
+  (`build_going_features()`), wired into `runners_augmented` via the
+  `going_features` target. Four columns: `going_runs_prior`,
+  `going_sr_shrunk` (shrunk toward the horse's own career win rate,
+  prior weight `m = 5`, `GOING_SHRINKAGE_M`), `going_sr_delta`
+  (`going_sr_shrunk` minus career rate — the affinity-vs-ability
+  separation), `going_ordinal` (today's going, never NA). Strict-before,
+  cross-surface, per the standing decisions above; going_bucket
+  (FAST/STANDARD/SLOW) is defined **within surface** (AW vs Turf =
+  Flat+Hurdle+Chase+NH Flat pooled) at that surface's own terciles of
+  raced volume — AW's terciles collapse to a single point (q1=q2=4,
+  "Standard", since AW going is 98.4% Standard by construction), Turf's
+  don't (q1=3, q2=4). No zero-imputation and no missing-indicator
+  companion column for the three horse-level columns (unlike
+  `or_relative`/`or_missing`) — see the missing-handling note below.
+  Verified in `scripts/verify_going_features.R` (8 assertions, all
+  passing, incl. an exact match of `going_runs_prior` for a 200-sample
+  brute-force recomputation and byte-identical pre-existing
+  `runners_augmented` columns).
+- **Going-affinity NA is exempt from the paper 2/2a/2b complete-case
+  rule.** `model_fitting_p2_vars()` never lists the `going_*` columns,
+  so no paper 1/2a/2b conditional-logit fit's race universe is affected
+  by their NA-bearing values (confirmed: the paper 2b exploded-
+  interactions training race count behind `model_2b_exploded_draw_final`
+  — `build_interaction_features()` + the draw extra_na_vars — is
+  unchanged, **5,022** races, before vs after the join). *(An earlier
+  version of this note said 5,023, from checking a different,
+  non-interaction complete-case set by mistake — corrected 2026-08-20;
+  see `scripts/verify_going_features.R` assertion 7.)* Reason it must
+  stay this way for paper 3 too, rather than joining the GBT's
+  complete-case rule to going-affinity NA: (1) XGBoost has native
+  missing-value handling (a learned default split direction per node),
+  so an NA feature value is not a fitting obstacle the way it is for
+  `{mlogit}`; and (2) the paired race-level ROI bootstrap against 2b
+  (frozen-for-comparability list above) needs paper 3 to score the
+  *same* test races 2b does — dropping races for going-affinity NA
+  would break that comparison for no modelling benefit.
+- **Going is near-constant in the modelling universe — found
+  2026-08-20, read this before drafting §2/§6.** AW going is 98.4%
+  "Standard" across the full career-history universe and 98.7%
+  "Standard" across `qualifying_races` (88 of 7,441 races non-Standard
+  and non-NA); on the paper 2b complete-case training set specifically
+  (5,022 races) it is 98.9% Standard (`going_ordinal` = 4), with only
+  57 races at ordinal 2/3/5/6 and 8 with NA going.
+  `sd(going_ordinal)` on that fit set is **0.147** on a 1–7 axis —
+  `going_ordinal` is very close to a constant there. Four consequences
+  for the paper, all to be stated by us, not left for a reader to
+  notice:
+  - The tree will almost never split on `going_ordinal` itself — there
+    is essentially no within-AW variation to split on. This does not
+    argue against including it (it is still the right race-level
+    control, and it is cheap), but the paper must not imply the model
+    is meaningfully weighing "how fast today's ground is" — there is
+    barely any "today's ground" variation in this dataset to weigh.
+  - **`going_sr_shrunk` / `going_sr_delta` measure ground-type form,
+    not going preference, for ~99% of runners.** Because today's
+    bucket is STANDARD for nearly every runner, and STANDARD pools AW
+    Standard with turf Good (going_bucket is defined within surface,
+    see above), the feature is really "the horse's win rate on
+    Standard-or-Good ground relative to its own career rate" for
+    almost the whole fit set — a ground-type form measure, not a
+    preference for *today's specific going* in the sense the note's
+    framing and paper 2b's discussion promised. §2 must state this
+    plainly when the feature is introduced; §6 must not claim the
+    paper tested going affinity in the fuller sense (fast vs standard
+    vs slow discrimination) that data this skewed cannot support.
+  - The note's illustration of a tree splitting on going and then a
+    distance record, letting the effect of distance record differ by
+    going, is expositional — a general property of how depth-≥2 trees
+    can express interactions, not a claim about what this fit
+    actually finds. With going this close to constant, that specific
+    interaction has almost no room to appear in the data; the paper
+    must not assert it was found.
+  - `going_sr_delta` is **exactly 0 for 23.9% of train-split runners**
+    with a defined value (11,332 of 47,454) — of those, 59.1% (6,697)
+    are single-bucket careers, where the shrinkage formula forces
+    `going_sr_shrunk == career_sr` exactly by construction (see
+    `build_going_features()` roxygen); the remaining 40.9% are
+    coincidental exact matches. A further 7.9% (3,765) are near-zero
+    (0 < |delta| ≤ 0.005) without being exactly 0. Report the 23.9%
+    share in §2 alongside the near-constant-going point — it is a
+    second reason a large share of the feature's mass sits at or near
+    zero, distinct from the "no career history" NA case.
+  - **Follow-up check result, reported for the record (not yet in any
+    model):** on the train split, mean field size is flat across
+    `going_sr_delta` deciles (9.4–10.1, no gradient), which rules out
+    a field-size-mechanical explanation for the decile pattern; a
+    race-level bootstrap (B = 2000, seed 42) on the win-rate difference
+    between decile 10 and decile 1 gives a point estimate of +0.030
+    with a 90% CI of **[0.019, 0.040] — excludes zero**. This is
+    evidence the feature (as it actually operates in this near-
+    constant-going universe, i.e. mostly a ground-type-form signal)
+    correlates with the outcome on the training data; it is not
+    evidence for "going affinity" in the fuller sense the feature was
+    originally framed as, per the point above. Permutation importance
+    on the test split, once the GBT is fitted, is the metric that
+    actually answers whether it earns its place in the model.
+- **Cross-vocabulary integrity — a real, quantified, small data-quality
+  issue, not yet fixed.** Some `race_type` values in the underlying DB
+  are unreliable at the two dual-surface AW courses (Lingfield,
+  Kempton) — extending the project's existing "`all_weather` flag is
+  unreliable" finding to `race_type` itself, at small scale. Evidence:
+  3,777 career-history rows tagged `race_type` = Flat/Hurdle/Chase/NH
+  Flat report going = "Standard" (an AW-only term, never used for
+  genuine turf going) — 70.7% of them at Lingfield, and 645 at courses
+  with **no turf track at all** (Southwell, Wolverhampton, Dundalk,
+  Great Leighs), which is unambiguous: those rows are genuine AW races
+  mis-tagged as Flat/jumps. Symmetrically, 2,233 rows tagged
+  `race_type` = "All Weather Flat" report turf-vocabulary going
+  (Good/Good to Firm/Good to Soft/Soft/Firm/Heavy) — 94.2% at
+  Lingfield again, plus 87 rows at courses with **no AW track at all**
+  (Windsor, Doncaster, Leicester, Folkestone, Bath, Haydock, Warwick,
+  Newbury, Nottingham, Tipperary, Roscommon), equally unambiguous the
+  other way. Three smaller, distinct anomalies found alongside this:
+  Laytown (36 rows, going = "Standard") is a turf-only course that
+  races once a year on a tidal beach — likely a placeholder going
+  value for a course with no established going vocabulary, not a
+  surface mis-tag. Wolverhampton/Southwell (43 rows, 2003–2008) report
+  turf-vocabulary going with a *correctly* AW-tagged `race_type` —
+  concentrated in AW racing's early years, consistent with a
+  pre-standardisation going-terminology convention rather than any
+  mis-coding. "TurfTV_Extras" (11 rows, one meeting, 2014-11-24) is not
+  a real course name — a data artifact, unrelated to the going/surface
+  question. **Quantified impact on `going_bucket` specifically:**
+  because the AW cut points are so skewed (q1 = q2 = 4), a
+  surface-tag error only changes the resulting bucket for going =
+  "Good to Firm" (ordinal 3: AW → FAST, Turf → STANDARD) — every other
+  going value in the confused set happens to land in the same bucket
+  either way. That is 1,090 career-history rows (0.22% of 486,055),
+  concentrated at Lingfield. **Not fixed.** A future pass could
+  cross-check `race_type` against `going` (AW-only terms imply AW;
+  turf-only terms at a dual-surface course imply Turf) to correct it;
+  left as a follow-up, out of scope for the going-affinity feature
+  itself since the quantified impact is small.
+- **Frozen for comparability with papers 1/2a/2b** (do not vary any of
+  these in paper 3): data scope; the 2012-12-30 race-level
+  chronological split; the diagnostic suite (Owen Table 3, Figures 7
+  and 8, the §3.4 backtest); `P1_rank`; `Brier_place`; McFadden
+  pseudo-$R^2$; the discounted-Harville market baseline (α = 0.80 /
+  0.65); single-bet-per-race as the primary betting rule; the paired
+  race-level ROI bootstrap at B = 2000, seed 42.
+- **Paper outline (fixed shape to build to):**
+  - §1 Intro — the lever this paper pulls is the model class.
+  - §2 Data and features — same scope and split as 1/2a/2b; one new
+    feature, going affinity, from a career-history sub-query.
+    Exploratory work on `split == "train"` only.
+  - §3 Method — why the loss stops factorising per observation; latent
+    scores; softmax over the field; interactions found rather than
+    specified. Prose only, maths to the appendix.
+  - §4 Model fitted — the GBT: feature matrix, race grouping, tuning
+    grid and budget, selected hyperparameters, training McFadden
+    pseudo-$R^2$.
+  - §5 Results — three questions in order, predictor importance sits
+    with Q1:
+    - Q1: does the tree class beat the linear predictor on the
+      ranking objective (vs `ranking_metrics_2b`, with the market
+      baseline)?
+    - Q2: does it make a better win-picker (vs `backtest_naive_2b_win`
+      and 2a's `backtest_naive_w_final`, paired bootstrap on common
+      test races)?
+    - Q3: does it translate into betting value (single-bet rule at
+      real SP, place and each-way, ratio sweep with CIs)?
+  - §6 Discussion, including limitations.
+  - Appendix A — follows the derivation in
+    `notes/Notes on Trees-based Methods.pdf`, compressed. Assume the
+    reader knows regression trees, pruning, bagging and random
+    forests; do not reproduce that preliminary material. Chain to
+    keep: squared error → pseudo-residuals under a general loss;
+    likelihood substitution; the quadratic approximation giving the
+    leaf value in closed form; the grouped Plackett–Luce likelihood
+    and what breaks when the loss stops factorising; the gradient and
+    diagonal Hessian in the note's notation, noting in passing that
+    XGBoost consumes the diagonal only. Carries over the note's four
+    references into `papers/03_*/references.bib` when that paper is
+    scaffolded (verified bibliographic details, not the note's own
+    citation keys):
+    - James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An
+      Introduction to Statistical Learning with Applications in R*,
+      2nd ed. Springer. (Chapter 8.)
+    - Johansson, R. *An intuitive explanation of gradient boosting.*
+      Lecture notes, DIT866, Chalmers University of Technology /
+      University of Gothenburg. No publication year stated in the
+      document itself — do not invent one.
+    - Li, C. *A Gentle Introduction to Gradient Boosting.* Slides,
+      College of Computer and Information Science, Northeastern
+      University. No publication year stated in the document itself —
+      do not invent one.
+    - Chen, T., & Guestrin, C. (2016). XGBoost: A Scalable Tree
+      Boosting System. *Proceedings of the 22nd ACM SIGKDD
+      International Conference on Knowledge Discovery and Data
+      Mining* (KDD '16), San Francisco, 13–17 August 2016, 785–794.
+  - Appendix B — software, following the papers 1/2a/2b pattern.
+- **Two honesty requirements (carry into the drafting pass):**
+  - Gain-based importance is an in-sample decomposition of the fitted
+    loss. State once, plainly (same register as paper 2a's "reduction
+    rule, stated honestly" paragraph): it answers whether the model
+    *used* going affinity, not whether going affinity *helped out of
+    sample*.
+  - The linear models were reduced by a hand-run Wald rule; the GBT
+    gets a cross-validated grid. That is a capacity-and-selection
+    asymmetry and a live alternative explanation for any GBT gain —
+    state it ourselves in §6, with the tuning budget fixed and
+    reported, rather than leaving it for a reader to notice.
+- **Missing-going-affinity handling must be stated in the paper, twice.**
+  Paper 3 relies on XGBoost's default-direction missing-value handling
+  for the three horse-level going columns rather than imputing (no
+  zero-fill, no missing-indicator companion — see "Going affinity"
+  above) — say this explicitly in **§2** where the feature is
+  introduced (why no imputation: absence — no prior runs at all, or none
+  in this bucket — is itself informative, and imputing would discard
+  that) and again in **§4** where the fit is described (the mechanism:
+  XGBoost learns a default split direction per node from the training
+  data and routes every missing value that way).
+- **Status: research/tooling phase.** `R/pl_objective.R` (the custom
+  PL objective for `{xgboost}`, `{data.table}`-vectorised as of
+  2026-08-20) and its verification gate (`scripts/verify_pl_objective.R`,
+  8 assertions), `R/build_going_features.R` and its verification gate
+  (`scripts/verify_going_features.R`), and `R/gbt_data.R` /
+  `R/gbt_folds.R` (feature-matrix builder + race-grouped CV folds, both
+  tested) all exist. The tuning grid is decided (72 points x 5 folds,
+  fallback ladder above) but **not yet run** — no `model_3_gbt`, no
+  tuning-results target, no fold-assignment target wired into
+  `_targets.R` yet. `papers/03_*/` is not yet scaffolded.
+- **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
+  (`going_*`) columns, so its content hash changed; the next full
+  `tar_make()` will invalidate and re-fit/re-render every downstream
+  target, including papers 1, 2a and 2b, even though every pre-existing
+  `runners_augmented` column is verified byte-identical (see
+  `scripts/verify_going_features.R` assertion 6). This session only ran
+  a scoped `tar_make(names = "full_history")` — no downstream target has
+  actually been rebuilt yet. **Before republishing anything** off the
+  next full `tar_make()`, diff the headline published figures against
+  the current `docs/paperN/index.pdf` and confirm they are unchanged:
+  paper 1 §3.4 backtest ROI (−28.2%), paper 2a's `model_w_final` backtest
+  ROI (−25.4%), paper 2b's win/place single-bet ROI (−17.4% / −9.8%) and
+  its ranking metrics (P1_rank 0.00402 model vs 0.00543 market;
+  Brier_place 0.2013 vs 0.1875). Report any difference rather than
+  overwriting `docs/` — a byte-identical-columns fit that nonetheless
+  produces different numbers would mean something in the pipeline is
+  non-deterministic (e.g. an unset seed) and needs investigating before
+  anything is republished.
+- **`{xgboost}` used directly, not via `{tidymodels}`/`{parsnip}`** —
+  parsnip has no interface for a custom objective plus a custom eval
+  metric plus group info. Same kind of documented exception as the
+  `{mlogit}` route in papers 1/2 (see "Tidyverse-first style" above).
 
 ## Longer-term direction (post-paper-3, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
