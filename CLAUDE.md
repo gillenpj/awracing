@@ -1033,6 +1033,37 @@ stage $s$, win probabilities a softmax over the field — matches papers
   The tuning run itself (Stage C proper: the 72-point x 5-fold CV loop,
   selection, and the Stage D final fit) had not yet been executed as of
   this note — see the paper-3 status line below for what actually ran.
+- **Stage E (final fit) `nrounds` — a decision, not a default, fixed
+  2026-08-21.** After Stage D selects the winning grid point,
+  `fit_final_model()` (`R/gbt_tuning.R`) refits on ALL training data (no
+  held-out set survives, and the test split must not be touched at this
+  stage) for `round(mean_best_iteration)` rounds — the winning point's
+  MEAN best-iteration across its 5 CV folds, rounded, no early stopping.
+  Two alternatives were considered and not taken: fold-**median** (less
+  sensitive to one fold's outlier stopping point, but discards
+  information the mean uses) and fold-**maximum** (avoids ever
+  under-fitting the full-data refit, on the theory that more training
+  rows typically support a few more rounds than any individual 4/5-sized
+  fold needed, but risks overfitting to whichever fold happened to run
+  longest). Fold-mean was chosen for consistency with `fold_mean_pl_r2`
+  already being the grid's own Stage D selection criterion — the same
+  aggregate stands for both selecting and sizing the final model, rather
+  than mixing statistics. `seed = 42L` is set inside `full_params` for
+  this fit too (xgboost's own RNG, not just R's `set.seed()`) — see the
+  divergence-guard note above for why that specific placement is the one
+  that matters.
+- **Stage E permutation importance — training split, within-race, 30
+  repeats, seed 42.** `permutation_importance_within_race()`
+  (`R/gbt_tuning.R`) shuffles each feature's values WITHIN each race
+  (which horse holds which value; every race's set of values and every
+  other feature untouched) rather than globally across the training set —
+  a global permutation would destroy field composition and confound "does
+  this feature matter" with "does having a coherent field matter."
+  Deliberately scored against the training split's `pl_r2`, not the test
+  split's — the test split is not touched anywhere in Stage E. The
+  out-of-sample permutation run belongs in the results/analysis pass
+  alongside the Q1–Q3 comparisons, on a common race set with everything
+  else that touches the test split, not brought forward into tuning.
 - **Going affinity** is added as a feature and is, by design,
   confounded with the model-class change (linear models never saw it).
   Addressed via predictor importance (does the model use it), not an

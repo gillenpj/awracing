@@ -225,3 +225,176 @@ select_best_config <- function(results) {
   selected$tie_break <- nrow(contenders) > 1L
   selected
 }
+
+#' Fit the final GBT on all training data at the selected hyperparameters
+#'
+#' Stage E. `nrounds` is `round(mean_best_iteration)` -- the MEAN
+#' best-iteration across the winning grid point's 5 CV folds, rounded to
+#' the nearest integer. This is a decision, not a default: fold-median or
+#' the fold-maximum are both defensible alternatives (median is less
+#' sensitive to one fold's outlier stopping point; the max avoids ever
+#' under-fitting the eventual full-training-data model, which typically
+#' benefits from a few more rounds than any individual 4/5-sized fold
+#' needed). Fold-mean was chosen as the standard CV-then-refit convention
+#' and for consistency with `fold_mean_pl_r2` already being the grid's own
+#' selection criterion. No early stopping here: refitting on the full
+#' training split leaves no held-out data to early-stop against, and the
+#' test split must not be touched at this stage (see `R/gbt_data.R`).
+#'
+#' `seed = 42L` is set inside `full_params` (xgboost's own RNG, not just
+#' R's `set.seed()`) -- see CLAUDE.md's paper-3 divergence-guard note for
+#' why this is the one that actually matters for `subsample`/
+#' `colsample_bytree` reproducibility.
+#'
+#' @param X,y,group_sizes Full training-split matrix/label/group sizes
+#'   from `build_gbt_matrix()`.
+#' @param selected One-row tibble from `select_best_config()`.
+#' @param k Plackett-Luce depth.
+#' @return A list: `bst` (the fitted `xgb.Booster`), `nrounds` (integer,
+#'   the rounds actually used), `train_pl_r2` (in-sample, from
+#'   `make_pl_eval()` scored on the same data the model was fit on --
+#'   label this in-sample everywhere it is reported).
+fit_final_model <- function(X, y, group_sizes, selected, k = 3L) {
+  dtrain <- xgboost::xgb.DMatrix(data = X, label = y)
+  xgboost::setinfo(dtrain, "group", group_sizes)
+
+  obj_fn  <- make_pl_objective(group_sizes, k)
+  eval_fn <- make_pl_eval(group_sizes, k)
+
+  nrounds <- as.integer(round(selected$mean_best_iteration))
+
+  full_params <- list(
+    max_depth        = selected$max_depth,
+    eta              = selected$eta,
+    min_child_weight = selected$min_child_weight,
+    subsample        = selected$subsample,
+    colsample_bytree = selected$colsample_bytree,
+    base_score       = 0,
+    objective        = obj_fn,
+    nthread          = parallel::detectCores(),
+    seed             = 42L
+  )
+  set.seed(42L)
+  bst <- xgboost::xgb.train(
+    params  = full_params,
+    data    = dtrain,
+    nrounds = nrounds,
+    verbose = 0
+  )
+
+  train_preds <- predict(bst, X, outputmargin = TRUE)
+  train_pl_r2 <- eval_fn(train_preds, NULL)$value
+
+  list(bst = bst, nrounds = nrounds, train_pl_r2 = train_pl_r2)
+}
+
+#' Within-race permutation feature importance
+#'
+#' For each feature, `n_repeats` times: shuffle that feature's values
+#' WITHIN each race (which horse holds which value), leaving every race's
+#' set of values and every other feature untouched, re-predict, and record
+#' the drop in `pl_r2` versus the unpermuted baseline. A global (across-race)
+#' permutation would destroy field composition and confound "does this
+#' feature matter" with "does having a coherent field matter" -- within-race
+#' permutation isolates the former, which is what feature importance is
+#' supposed to measure here.
+#'
+#' Deliberately run on the TRAINING split only. The test split is not
+#' touched by this function or anywhere else in Stage E -- an out-of-sample
+#' permutation run belongs in the results/analysis pass alongside the
+#' Q1-Q3 comparisons, on a common race set with everything else that
+#' touches the test split, not brought forward into tuning.
+#'
+#' `set.seed(42L)` is called once, before the first permutation, so the
+#' entire feature x repeat sequence is reproducible as a whole (not
+#' re-seeded per feature, which would make every feature's repeats
+#' identical to each other).
+#'
+#' @param bst Fitted `xgb.Booster` (from `fit_final_model()`).
+#' @param X Numeric feature matrix, `build_gbt_matrix()` row order.
+#' @param race_id Character/integer vector, one per `X` row, same order.
+#' @param group_sizes Integer vector, per-race sizes in `X` row order.
+#' @param feature_names Character vector, `X`'s column names.
+#' @param k Plackett-Luce depth.
+#' @param n_repeats Integer, permutation repeats per feature (30, per the
+#'   paper-3 Stage E spec -- enough to report a mean and sd per feature,
+#'   not just a single noisy draw).
+#' @return Tibble, one row per feature, sorted by `mean_drop` descending:
+#'   `feature`, `mean_drop`, `sd_drop`, `rank`.
+permutation_importance_within_race <- function(bst, X, race_id, group_sizes,
+                                                feature_names, k = 3L,
+                                                n_repeats = 30L) {
+  eval_fn <- make_pl_eval(group_sizes, k)
+  baseline_preds <- predict(bst, X, outputmargin = TRUE)
+  baseline_r2    <- eval_fn(baseline_preds, NULL)$value
+
+  permute_within_race <- function(x, race_id) {
+    perm_idx <- ave(seq_along(x), race_id,
+                     FUN = function(idx) idx[sample.int(length(idx))])
+    x[perm_idx]
+  }
+
+  set.seed(42L)
+  results <- vector("list", length(feature_names))
+  for (fi in seq_along(feature_names)) {
+    feat  <- feature_names[fi]
+    drops <- numeric(n_repeats)
+    for (r in seq_len(n_repeats)) {
+      X_perm <- X
+      X_perm[, feat] <- permute_within_race(X_perm[, feat], race_id)
+      perm_preds <- predict(bst, X_perm, outputmargin = TRUE)
+      perm_r2    <- eval_fn(perm_preds, NULL)$value
+      drops[r]   <- baseline_r2 - perm_r2
+    }
+    results[[fi]] <- tibble::tibble(
+      feature   = feat,
+      mean_drop = mean(drops),
+      sd_drop   = stats::sd(drops)
+    )
+  }
+
+  out <- dplyr::bind_rows(results) |> dplyr::arrange(dplyr::desc(mean_drop))
+  out$rank <- seq_len(nrow(out))
+  out
+}
+
+#' Paper 2b's own training-split PL pseudo-R^2 (k = 3), for direct comparison
+#'
+#' Reconstructs `model_2b_exploded_draw_final`'s implied full-field z scores
+#' and group sizes from the `depth == 1` subset of
+#' `exploded_interactions_data` -- the same reconstruction
+#' `scripts/verify_pl_objective.R`'s assertion (6) verifies matches the
+#' model's own `logLik()` to 1e-6 -- then scores it with the identical
+#' `make_pl_eval()` k = 3 metric Stage E uses for the GBT. This gives a
+#' number on the same scale as the GBT's `train_pl_r2`, not just "both are
+#' called a pseudo-R^2" -- see `R/gbt_data.R`'s `FEATURE_COLS` roxygen for
+#' why this comparison is the point of keeping `days_LTO_log` in log form.
+#'
+#' @param model_2b_exploded_draw_final Fitted mlogit model (paper 2b).
+#' @param exploded_interactions_data mlogit long-form training data.
+#' @return Numeric, paper 2b's training pl_r2 (k = 3).
+paper2b_training_pl_r2 <- function(model_2b_exploded_draw_final, exploded_interactions_data) {
+  df <- as.data.frame(exploded_interactions_data)
+  class(df) <- "data.frame"
+  attr(df, "index")    <- NULL
+  attr(df, "clseries") <- NULL
+  df <- dplyr::filter(df, depth == 1)
+
+  coefs <- stats::coef(model_2b_exploded_draw_final)
+  terms <- names(coefs)
+  stopifnot(all(terms %in% names(df)), all(c("race_id", "won") %in% names(df)))
+
+  X    <- as.matrix(df[, terms, drop = FALSE])
+  df$z <- as.vector(X %*% coefs)
+  df$runner_id <- if ("runner_id" %in% names(df)) df$runner_id else df$horse_ref
+  if (!"finish_pos" %in% names(df)) {
+    df$finish_pos <- ifelse(df$won == 1L, 1L, NA_integer_)
+  }
+
+  ordered     <- arrange_for_xgb(df)
+  group_sizes <- rle(as.character(ordered$race_id))$lengths
+  stopifnot(length(ordered$z) == sum(group_sizes))
+
+  eval_fn <- make_pl_eval(group_sizes, k = 3L)
+  eval_fn(ordered$z, NULL)$value
+}
