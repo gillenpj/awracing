@@ -1219,7 +1219,32 @@ stage $s$, win probabilities a softmax over the field — matches papers
     specified. Prose only, maths to the appendix.
   - §4 Model fitted — the GBT: feature matrix, race grouping, tuning
     grid and budget, selected hyperparameters, training McFadden
-    pseudo-$R^2$.
+    pseudo-$R^2$. **Must include a subsection documenting the numerical
+    tuning procedure** (decided 2026-08-21) — this is what makes the §6
+    tuning-asymmetry disclosure (linear models got a hand-run Wald
+    reduction, this got a cross-validated grid) legible rather than an
+    unexplained caveat:
+    - The grid fixed in advance (72 points, the fallback ladder, and
+      which rung was reached — see "Tuning grid budget" above).
+    - The race-grouped 5-fold CV.
+    - Early stopping determining `nrounds` PER FOLD DURING SELECTION —
+      not the grid — versus the separate fold-mean-rounds decision for
+      the refit (see "Stage E (final fit) `nrounds`" above).
+    - The selection rule and tie-break (`select_best_config()`: highest
+      `fold_mean_pl_r2`; among points within 0.001 of the max, lowest
+      `max_depth` then lowest `mean_best_iteration`).
+    - The refit at fold-mean rounds on all training data.
+    - A short paragraph (not a table) on where the compute goes: the PL
+      objective is evaluated twice per boosting round (`make_pl_objective()`
+      + `make_pl_eval()`), which dominates the ~105ms/round cost from the
+      `{data.table}` rewrite — tree-building itself is comparatively
+      cheap.
+    - The divergence guard: that it exists (floors a diverging
+      configuration to a sentinel rather than dropping it), and the
+      **count from the clean, seeded run** — not the incident. The
+      seeding bug and the first attempt's now-void divergence table are
+      project history (this file), not paper content; §4 states only
+      that the guard exists and what the clean run's count was.
   - §5 Results — three questions in order, predictor importance sits
     with Q1:
     - Q1: does the tree class beat the linear predictor on the
