@@ -242,6 +242,20 @@ Two calibration examples (2026-08-20):
   `R/db.R::connect_smartform()` via `dotenv::load_dot_env()`.
 - `_targets.yaml` — written by `tar_config_set()` in the qmd setup
   chunks; absolute path to the store; gitignored.
+- `.claude/settings.json` — **committed**, project-level Claude Code
+  permissions. Allow-lists read-only Bash (`head`, `cat`, `wc`, `awk`,
+  `ls`, `grep`, `tail`, `find`) and bare/prefixed `git status` /
+  `git log` / `git diff`, plus the `Read` tool (file reads anywhere in
+  the project) — so routine inspection doesn't prompt for approval.
+  Deliberately excludes anything that writes, deletes, kills processes,
+  or touches `renv.lock`, the `_targets` store, `docs/`, or `.env` —
+  those still prompt, unchanged. Note: the allow rules match on command
+  *text prefix*, not semantics — `Bash(find *)` and `Bash(awk *)` permit
+  any arguments, including `find -delete` or `awk`'s `system()` call,
+  which are not actually read-only; accepted as a residual risk of the
+  prefix-match permission model rather than narrowed further. Personal,
+  uncommitted overrides live in `.claude/settings.local.json`
+  (gitignored) and don't survive a fresh clone.
 
 ## Paper / Quarto convention
 - One Quarto project per paper under `papers/<NN>_<slug>/`. Each
@@ -968,13 +982,25 @@ stage $s$, win probabilities a softmax over the field — matches papers
     `scripts/verify_pl_objective.R`'s full 8-assertion gate still passes
     unchanged (this fix is in `gbt_tuning.R`'s params construction, not
     `pl_objective.R`'s math — the loss itself was never the bug).
-    **General lesson, worth restating because it cost a full
-    investigation to relearn:** a fix verified only by rerunning inside
-    the same process is not verified — same-process reruns share
-    whatever process-level state (including a library's own un-seeded
-    internal RNG) caused the bug, so they will agree with each other
-    regardless of whether the fix does anything. Verification needs a
-    fresh process. **Whether `min_child_weight = 1` is genuinely the
+    **Standing project rule, worth restating because it cost a full
+    investigation to relearn: reproducibility checks run twice in the
+    SAME R process can pass while the underlying setting does nothing,
+    because process-constant library RNG state (or any other
+    process-level state) is shared across calls within that process.
+    Any reproducibility verification in this project — of a seed, of
+    determinism, of "did this fix actually do anything" — must use two
+    FRESH `Rscript` processes, not two calls in one session.** A fix
+    verified only by rerunning inside the same process is not
+    verified — same-process reruns share whatever process-level state
+    (including a library's own un-seeded internal RNG) caused the bug,
+    so they will agree with each other regardless of whether the fix
+    does anything. This invalidates BOTH of the following, drawn from
+    exactly that flawed same-session comparison and now withdrawn
+    pending real evidence: the original "fixed by `set.seed(42L)`
+    alone" claim (see above — actually fixed with `seed = 42L` inside
+    xgboost's own `params`, verified cross-process), and the
+    "`min_child_weight = 1` is the real risk axis" claim immediately
+    below. **Whether `min_child_weight = 1` is genuinely the
     dominant risk axis for this objective (vs. `eta`, vs. it just being
     which grid points happened to get an unlucky draw before the fix) is
     now an open question again**, not a settled finding — the earlier

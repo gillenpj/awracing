@@ -1,0 +1,15 @@
+# PRE-SEED-FIX, ABANDONED. All 6 rows here were fit before fit_one_fold() had
+# seed=42L in xgboost's own params list (see CLAUDE.md paper-3 divergence-guard
+# note, commit d6ca281, 2026-08-21). R's set.seed(42L) alone does not seed
+# xgboost's internal RNG, so these fits used an uncontrolled, un-reproducible
+# draw for subsample/colsample_bytree row/column selection. All 6 rows are
+# max_depth=2, eta=0.01 grid points that hit the divergence sentinel
+# (fold_mean_pl_r2 = -1e10) as a result. DO NOT USE for Stage D/E selection or
+# any reported number. Kept only as the incident record.
+max_depth,eta,min_child_weight,subsample,colsample_bytree,fold_mean_pl_r2,fold_sd_pl_r2,mean_best_iteration,fold_r2_1,fold_r2_2,fold_r2_3,fold_r2_4,fold_r2_5,elapsed_secs
+2,0.01,1,0.7,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,603.3719439506531
+2,0.01,1,1,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,584.7508080005646
+2,0.01,5,0.7,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,573.6512699127197
+2,0.01,5,1,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,599.3169009685516
+2,0.01,20,0.7,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,575.0696430206299
+2,0.01,20,1,0.7,-10000000000,0,0,-10000000000,-10000000000,-10000000000,-10000000000,-10000000000,579.5807230472565
