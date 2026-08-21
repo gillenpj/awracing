@@ -133,7 +133,7 @@ pl_denom <- function(z, group_sizes, k) {
 #'   stages 1..S (S = min(k, J - 1) per race).
 pl_neg_loglik <- function(z, group_sizes, k) {
   d <- pl_denom(z, group_sizes, k)
-  stage_term <- ifelse(d$pos <= d$S, d$zc - log(d$denom), 0)
+  stage_term <- ifelse(d$pos <= d$S, d$zc - base::log(d$denom), 0)
   -sum(stage_term)
 }
 
@@ -222,7 +222,7 @@ pl_grad_hess <- function(z, group_sizes, k) {
 pl_core <- function(z, group_sizes, k) {
   d  <- pl_denom(z, group_sizes, k)
   gh <- pl_grad_hess(z, group_sizes, k)
-  stage_term <- ifelse(d$pos <= d$S, d$zc - log(d$denom), 0)
+  stage_term <- ifelse(d$pos <= d$S, d$zc - base::log(d$denom), 0)
   tibble::tibble(
     race = d$race, pos = d$pos,
     grad = gh$grad, hess = gh$hess, stage_term = stage_term
@@ -272,7 +272,7 @@ pl_core_reference <- function(z, group_sizes, k) {
       cuminv2    = cumsum(invd2),
       grad       = e * cuminv - as.numeric(pos <= S),
       hess       = pmax(e * cuminv - e^2 * cuminv2, 1e-16),
-      stage_term = dplyr::if_else(pos <= S, zc - log(denom), 0)
+      stage_term = dplyr::if_else(pos <= S, zc - base::log(denom), 0)
     ) |>
     dplyr::ungroup() |>
     dplyr::select(race, pos, grad, hess, stage_term)
@@ -377,7 +377,7 @@ make_pl_eval <- function(group_sizes, k, diag_env = NULL) {
   S <- pmin(k, J - 1L)
   logl_null <- -sum(unlist(purrr::map2(J, S, function(j, s) {
     if (s < 1L) return(0)
-    sum(log(j - (seq_len(s) - 1L)))
+    sum(base::log(j - (seq_len(s) - 1L)))
   })))
   round_counter <- 0L
   function(preds, dtrain) {

@@ -937,77 +937,137 @@ stage $s$, win probabilities a softmax over the field — matches papers
     the grid, with the count and the grid corner(s) affected (from
     `gbt_tuning_divergence.csv`) — this belongs in the same paragraph as
     the capacity-and-selection asymmetry disclosure, not left implicit.
-  - **Root cause, found 2026-08-20, CORRECTED 2026-08-21 — the original
-    fix below was verified wrong.** The first real (unbounded) run hit
-    255 divergence events on grid point 1 (`max_depth = 2`, `eta = 0.01`,
-    `min_child_weight = 1`, `subsample = 0.7`) — every fold, from round
-    1. The same-day investigation added `set.seed(42L)` immediately
-    before the `xgb.train()` call in `fit_one_fold()` (the "Seed 42
-    throughout" spec had missed this one call site) and declared it
-    fixed, verified by calling `run_grid_point()` twice on the identical
-    grid point and getting identical, non-diverging results both times.
-    **That verification was too narrow and the conclusion was wrong.** A
-    machine reboot mid-run on 2026-08-20 (Windows Update, unrelated)
-    forced a resume, and re-investigation of the resumed run's checkpoint
-    found the SAME point diverging 100% again — all 6 completed grid
-    points (all `eta = 0.01`, the first-in-order slice of the grid, no
-    comparison group) fully diverged. Root-caused properly this time,
-    with a fresh-process reproducibility check rather than a same-session
-    rerun: **R's `set.seed()` only controls R-level RNG. `xgb.train()`'s
-    own `subsample`/`colsample_bytree` row/column draws are governed by
-    xgboost's OWN internal RNG, which is separate and is NOT reset by
-    R's `set.seed()` unless `seed` is also passed inside xgboost's
-    `params` list** — `fit_one_fold()`'s `full_params` never did.
-    Mechanically this explains the original "fix": within one R process,
-    two sequential `xgb.train()` calls draw from the SAME un-seeded,
-    process-constant xgboost RNG state, so they agree with each other —
-    that agreement was mistaken for proof the fix worked, when it only
-    proved same-process determinism. A fresh process gets a different,
-    unpredictable draw from that internal RNG: sometimes benign,
-    sometimes landing in the pathological corner (shallow trees, very
-    slow `eta`, `min_child_weight = 1` giving essentially no leaf
-    regularisation, `subsample = 0.7` drawing which rows a leaf sees) —
-    confirmed directly: calling the real `fit_one_fold()`/`run_grid_point()`
-    with `set.seed(42L)` present (the "verified" 2026-08-20 fix) on a
-    freshly booted, idle machine gave a clean, sane result
-    (`fold_mean_pl_r2 = 0.0640`, zero divergence events) for the exact
-    point that had 100% diverged, twice, bit-for-bit identically, in the
-    earlier session. **Actual fix:** `seed = 42L` added to `full_params`
-    in `fit_one_fold()` (`R/gbt_tuning.R`), i.e. inside xgboost's own
-    params list, not just via R's `set.seed()`. Verified by running the
-    same 20-round check in two separate fresh `Rscript` processes and
-    diffing the resulting tree structure and `pl_r2` trajectory
-    byte-for-byte identical both times — genuine cross-process
-    reproducibility, which the original fix never had.
-    `scripts/verify_pl_objective.R`'s full 8-assertion gate still passes
-    unchanged (this fix is in `gbt_tuning.R`'s params construction, not
-    `pl_objective.R`'s math — the loss itself was never the bug).
-    **Standing project rule, worth restating because it cost a full
-    investigation to relearn: reproducibility checks run twice in the
-    SAME R process can pass while the underlying setting does nothing,
-    because process-constant library RNG state (or any other
-    process-level state) is shared across calls within that process.
-    Any reproducibility verification in this project — of a seed, of
-    determinism, of "did this fix actually do anything" — must use two
-    FRESH `Rscript` processes, not two calls in one session.** A fix
-    verified only by rerunning inside the same process is not
-    verified — same-process reruns share whatever process-level state
-    (including a library's own un-seeded internal RNG) caused the bug,
-    so they will agree with each other regardless of whether the fix
-    does anything. This invalidates BOTH of the following, drawn from
-    exactly that flawed same-session comparison and now withdrawn
-    pending real evidence: the original "fixed by `set.seed(42L)`
-    alone" claim (see above — actually fixed with `seed = 42L` inside
-    xgboost's own `params`, verified cross-process), and the
-    "`min_child_weight = 1` is the real risk axis" claim immediately
-    below. **Whether `min_child_weight = 1` is genuinely the
-    dominant risk axis for this objective (vs. `eta`, vs. it just being
-    which grid points happened to get an unlucky draw before the fix) is
-    now an open question again**, not a settled finding — the earlier
-    "min_child_weight, not eta, is the real axis" conclusion was drawn
-    from the same flawed same-session comparison and needs re-examining
-    against the seeded grid's actual `gbt_tuning_divergence.csv` once it
-    re-runs to completion, rather than assumed correct.
+  - **Root cause, found 2026-08-20, two rounds of correction on
+    2026-08-21 — the ACTUAL bug had nothing to do with numerical
+    divergence at all.** Full incident history, because both earlier
+    "fixes" below were real bugs worth having fixed but neither was the
+    cause of the 100% divergence rate, and the reasoning that got to the
+    true cause is itself the reusable lesson.
+    - **Attempt 1 (2026-08-20):** the first real run hit 255 divergence
+      events on grid point 1 (`max_depth=2, eta=0.01, min_child_weight=1,
+      subsample=0.7`), every fold, from round 1. Diagnosed as
+      `fit_one_fold()` never calling `set.seed()`; fixed by adding
+      `set.seed(42L)` before `xgb.train()`; "verified" by two same-session
+      reruns agreeing. **Wrong** — a same-process rerun proves nothing
+      about a library's own internal state (see the standing rule below).
+    - **Attempt 2 (2026-08-21, morning):** re-investigation after a
+      mid-run reboot found the root problem was real but different: R's
+      `set.seed()` never reaches xgboost's OWN internal RNG (governing
+      `subsample`/`colsample_bytree` draws) unless `seed` is also passed
+      inside xgboost's `params` list, which `full_params` never did.
+      Fixed by adding `seed = 42L` to `full_params` in `fit_one_fold()`
+      (`R/gbt_tuning.R`) — genuinely verified this time, via two SEPARATE
+      fresh `Rscript` processes producing byte-identical tree structure
+      and `pl_r2` trajectories. **This fix is real, correctly diagnosed,
+      and stays in the code** — R's `set.seed()` truly does not control
+      xgboost's internal RNG, and cross-process reproducibility truly
+      did require this. But relaunching the full grid with it still
+      produced 100% divergence, config-independent, across 41 checked
+      grid points spanning multiple `eta`/`max_depth`/`min_child_weight`
+      combinations — ruling out "hyperparameter corner" as the
+      explanation and ruling out the seed fix as sufficient.
+    - **Actual root cause (2026-08-21, found by direct instrumentation of
+      the live `make_pl_eval()` closure, not by diffing isolated
+      replicas against the deployed script — replica-diffing had already
+      failed four times and was the wrong tool for a `NA`-not-`NaN`
+      signature):** `scripts/run_gbt_tuning.R` (and the earlier
+      `scripts/diagnose_*.R` one-off scripts) define, at their own top
+      level, a console-logging convenience helper:
+      ```r
+      log <- function(...) {
+        cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " ", ..., "\n", sep = "")
+        flush(stdout())
+      }
+      ```
+      Because `R/pl_objective.R` is `source()`d rather than loaded as a
+      package, its functions resolve an unqualified `log()` call
+      lexically back to whatever environment sourced them — the driver
+      script's global environment, where this helper now shadows
+      `base::log()` for the rest of that R session. `pl_neg_loglik()`
+      (called by `make_pl_eval()`), `pl_core()`, and `make_pl_eval()`'s
+      own `logl_null` computation all called unqualified `log()`. Each
+      such call therefore invoked the LOGGING helper instead of the
+      logarithm: it printed its numeric argument (explaining the
+      "stray stdout blob" of concatenated digits present since the very
+      first diagnostic log in this incident) and returned `NULL`
+      (invisibly, from `flush()`). `zc - log(denom)` became `zc - NULL`,
+      which R evaluates as `numeric(0)`; `ifelse(cond, numeric(0), 0)`
+      then recycles the empty "yes" vector into `NA` for every position
+      where `cond` is `TRUE` — a genuine, well-known R gotcha
+      (`rep(numeric(0), length.out = n)` is `NA`-filled). This is the
+      exact observed signature: every divergence event was
+      `source = "eval"` (never `"objective"` — `pl_grad_hess()` never
+      calls `log()`), `raw_value` was literally `NA` (not `NaN`/`Inf`,
+      because it never was a numerical overflow), and `logl_null` came
+      back exactly `0` (`sum(log(...))` over the null-model formula
+      became `sum(NULL)`) — mechanically identical at 41 different
+      hyperparameter configurations because the bug never depended on
+      the hyperparameters at all. This also explains why none of five
+      independent fresh-process isolation attempts (including one that
+      called `run_grid_point()` with byte-identical arguments to the
+      deployed script) ever reproduced it: none of those throwaway test
+      scripts happened to define their own `log()`, so `base::log()`
+      resolved correctly every time — the deployed script was the only
+      one shadowing it. **Fix:** qualify every mathematical `log()` call
+      in `R/pl_objective.R` as `base::log()` (`pl_neg_loglik()`,
+      `pl_core()`, `pl_core_reference()`, `make_pl_eval()`'s `logl_null`).
+      Confirmed by instrumenting the live closure inside the actual
+      deployed script (not a replica): pre-fix, `logl_model` was `NA`;
+      post-fix, identical call site, `logl_model = -6196.96` (finite,
+      correct) and a full grid-point run completed cleanly
+      (`fold_mean_pl_r2 = 0.0641`, zero divergence events).
+      `scripts/verify_pl_objective.R`'s full 8-assertion gate passed
+      throughout this entire incident, before and after every fix — it
+      never defines its own `log()`, so it was structurally incapable of
+      catching this class of bug. That is a real gap in the gate's
+      coverage, not a false reassurance to rely on again: a
+      namespace-collision bug can be invisible to a test suite that
+      never shares a global environment with the code under test.
+    - **Standing project rule #1 (still true, still worth keeping):
+      reproducibility checks run twice in the SAME R process can pass
+      while the underlying setting does nothing, because process-constant
+      state (a library's own un-seeded internal RNG, or anything else
+      cached at the process level) is shared across calls within that
+      process. Any reproducibility verification in this project must use
+      two FRESH `Rscript` processes, not two calls in one session.**
+    - **Standing project rule #2 (new): never give a driver script's own
+      helper function the same name as a base R function.** `log` is
+      the specific name that bit this project — every `scripts/*.R`
+      driver here that prints timestamped progress messages should name
+      that helper something that cannot collide (`log_msg`, `note`,
+      `progress` — not `log`). This matters specifically because
+      `R/*.R` files in this project are `source()`d into the caller's
+      global environment rather than loaded as a namespaced package, so
+      a same-named helper silently shadows the base function for
+      EVERYTHING sourced afterward, with no warning. The general
+      `::`-qualification convention (see "Tidyverse-first style" above)
+      already covers third-party packages; this extends it to base R
+      functions specifically inside `R/pl_objective.R` and any future
+      numerically-sensitive hot-path file, where an unqualified call
+      silently resolving to the wrong thing is far more dangerous than
+      in ordinary glue code.
+    - **The "`min_child_weight = 1` is the real risk axis" claim from
+      Attempt 1 is WITHDRAWN, not just reopened.** There never was a
+      hyperparameter-dependent numerical instability to explain — every
+      divergence event in this entire incident, across three separate
+      "diagnosed" causes and dozens of grid points, was this one
+      namespace collision. Whether genuine numerical divergence ever
+      occurs anywhere in this grid is now, again, an open empirical
+      question to be read off the real `gbt_tuning_divergence.csv` from
+      a clean run — not assumed present, and not assumed confined to any
+      particular corner.
+    - **Process-hygiene note for future debugging sessions on this
+      machine:** repeated `Start-Process` / `Stop-Process -Force` cycles
+      against the same log/checkpoint file paths (as this incident's
+      investigation did many times) can leave orphaned `Rscript.exe`
+      processes running well after `Stop-Process` returns — eight were
+      found still running, spanning over half an hour, during this
+      incident's cleanup. Orphaned processes writing to a shared
+      checkpoint/log path concurrently with a "fresh" run produces
+      corrupted-looking artifacts (stale rows interleaved with new ones,
+      NUL-byte gaps in redirected output) that look like new bugs but
+      aren't. Verify with `Get-Process` (not just the `Stop-Process` exit
+      status) before trusting a "clean" checkpoint file's contents.
 - **Tuning grid budget — fixed 2026-08-20, before any test-set number,
   supporting the §6 capacity-and-selection disclosure.** Full factorial:
   `max_depth` {2,3,4,6} x `eta` {0.01,0.03,0.1} x `min_child_weight`
