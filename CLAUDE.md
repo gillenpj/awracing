@@ -242,6 +242,20 @@ Two calibration examples (2026-08-20):
   `R/db.R::connect_smartform()` via `dotenv::load_dot_env()`.
 - `_targets.yaml` — written by `tar_config_set()` in the qmd setup
   chunks; absolute path to the store; gitignored.
+- **`_targets/meta/process`** — the `{targets}` pipeline lock, recording
+  the PID of whichever R session last ran `tar_make()`. If that session
+  didn't exit cleanly, the lock can outlive it: the next `tar_make()`
+  then refuses to run, citing a PID that may by now belong to something
+  else entirely on this machine (found 2026-08-21: a lock from
+  2026-08-19 named a PID that Windows had since reassigned to an
+  unrelated `AdobeCollabSync` process). Fix: confirm no live R process
+  actually owns that PID (`Get-Process -Id <pid>` — if it's not
+  `R`/`Rscript`, or nothing's there, the lock is stale), then delete
+  `_targets/meta/process` directly. Harmless to remove once confirmed
+  stale — it's regenerated on the next `tar_make()`. Note this lock is
+  unrelated to, and not touched by, any script that only calls
+  `targets::tar_read()` (read-only) — `scripts/run_gbt_tuning.R` and the
+  other `scripts/*.R` drivers never acquire it.
 - `.claude/settings.json` — **committed**, project-level Claude Code
   permissions. Allow-lists read-only Bash (`head`, `cat`, `wc`, `awk`,
   `ls`, `grep`, `tail`, `find`) and bare/prefixed `git status` /
