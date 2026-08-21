@@ -30,12 +30,12 @@ checkpoint_path   <- "gbt_tuning_checkpoint.csv"
 divergence_path   <- "gbt_tuning_divergence.csv"  # one row per floored event, see R/gbt_tuning.R
 key_path          <- "gbt_tuning_key.rds"   # so Stage D can reuse the exact same data
 
-log <- function(...) {
+log_msg <- function(...) {
   cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " ", ..., "\n", sep = "")
   flush(stdout())
 }
 
-log("Building training data (going features, interactions, GBT matrix)...")
+log_msg("Building training data (going features, interactions, GBT matrix)...")
 qualifying_runners <- targets::tar_read(qualifying_runners)
 qualifying_races   <- targets::tar_read(qualifying_races)
 full_history        <- targets::tar_read(full_history)
@@ -53,17 +53,17 @@ folds <- make_race_folds(race_ids, v = 5, seed = 42)
 stopifnot(nrow(built$key) == length(built$y), length(race_ids) == 5022L)
 
 saveRDS(list(feature_names = built$feature_names, folds = folds), key_path)
-log("Training data ready: ", nrow(built$X), " rows, ", length(race_ids), " races.")
+log_msg("Training data ready: ", nrow(built$X), " rows, ", length(race_ids), " races.")
 
 grid <- build_tuning_grid()
 stopifnot(nrow(grid) == 72L)
-log("Grid: ", nrow(grid), " points x 5 folds = ", nrow(grid) * 5, " fits.")
+log_msg("Grid: ", nrow(grid), " points x 5 folds = ", nrow(grid) * 5, " fits.")
 
 # Resume support: skip grid points already checkpointed.
 done <- NULL
 if (file.exists(checkpoint_path)) {
   done <- readr::read_csv(checkpoint_path, show_col_types = FALSE)
-  log("Resuming: ", nrow(done), " grid points already checkpointed.")
+  log_msg("Resuming: ", nrow(done), " grid points already checkpointed.")
 }
 
 for (i in seq_len(nrow(grid))) {
@@ -80,7 +80,7 @@ for (i in seq_len(nrow(grid))) {
     already_done <- nrow(match_row) > 0
   }
   if (already_done) {
-    log("Grid point ", i, "/", nrow(grid), " already done, skipping.")
+    log_msg("Grid point ", i, "/", nrow(grid), " already done, skipping.")
     next
   }
 
@@ -95,19 +95,19 @@ for (i in seq_len(nrow(grid))) {
   if (nrow(result$divergence_events) > 0L) {
     readr::write_csv(result$divergence_events, divergence_path,
                       append = file.exists(divergence_path))
-    log("Grid point ", i, "/", nrow(grid), ": ", nrow(result$divergence_events),
+    log_msg("Grid point ", i, "/", nrow(grid), ": ", nrow(result$divergence_events),
         " DIVERGENCE EVENT(S) logged (max_depth=", params$max_depth,
         " eta=", params$eta, " mcw=", params$min_child_weight,
         " subsample=", params$subsample, ") -- see ", divergence_path)
   }
 
-  log("Grid point ", i, "/", nrow(grid), " done in ", round(elapsed, 1),
+  log_msg("Grid point ", i, "/", nrow(grid), " done in ", round(elapsed, 1),
       "s: max_depth=", params$max_depth, " eta=", params$eta,
       " mcw=", params$min_child_weight, " subsample=", params$subsample,
       " -> fold_mean_pl_r2=", round(summary_row$fold_mean_pl_r2, 5))
 }
 
-log("Grid complete. Reading checkpoint for final selection...")
+log_msg("Grid complete. Reading checkpoint for final selection...")
 all_results <- readr::read_csv(checkpoint_path, show_col_types = FALSE)
 stopifnot(nrow(all_results) == 72L)
 selected <- select_best_config(all_results)
@@ -121,12 +121,12 @@ n_grid_points_with_divergence <- if (nrow(all_divergence) > 0L) {
   dplyr::n_distinct(all_divergence[, c("max_depth", "eta", "min_child_weight",
                                         "subsample", "colsample_bytree")])
 } else 0L
-log("Divergence events: ", nrow(all_divergence), " total, across ",
+log_msg("Divergence events: ", nrow(all_divergence), " total, across ",
     n_grid_points_with_divergence, " of 72 grid points.")
 
 selected_boundary <- selected$max_depth == 6L || selected$eta == 0.1
 if (selected_boundary) {
-  log("*** FLAG: selected configuration sits on a grid boundary ",
+  log_msg("*** FLAG: selected configuration sits on a grid boundary ",
       "(max_depth=", selected$max_depth, ", eta=", selected$eta,
       ") -- the optimum may lie outside the tested range. ***")
 }
@@ -136,7 +136,7 @@ saveRDS(list(all_results = all_results, selected = selected,
              n_grid_points_with_divergence = n_grid_points_with_divergence,
              selected_boundary = selected_boundary),
         "gbt_tuning_final.rds")
-log("Stage D done. Selected: max_depth=", selected$max_depth, " eta=", selected$eta,
+log_msg("Stage D done. Selected: max_depth=", selected$max_depth, " eta=", selected$eta,
     " mcw=", selected$min_child_weight, " subsample=", selected$subsample,
     " colsample_bytree=", selected$colsample_bytree,
     " mean_best_iteration=", round(selected$mean_best_iteration, 1),
@@ -162,14 +162,14 @@ if (nrow(all_divergence) > 0L) {
       )
     )
   type_counts <- divergence_typed |> dplyr::count(failure_type, sort = TRUE)
-  log("Divergence by failure type:")
+  log_msg("Divergence by failure type:")
   for (i in seq_len(nrow(type_counts))) {
-    log("  ", type_counts$failure_type[i], ": ", type_counts$n[i], " events")
+    log_msg("  ", type_counts$failure_type[i], ": ", type_counts$n[i], " events")
   }
 
   low_eta_events <- divergence_typed |> dplyr::filter(eta == 0.01)
   if (nrow(low_eta_events) > 0L) {
-    log("*** FLAG: ", nrow(low_eta_events), " divergence event(s) at eta=0.01 ",
+    log_msg("*** FLAG: ", nrow(low_eta_events), " divergence event(s) at eta=0.01 ",
         "-- inspect before trusting the grid at scale. ***")
   }
 
@@ -178,10 +178,10 @@ if (nrow(all_divergence) > 0L) {
     dplyr::summarise(first_round = min(round), n_events = dplyr::n(), .groups = "drop") |>
     dplyr::arrange(max_depth, eta, min_child_weight, subsample, fold)
   readr::write_csv(first_by_point, "gbt_tuning_divergence_by_point.csv")
-  log("Per-(grid point, fold) first-divergence-round table written to gbt_tuning_divergence_by_point.csv (",
+  log_msg("Per-(grid point, fold) first-divergence-round table written to gbt_tuning_divergence_by_point.csv (",
       nrow(first_by_point), " rows).")
 } else {
-  log("No divergence events logged across the seeded grid.")
+  log_msg("No divergence events logged across the seeded grid.")
 }
 
 # -----------------------------------------------------------------------
@@ -189,56 +189,56 @@ if (nrow(all_divergence) > 0L) {
 # training pl_r2 (in-sample), gain + within-race permutation importance,
 # and the paper 2b comparison. Test split is not touched anywhere here.
 # -----------------------------------------------------------------------
-log("Stage E: fitting final model (max_depth=", selected$max_depth,
+log_msg("Stage E: fitting final model (max_depth=", selected$max_depth,
     " eta=", selected$eta, " mcw=", selected$min_child_weight,
     " subsample=", selected$subsample, " colsample_bytree=", selected$colsample_bytree,
     " nrounds=", round(selected$mean_best_iteration), ")...")
 
 final_fit <- fit_final_model(built$X, built$y, rle(as.character(built$key$race_id))$lengths,
                               selected, k = 3L)
-log("Stage E final fit done: nrounds=", final_fit$nrounds,
+log_msg("Stage E final fit done: nrounds=", final_fit$nrounds,
     " train_pl_r2 (in-sample)=", round(final_fit$train_pl_r2, 5))
 
 gain_importance <- xgboost::xgb.importance(model = final_fit$bst) |> tibble::as_tibble()
 gain_importance$rank <- seq_len(nrow(gain_importance))
-log("Gain importance computed (in-sample decomposition of the fitted loss -- ",
+log_msg("Gain importance computed (in-sample decomposition of the fitted loss -- ",
     "answers whether the model USED a feature, not whether it helps out of sample).")
 
-log("Stage E: within-race permutation importance, training split, 30 repeats, seed 42...")
+log_msg("Stage E: within-race permutation importance, training split, 30 repeats, seed 42...")
 perm_importance <- permutation_importance_within_race(
   final_fit$bst, built$X, built$key$race_id,
   rle(as.character(built$key$race_id))$lengths,
   built$feature_names, k = 3L, n_repeats = 30L
 )
-log("Permutation importance done.")
+log_msg("Permutation importance done.")
 
 going_cols <- c("going_runs_prior", "going_sr_shrunk", "going_sr_delta", "going_ordinal")
 going_in_gain <- tibble::tibble(Feature = going_cols) |>
   dplyr::left_join(dplyr::select(gain_importance, Feature, rank, Gain), by = "Feature")
 going_in_perm <- perm_importance |> dplyr::filter(feature %in% going_cols) |>
   dplyr::select(feature, rank, mean_drop, sd_drop)
-log("Going features in gain-importance ranking (", nrow(gain_importance),
+log_msg("Going features in gain-importance ranking (", nrow(gain_importance),
     " of ", length(built$feature_names), " total features actually split on):")
 for (i in seq_len(nrow(going_in_gain))) {
   if (is.na(going_in_gain$rank[i])) {
-    log("  ", going_in_gain$Feature[i], ": NOT SPLIT ON (absent from xgb.importance(), no rank)")
+    log_msg("  ", going_in_gain$Feature[i], ": NOT SPLIT ON (absent from xgb.importance(), no rank)")
   } else {
-    log("  ", going_in_gain$Feature[i], ": rank ", going_in_gain$rank[i],
+    log_msg("  ", going_in_gain$Feature[i], ": rank ", going_in_gain$rank[i],
         " (Gain=", round(going_in_gain$Gain[i], 6), ")")
   }
 }
-log("Going features in permutation-importance ranking:")
+log_msg("Going features in permutation-importance ranking:")
 for (i in seq_len(nrow(going_in_perm))) {
-  log("  ", going_in_perm$feature[i], ": rank ", going_in_perm$rank[i],
+  log_msg("  ", going_in_perm$feature[i], ": rank ", going_in_perm$rank[i],
       " (mean_drop=", round(going_in_perm$mean_drop[i], 6),
       " sd_drop=", round(going_in_perm$sd_drop[i], 6), ")")
 }
 
-log("Computing paper 2b's training pl_r2 (k=3) for direct comparison...")
+log_msg("Computing paper 2b's training pl_r2 (k=3) for direct comparison...")
 model_2b_exploded_draw_final <- targets::tar_read(model_2b_exploded_draw_final)
 exploded_interactions_data   <- targets::tar_read(exploded_interactions_data)
 paper2b_train_pl_r2 <- paper2b_training_pl_r2(model_2b_exploded_draw_final, exploded_interactions_data)
-log("Paper 2b training pl_r2 (k=3): ", round(paper2b_train_pl_r2, 5),
+log_msg("Paper 2b training pl_r2 (k=3): ", round(paper2b_train_pl_r2, 5),
     " | GBT training pl_r2 (in-sample, k=3): ", round(final_fit$train_pl_r2, 5))
 
 saveRDS(
@@ -259,7 +259,7 @@ saveRDS(
 )
 xgboost::xgb.save(final_fit$bst, "gbt_final_model.xgb")
 
-log("ALL DONE. Selected: max_depth=", selected$max_depth, " eta=", selected$eta,
+log_msg("ALL DONE. Selected: max_depth=", selected$max_depth, " eta=", selected$eta,
     " mcw=", selected$min_child_weight, " subsample=", selected$subsample,
     " colsample_bytree=", selected$colsample_bytree,
     " nrounds=", final_fit$nrounds,

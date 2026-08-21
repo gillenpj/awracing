@@ -226,6 +226,58 @@ for (k in c(1L, 3L)) {
 }
 cat("OK: vectorised pl_core() matches the dplyr reference to 1e-10\n\n")
 
+# ---------------------------------------------------------------------------
+# (9) NEW (2026-08-21): the gate's blind spot, closed. Incident: because
+#     R/pl_objective.R is source()d rather than loaded as a package, an
+#     unqualified log() call inside it resolves lexically to whatever
+#     environment sourced it. scripts/run_gbt_tuning.R defined its own
+#     top-level `log <- function(...) {...}` console-logging helper, which
+#     silently shadowed base::log() for the rest of that R session --
+#     pl_neg_loglik(), pl_core(), and make_pl_eval()'s logl_null
+#     computation all called unqualified log(), so every one of those
+#     calls invoked the LOGGING helper instead of the logarithm: it
+#     printed its numeric argument (explaining a since-diagnosed stray
+#     stdout blob) and returned NULL. `zc - log(denom)` became
+#     `zc - NULL` -> `numeric(0)`, and `ifelse(cond, numeric(0), 0)`
+#     recycled the empty vector into NA for every scored row -- silently
+#     sentinelling every single grid point in a real tuning run to
+#     -1e10, config-independent, for hours, with this gate passing
+#     throughout. It passed throughout because THIS SCRIPT never defines
+#     its own log(), so it was structurally incapable of catching this
+#     bug class. The fix (base::log() qualification in R/pl_objective.R)
+#     is necessary but not sufficient on its own -- nothing previously
+#     stopped a FUTURE driver script from reintroducing the same shadow
+#     and this gate staying silent again. This assertion reproduces the
+#     exact shadow and asserts the fix survives it, so that scenario is
+#     now covered. See CLAUDE.md's paper-3 divergence-guard note for the
+#     full incident writeup.
+# ---------------------------------------------------------------------------
+cat("---- (9) NEW: base::log() qualification survives a shadowing log() ----\n")
+
+baseline_loglik1 <- pl_neg_loglik(z0, sizes, k = 1L)
+baseline_loglik3 <- pl_neg_loglik(z0, sizes, k = 3L)
+baseline_eval    <- make_pl_eval(sizes, k = 3L)(z0, dtrain = NULL)$value
+
+log <- function(...) invisible(NULL)  # the exact shadow that broke the tuning grid
+
+shadowed_loglik1 <- pl_neg_loglik(z0, sizes, k = 1L)
+shadowed_loglik3 <- pl_neg_loglik(z0, sizes, k = 3L)
+shadowed_eval    <- make_pl_eval(sizes, k = 3L)(z0, dtrain = NULL)$value
+
+rm(log)  # restore base::log() for the rest of this script
+
+cat("k = 1 : pl_neg_loglik unshadowed =", baseline_loglik1, " shadowed =", shadowed_loglik1, "\n")
+cat("k = 3 : pl_neg_loglik unshadowed =", baseline_loglik3, " shadowed =", shadowed_loglik3, "\n")
+cat("make_pl_eval() unshadowed =", baseline_eval, " shadowed =", shadowed_eval, "\n")
+
+stopifnot(
+  is.finite(shadowed_loglik1), is.finite(shadowed_loglik3), is.finite(shadowed_eval),
+  identical(baseline_loglik1, shadowed_loglik1),
+  identical(baseline_loglik3, shadowed_loglik3),
+  identical(baseline_eval, shadowed_eval)
+)
+cat("OK: base::log() qualification is immune to a caller-defined log() shadow\n\n")
+
 cat("All checks passed.\n\n")
 
 # ---------------------------------------------------------------------------

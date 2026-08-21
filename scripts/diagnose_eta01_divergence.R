@@ -34,12 +34,12 @@ source("R/gbt_data.R")
 source("R/gbt_folds.R")
 source("R/gbt_tuning.R")
 
-log <- function(...) {
+log_msg <- function(...) {
   cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " ", ..., "\n", sep = "")
   flush(stdout())
 }
 
-log("Building training data (same as scripts/run_gbt_tuning.R)...")
+log_msg("Building training data (same as scripts/run_gbt_tuning.R)...")
 qualifying_runners <- targets::tar_read(qualifying_runners)
 qualifying_races   <- targets::tar_read(qualifying_races)
 full_history        <- targets::tar_read(full_history)
@@ -55,17 +55,17 @@ built <- build_gbt_matrix(ri_new, qualifying_runners, "train")
 race_ids <- unique(built$key$race_id)
 folds <- make_race_folds(race_ids, v = 5, seed = 42)
 stopifnot(nrow(built$key) == length(built$y), length(race_ids) == 5022L)
-log("Training data ready: ", nrow(built$X), " rows, ", length(race_ids), " races.")
+log_msg("Training data ready: ", nrow(built$X), " rows, ", length(race_ids), " races.")
 
 params <- list(max_depth = 2L, eta = 0.01, min_child_weight = 1L,
                 subsample = 0.7, colsample_bytree = 0.7)
 n_cores <- parallel::detectCores()
-log("detectCores() on this machine: ", n_cores)
+log_msg("detectCores() on this machine: ", n_cores)
 
 summarise_run <- function(label, result, elapsed) {
   s <- result$summary
   n_div <- nrow(result$divergence_events)
-  log(sprintf(
+  log_msg(sprintf(
     "%s: elapsed=%.1fs fold_mean_pl_r2=%s fold_r2=[%s] n_divergence_events=%d",
     label, elapsed, format(s$fold_mean_pl_r2, digits = 10),
     paste(round(c(s$fold_r2_1, s$fold_r2_2, s$fold_r2_3, s$fold_r2_4, s$fold_r2_5), 6),
@@ -75,30 +75,30 @@ summarise_run <- function(label, result, elapsed) {
   s
 }
 
-log("==== Run A: nthread = 1 ====")
+log_msg("==== Run A: nthread = 1 ====")
 t0 <- Sys.time()
 res_a <- run_grid_point(built$X, built$y, built$key, folds, params = params, k = 3L, nthread = 1L)
 sum_a <- summarise_run("Run A (nthread=1)", res_a, as.numeric(difftime(Sys.time(), t0, units = "secs")))
 
-log("==== Run B: nthread = 1 (repeat) ====")
+log_msg("==== Run B: nthread = 1 (repeat) ====")
 t0 <- Sys.time()
 res_b <- run_grid_point(built$X, built$y, built$key, folds, params = params, k = 3L, nthread = 1L)
 sum_b <- summarise_run("Run B (nthread=1)", res_b, as.numeric(difftime(Sys.time(), t0, units = "secs")))
 
-log("==== Run C: nthread = detectCores() = ", n_cores, " (the default fit_one_fold() has been using) ====")
+log_msg("==== Run C: nthread = detectCores() = ", n_cores, " (the default fit_one_fold() has been using) ====")
 t0 <- Sys.time()
 res_c <- run_grid_point(built$X, built$y, built$key, folds, params = params, k = 3L, nthread = n_cores)
 sum_c <- summarise_run(paste0("Run C (nthread=", n_cores, ")"), res_c, as.numeric(difftime(Sys.time(), t0, units = "secs")))
 
-log("==== Summary ====")
-log("A vs B identical fold_mean_pl_r2: ", identical(sum_a$fold_mean_pl_r2, sum_b$fold_mean_pl_r2))
-log("A vs B identical per-fold r2:     ",
+log_msg("==== Summary ====")
+log_msg("A vs B identical fold_mean_pl_r2: ", identical(sum_a$fold_mean_pl_r2, sum_b$fold_mean_pl_r2))
+log_msg("A vs B identical per-fold r2:     ",
     identical(c(sum_a$fold_r2_1, sum_a$fold_r2_2, sum_a$fold_r2_3, sum_a$fold_r2_4, sum_a$fold_r2_5),
               c(sum_b$fold_r2_1, sum_b$fold_r2_2, sum_b$fold_r2_3, sum_b$fold_r2_4, sum_b$fold_r2_5)))
-log("A/B diverged (sentinel -1e10)?    ", sum_a$fold_mean_pl_r2 <= -1e9, " / ", sum_b$fold_mean_pl_r2 <= -1e9)
-log("C diverged (sentinel -1e10)?      ", sum_c$fold_mean_pl_r2 <= -1e9)
+log_msg("A/B diverged (sentinel -1e10)?    ", sum_a$fold_mean_pl_r2 <= -1e9, " / ", sum_b$fold_mean_pl_r2 <= -1e9)
+log_msg("C diverged (sentinel -1e10)?      ", sum_c$fold_mean_pl_r2 <= -1e9)
 
 saveRDS(list(params = params, n_cores = n_cores,
              run_a = res_a, run_b = res_b, run_c = res_c),
         "gbt_diagnose_eta01_result.rds")
-log("Saved gbt_diagnose_eta01_result.rds. DONE.")
+log_msg("Saved gbt_diagnose_eta01_result.rds. DONE.")
