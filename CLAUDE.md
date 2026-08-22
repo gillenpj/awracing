@@ -1644,6 +1644,109 @@ stage $s$, win probabilities a softmax over the field — matches papers
     "missing" races are absent from `ranking_eval_runners_2b` too, for
     the identical clean-top-3 reason. Corrected reference: exact match
     (0 races either side), as required before Stage B proceeds.
+  - **Stage A: predictions.** GBT test build: 18,419 runner-rows, 2,183
+    races (exact match to `ranking_eval_runners_2b`, confirmed above).
+    `p_win` sums to 1 within every one of the 2,183 races. Cross-check
+    (paper 3's own `won`, from `build_gbt_matrix()`, against `won`
+    joined from `test_predictions_2b`) matches for every runner.
+  - **Stage B: Q1 ranking, test split, 2,183 races throughout.**
+    | | P1_rank (model) | P1_rank (market) | Brier_place (model) | Brier_place (market) |
+    |---|---|---|---|---|
+    | Paper 3 GBT | 0.00401 | 0.00543 | 0.201 | 0.188 |
+    | Paper 2b exploded logit | 0.00402 | 0.00543 | 0.201 | 0.188 |
+    | Paper 2a win model† | 0.00396 | 0.00543 | 0.202 | 0.188 |
+
+    † Computed fresh for this comparison from `test_predictions_w_final`
+    (2a's own already-fitted test predictions) — NOT part of 2a's
+    original published results; paper 2a never reported P1_rank or
+    Brier_place. No refit involved, a pure evaluation of a fixed model.
+
+    Test-split McFadden pseudo-R² (k=3 PL objective, out-of-sample
+    counterpart to the training-side in-sample 0.092 vs 0.054): paper 3
+    GBT 0.05145, paper 2b 0.05125 (paper 2b's derived via `log(win_model)`
+    fed through `pl_neg_loglik()` — an exact, not approximate,
+    transform, since the race-constant additive shift this introduces
+    cancels in `pl_denom()`'s per-race max-subtraction).
+  - **Stage C: Q2 win-picking, naive rule (prob>0.15, ratio>1.3), three
+    columns per comparator (published / restricted-to-2183 / paper 3).**
+    | | n_bets | n_wins | ROI |
+    |---|---|---|---|
+    | Paper 3 GBT (2,183) | 1,424 | 154 | −0.213 |
+    | Paper 2b published (2,193) | 1,426 | 160 | −0.174 |
+    | Paper 2b restricted (2,183) | 1,419 | 160 | −0.170 |
+    | Paper 2a published (own universe) | 1,598 | 178 | −0.254 |
+    | Paper 2a restricted (2,183) | 1,588 | 176 | −0.257 |
+
+    Paired race-level ROI bootstrap (B=2000, seed 42, intersects
+    automatically — both contrasts used all `n_common=2183` races):
+    GBT − 2b: **+diff −0.0428, 90% CI [−0.132, +0.0466]**. GBT − 2a:
+    **diff +0.0437, 90% CI [−0.0404, +0.132]**. Both CIs straddle zero.
+  - **Stage D: Q3 betting value, single-bet-per-race, three columns.**
+    | | n_bets | n_wins | ROI (win) |
+    |---|---|---|---|
+    | Paper 3 GBT (2,183) | 1,133 | 124 | −0.223 |
+    | Paper 2b published win | 1,148 | 137 | −0.151 |
+    | Paper 2b restricted win (2,183) | 1,142 | 137 | −0.147 |
+    | Paper 2a published win | 1,305 | 151 | −0.259 |
+    | Paper 2a restricted win (2,183) | 1,298 | 150 | −0.259 |
+
+    | | n_bets | n_wins | ROI (place) | ROI (each-way) |
+    |---|---|---|---|---|
+    | Paper 3 GBT (2,183) | 1,133 | 471 | −0.140 | −0.135 |
+    | Paper 2b published | 1,145 | 495 | −0.0983 | −0.0767 |
+    | Paper 2b restricted (2,183) | 1,142 | 495 | −0.0959 | −0.0743 |
+
+    (2a has no place/each-way figures — paper 2a did not run value bets.)
+    Full ratio sweeps with bootstrap CIs saved
+    (`sweep_single_{win,place,eachway}_p3` in `results_pass_stageD.rds`)
+    for the drafting pass's sweep figure.
+  - **Stage E: out-of-sample permutation importance, test split, both
+    variants, positions of the four going features in each.** Within-race
+    (19 horse-level features, 30 repeats, seed 42), sorted by
+    `mean_drop`:
+    | rank | feature | mean_drop | sd_drop |
+    |---|---|---|---|
+    | 1 | or_relative | 0.0546 | 0.00234 |
+    | 2 | pos_lag1_nonzero | 0.0224 | 0.000978 |
+    | 3 | rel_weight | 0.0213 | 0.00126 |
+    | 4 | days_LTO_log | 0.00906 | 0.000817 |
+    | 5 | trainerSR | 0.00793 | 0.000691 |
+    | 11 | **going_sr_shrunk** | 0.00172 | 0.000271 |
+    | 13 | **going_runs_prior** | 0.00116 | 0.000264 |
+    | 14 | **going_sr_delta** | 0.00101 | 0.000262 |
+    | 17 | stall_normalised | 0.000181 | 0.000214 |
+    | 18 | cheekpieces | 0.000149 | 0.000223 |
+    | 19 | has_wins | 0.000144 | 0.0000547 |
+
+    `stall_normalised` (rank 17) and `cheekpieces` (rank 18) have
+    `|mean_drop| < sd_drop` on the test split — indistinguishable from
+    zero at this repeat count; every other feature's drop exceeds its
+    own sd, including all three horse-level going features.
+
+    Across-race (5 race-level features, 30 repeats, seed 42):
+    | rank | feature | mean_drop | sd_drop |
+    |---|---|---|---|
+    | 1 | course_Southwell | 0.0000845 | 0.0000326 |
+    | 2 | course_Lingfield | 0.0000192 | 0.0000142 |
+    | 3 | **going_ordinal** | −0.0000112 | 0.00000876 |
+    | 4 | course_Kempton | −0.0000129 | 0.0000207 |
+    | 5 | course_Wolverhampton | −0.0000387 | 0.0000358 |
+
+    `course_Kempton`'s drop is indistinguishable from zero
+    (`|mean|<sd`); `going_ordinal`, `course_Kempton` and
+    `course_Wolverhampton` all have NEGATIVE point estimates on the
+    test split (permuting made the model very slightly better, not
+    worse) — a marked attenuation from the training-side across-race
+    result, where all five race-level features were positive and
+    comfortably distinguishable from zero. Report both training and
+    test race-level tables in §5 rather than only one; do not
+    characterise the test-side attenuation beyond stating the numbers —
+    that reading belongs to the drafting pass.
+  - **Artifacts:** `results_pass_stage{A,B,C,D,E}.rds` (full objects,
+    including the ratio sweeps), `scripts/run_results_pass.R` (the
+    script itself, committed). Run artifacts (`.rds`/`.log`), not
+    committed, per the project's standing convention for
+    `gbt_tuning_*` outputs.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
