@@ -1435,6 +1435,26 @@ stage $s$, win probabilities a softmax over the field — matches papers
     read) the same conclusion for §6: tuning bought little, which
     weakens tuning as an alternative explanation for any GBT-vs-linear
     performance gap found later.
+  - **Tie-break disclosure (state plainly in §4): the selected point is
+    not, on a paired test, tied with the grid maximum.** The pre-declared
+    0.001 tie window is roughly 1.3–3.6x the paired SEs actually observed
+    near the top of this grid (0.0003–0.0007) — a fixed absolute
+    constant chosen before seeing the paired structure of the data
+    turned out to be wider than the paired uncertainty it was meant to
+    approximate. The selected point sits ~1.26 paired SE from the max,
+    i.e. outside the 1-SE band that only 3 of 72 points satisfy. **The
+    rule was fixed in advance and stands — that is what pre-declaration
+    is for** — but §4 must say plainly that the tie-break, as specified,
+    selected among points that a paired test would not call tied.
+    **Standing methodological note for the series: a fixed tie
+    threshold should be set relative to the paired SE of the metric
+    being compared, not as an absolute constant chosen before the
+    paired structure of the data is known.** A future paper's grid
+    search should either compute the paired SE first and set the window
+    as a multiple of it, or report the paired comparison alongside
+    whatever fixed window was used, as done here. (The tie-break's
+    practical stakes turned out to be low regardless — see the refit
+    comparison below — but that was found out, not known in advance.)
   - **In-sample training `pl_r2`: GBT 0.09200 vs. paper 2b's own
     training `pl_r2` (k=3, identical metric) 0.05416 — label this
     IN-SAMPLE everywhere it appears and do not let it into §5 as a
@@ -1464,19 +1484,63 @@ stage $s$, win probabilities a softmax over the field — matches papers
     bound, not a point estimate. `going_sr_shrunk` (rank 12) and
     `going_sr_delta` (rank 13) should be read with this in mind; their
     true joint contribution is understated by looking at either one's
-    permutation rank alone. `going_ordinal`'s rank-24 zero is NOT
-    subject to this caveat (nothing to be correlated away — it is
-    genuinely unused, consistent with the near-constant-going finding).
+    permutation rank alone.
+  - **STRUCTURAL LIMITATION, found 2026-08-22, corrects an initial
+    misreading below: within-race permutation importance cannot measure
+    ANY race-level feature, regardless of that feature's true
+    importance.** `going_ordinal` (today's going) and all four
+    `course_*` dummies are constant for every runner in a given race by
+    construction — they describe the race, not the horse. Permuting
+    "which horse holds this value" within a race that already has one
+    value for every horse is a no-op: the permuted column is identical
+    to the original, so the measured `pl_r2` drop is exactly `0` with
+    exactly `0` variance across all 30 repeats, independent of whether
+    the feature matters. This was checked, not assumed: dumping the
+    SELECTED model's fitted trees (`xgb.model.dt.tree()`) shows all four
+    course dummies genuinely ARE split on (`course_Kempton` 20 times,
+    `course_Lingfield` 19, `course_Southwell` 23,
+    `course_Wolverhampton` 22, out of 4,868 total splits) — ruling out
+    "silently never reached the model" as the explanation before this
+    got written up. The training matrix itself is clean too: all four
+    columns present, correctly named, non-degenerate (variance
+    0.12–0.21), no NA, and exactly one course dummy is `1` per row
+    across all 45,970 training rows. **Consequence for the write-up:**
+    do not cite the permutation-importance zero as evidence about
+    `going_ordinal` or the course dummies at all — it would be true for
+    an all-important race-level feature too. The GAIN-importance rank is
+    the one of the two metrics actually informative about a race-level
+    feature's use, since it is not blind to within-race-constant
+    columns.
   - **Going features' positions, both rankings (of 24 features):**
     | feature | gain rank | gain | permutation rank | mean_drop |
     |---|---|---|---|---|
     | going_sr_shrunk | 9 | 0.0338 | 12 | 0.00283 |
     | going_sr_delta | 11 | 0.0240 | 13 | 0.00272 |
     | going_runs_prior | 12 | 0.0223 | 16 | 0.00195 |
-    | going_ordinal | 23 | 0.0014 | 24 (last) | 0.0000 |
-    `going_ordinal` landing dead last with an exact zero permutation
-    drop is the clean, direct confirmation the 98.9%-Standard-going
-    finding (above) predicted — reportable as such in §5.
+    | going_ordinal | 23 | 0.0014 | 24 (last, structurally forced) | 0.0000 |
+    `going_ordinal`'s permutation rank of 24 is NOT evidence of
+    anything (see structural limitation above) — its gain rank of
+    23/24 with `Gain=0.0014` (19 splits, the same order of magnitude as
+    the course dummies' 19–23) is the honest read: rarely useful, which
+    IS consistent with the near-constant-going finding (98.9% Standard
+    leaves little cross-race variation for a tree to exploit), but say
+    it that way — via the gain rank — not via the permutation zero.
+  - **Tie-break robustness check (2026-08-22, one refit, training-side
+    only):** the pre-declared 0.001 tie window is an absolute constant,
+    not scaled to the paired SE (~0.0007–0.0003 near the top of this
+    grid) — see the tie-break disclosure note above; this is the
+    empirical check of whether that gap actually matters. Refit the
+    GRID MAXIMUM (`max_depth=4, eta=0.01, min_child_weight=20,
+    subsample=0.7`, at its own fold-mean 1507 rounds) the same way as
+    the selected point. In-sample `train_pl_r2`: grid max 0.10219 vs.
+    selected 0.09200 (grid max higher, expected — more depth and
+    ~2.16x the rounds, not a meaningful comparison on its own). **The
+    top-10 gain-importance ranking is nearly identical between the two
+    models** — the same 10 features, in the same order, except
+    `pos_lag2_nonzero`/`trainer_aw_premium` swap ranks 7/8. **This closes
+    the question for §4: the tie-break's practical stakes are low —
+    whichever of the near-tied configurations the fixed rule had
+    selected, the substantive feature-importance story is the same.**
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
