@@ -915,6 +915,429 @@ list(
     )
   ),
 
+  # -- Paper 3: gradient boosted trees (Plackett-Luce, depth k = 3) ----------
+  # See CLAUDE.md "Paper 3 plan" for the full design history. The 72-point x
+  # 5-fold hyperparameter grid search (~6.5-8h wall-clock) is deliberately
+  # NOT a live target: gbt_tuning_final.rds is a FROZEN, git-committed
+  # artefact (same convention as renv.lock -- a pinned empirical result, not
+  # a build product), produced once by the standalone
+  # scripts/run_gbt_tuning.R and re-generated only by a deliberate, manual
+  # re-run of that script followed by re-committing the file. Everything
+  # downstream of the SELECTED hyperparameters (the final fit, every
+  # importance table, every test-set prediction and bootstrap) is cheap
+  # (seconds to a few minutes) and IS a live target, so `tar_make()` from
+  # clean reproduces all of it deterministically (seed 42 throughout,
+  # inherited from R/gbt_tuning.R).
+
+  # -- Feature matrices + CV folds (training races only for folds) ----------
+  tar_target(
+    gbt_train_data,
+    build_gbt_matrix(runners_interactions, qualifying_runners, "train")
+  ),
+  tar_target(
+    gbt_test_data,
+    build_gbt_matrix(runners_interactions, qualifying_runners, "test")
+  ),
+  tar_target(
+    gbt_race_folds,
+    make_race_folds(unique(gbt_train_data$key$race_id), v = 5, seed = 42)
+  ),
+
+  # -- Frozen tuning-grid result (file-tracked, committed) -------------------
+  tar_target(
+    gbt_tuning_grid_file,
+    "gbt_tuning_final.rds",
+    format = "file"
+  ),
+  tar_target(
+    gbt_tuning_results,
+    readRDS(gbt_tuning_grid_file)
+  ),
+  tar_target(
+    gbt_selected_config,
+    gbt_tuning_results$selected
+  ),
+
+  # -- Final model fit at the selected hyperparameters (live, ~2-4 min) -----
+  # xgb.Booster objects are saved via xgboost::xgb.save() rather than R's
+  # own serialisation (targets' default "rds"/"qs" formats) -- the
+  # established, version-safe way to persist an xgb.Booster, and already
+  # this project's own convention in scripts/run_gbt_tuning.R. format =
+  # "file" is `{targets}`' standard idiom for a target whose product is a
+  # bespoke-serialised external file (the same accepted side-effect
+  # tar_quarto() targets already have); returning two paths lets one target
+  # track both the model file and its small metadata sidecar.
+  tar_target(
+    model_3_gbt_path,
+    {
+      fit <- fit_final_model(gbt_train_data$X, gbt_train_data$y,
+                             gbt_train_data$group_sizes, gbt_selected_config, k = 3L)
+      xgboost::xgb.save(fit$bst, "gbt_final_model.xgb")
+      saveRDS(list(nrounds = fit$nrounds, train_pl_r2 = fit$train_pl_r2),
+              "gbt_final_model_meta.rds")
+      c("gbt_final_model.xgb", "gbt_final_model_meta.rds")
+    },
+    format = "file"
+  ),
+  tar_target(
+    model_3_gbt_meta,
+    readRDS(model_3_gbt_path[2])
+  ),
+
+  # -- Training-side importance (in-sample gain; within-race and ---------
+  # across-race permutation, training split) --------------------------------
+  tar_target(
+    gbt_gain_importance_train,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      imp <- xgboost::xgb.importance(model = bst) |> tibble::as_tibble()
+      imp$rank <- seq_len(nrow(imp))
+      imp
+    }
+  ),
+  tar_target(
+    gbt_perm_importance_within_train,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      permutation_importance_within_race(
+        bst, gbt_train_data$X, gbt_train_data$key$race_id,
+        gbt_train_data$group_sizes, gbt_train_data$feature_names,
+        k = 3L, n_repeats = 30L
+      )
+    }
+  ),
+  tar_target(
+    gbt_perm_importance_across_train,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      permutation_importance_across_races(
+        bst, gbt_train_data$X, gbt_train_data$key$race_id,
+        gbt_train_data$group_sizes, RACE_LEVEL_FEATS_3,
+        k = 3L, n_repeats = 30L
+      )
+    }
+  ),
+  # Paper 2b's own training pl_r2 (k=3), for the in-sample comparison table.
+  tar_target(
+    paper2b_train_pl_r2,
+    paper2b_training_pl_r2(model_2b_exploded_draw_final, exploded_interactions_data)
+  ),
+
+  # -- Depth-1 diagnostic fit (stumps) -- PERMANENTLY A DIAGNOSTIC -----------
+  # Exists to test whether depth-3's interactions generalise; once its test
+  # numbers are known it can never be promoted to a candidate model (that
+  # would be model selection on the test set). Same tuning-grid convention
+  # as the selected model: fit at fixed max_depth=1 with the selected
+  # model's other hyperparameters, own 5-fold CV to find its own nrounds
+  # (no CV result is frozen for this point -- it was never part of the
+  # 72-point grid), then a full-training-data refit.
+  tar_target(
+    model_3_depth1_diag_path,
+    {
+      depth1_params <- list(max_depth = 1L, eta = 0.03, min_child_weight = 1L,
+                            subsample = 0.7, colsample_bytree = 0.7)
+      cv <- run_grid_point(gbt_train_data$X, gbt_train_data$y, gbt_train_data$key,
+                           gbt_race_folds, params = depth1_params, k = 3L)
+      fit <- fit_final_model(gbt_train_data$X, gbt_train_data$y,
+                             gbt_train_data$group_sizes, cv$summary, k = 3L)
+      xgboost::xgb.save(fit$bst, "gbt_depth1_diagnostic.xgb")
+      saveRDS(list(cv_summary = cv$summary, nrounds = fit$nrounds,
+                   train_pl_r2 = fit$train_pl_r2),
+              "gbt_depth1_diagnostic_meta.rds")
+      c("gbt_depth1_diagnostic.xgb", "gbt_depth1_diagnostic_meta.rds")
+    },
+    format = "file"
+  ),
+  tar_target(
+    model_3_depth1_diag_meta,
+    readRDS(model_3_depth1_diag_path[2])
+  ),
+
+  # -- Test-set predictions (THE test-split contact point) -------------------
+  # check_gbt_race_universe() halts the pipeline here (stopifnot) if paper
+  # 3's test race set ever diverges from paper 2b's ranking universe --
+  # see CLAUDE.md "Two test universes exist for paper 2b".
+  tar_target(
+    gbt_test_margin,
+    {
+      check_gbt_race_universe(gbt_test_data, ranking_eval_runners_2b)
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      predict(bst, gbt_test_data$X, outputmargin = TRUE)
+    }
+  ),
+  tar_target(
+    test_predictions_3,
+    build_test_predictions_3(gbt_test_margin, gbt_test_data, test_predictions_2b)
+  ),
+  tar_target(
+    gbt_depth1_test_margin,
+    {
+      bst <- xgboost::xgb.load(model_3_depth1_diag_path[1])
+      predict(bst, gbt_test_data$X, outputmargin = TRUE)
+    }
+  ),
+  tar_target(
+    test_predictions_3_depth1,
+    build_test_predictions_3(gbt_depth1_test_margin, gbt_test_data, test_predictions_2b)
+  ),
+
+  # -- Q1: ranking performance (test split) ----------------------------------
+  tar_target(
+    ranking_eval_runners_3,
+    build_ranking_eval_runners(test_predictions_3, qualifying_runners)
+  ),
+  tar_target(
+    ranking_metrics_3,
+    compute_ranking_metrics_2b(ranking_eval_runners_3)
+  ),
+  # Paper 2a has no stored ranking-metric target (P1_rank / Brier_place were
+  # introduced in 2b); computed fresh here, purely as an evaluation of 2a's
+  # already-fitted test predictions, for a three-way comparison table. NOT
+  # part of 2a's own published results.
+  tar_target(
+    ranking_metrics_2a_fresh,
+    compute_ranking_metrics_2b(
+      build_ranking_eval_runners(
+        test_predictions_w_final |> dplyr::rename(win_model = predicted_prob, win_market = market_prob),
+        qualifying_runners
+      )
+    )
+  ),
+  tar_target(
+    test_pl_r2_3,
+    make_pl_eval(gbt_test_data$group_sizes, k = 3L)(gbt_test_margin, NULL)$value
+  ),
+  # Paper 2b's implied z on the test split: log(win_model) is exact up to a
+  # race-constant shift that cancels in pl_denom()'s per-race
+  # max-subtraction (see R/gbt_tuning.R::paper2b_training_pl_r2() roxygen
+  # for the training-side version of the same argument).
+  tar_target(
+    test_pl_r2_2b,
+    {
+      fp_lookup <- qualifying_runners |>
+        dplyr::transmute(race_id, runner_id,
+                         finish_pos = dplyr::coalesce(amended_position, finish_position))
+      ordered <- test_predictions_2b |>
+        dplyr::filter(!is.na(win_model), win_model > 0) |>
+        dplyr::left_join(fp_lookup, by = c("race_id", "runner_id")) |>
+        arrange_for_xgb()
+      gs <- rle(as.character(ordered$race_id))$lengths
+      z  <- base::log(ordered$win_model)
+      make_pl_eval(gs, k = 3L)(z, NULL)$value
+    }
+  ),
+
+  # -- Q2: win-picking (test split), three-column published/restricted/paper-3
+  tar_target(
+    model_market_ratio_3_win,
+    compute_model_market_ratio_p2(
+      test_predictions_3 |> dplyr::rename(predicted_prob = win_model, market_prob = win_market)
+    )
+  ),
+  tar_target(
+    backtest_naive_3_win,
+    run_backtest(model_market_ratio_3_win, prob_threshold = 0.15, ratio_threshold = 1.3)
+  ),
+  tar_target(
+    backtest_naive_2b_win_restricted_3,
+    run_backtest(
+      model_market_ratio_2b_win |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id)),
+      prob_threshold = 0.15, ratio_threshold = 1.3
+    )
+  ),
+  tar_target(
+    backtest_naive_w_final_restricted_3,
+    run_backtest(
+      model_market_ratio_w_final |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id)),
+      prob_threshold = 0.15, ratio_threshold = 1.3
+    )
+  ),
+  tar_target(
+    roi_diff_3_vs_2b,
+    bootstrap_roi_difference(model_market_ratio_3_win, model_market_ratio_2b_win) |>
+      dplyr::mutate(contrast = "paper 3 GBT - paper 2b exploded logit", .before = 1)
+  ),
+  tar_target(
+    roi_diff_3_vs_2a,
+    bootstrap_roi_difference(model_market_ratio_3_win, model_market_ratio_w_final) |>
+      dplyr::mutate(contrast = "paper 3 GBT - paper 2a win model", .before = 1)
+  ),
+
+  # -- Q3: betting value (test split), single-bet primary --------------------
+  tar_target(
+    value_bet_runners_3,
+    build_value_bet_runners(test_predictions_3, qualifying_runners)
+  ),
+  tar_target(value_bets_place_3,   build_place_value_bets(value_bet_runners_3)),
+  tar_target(value_bets_eachway_3, build_eachway_value_bets(value_bet_runners_3)),
+  tar_target(backtest_single_win_3,     run_single_win_backtest(model_market_ratio_3_win)),
+  tar_target(backtest_single_place_3,   run_single_settled_backtest(model_market_ratio_3_win, value_bets_place_3)),
+  tar_target(backtest_single_eachway_3, run_single_settled_backtest(model_market_ratio_3_win, value_bets_eachway_3)),
+  tar_target(
+    backtest_single_win_2b_restricted_3,
+    run_single_win_backtest(
+      model_market_ratio_2b_win |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id))
+    )
+  ),
+  tar_target(
+    backtest_single_place_2b_restricted_3,
+    run_single_settled_backtest(
+      model_market_ratio_2b_win |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id)),
+      value_bets_place_2b |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id))
+    )
+  ),
+  tar_target(
+    backtest_single_eachway_2b_restricted_3,
+    run_single_settled_backtest(
+      model_market_ratio_2b_win |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id)),
+      value_bets_eachway_2b |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id))
+    )
+  ),
+  tar_target(
+    backtest_single_win_2a_restricted_3,
+    run_single_win_backtest(
+      model_market_ratio_w_final |> dplyr::filter(race_id %in% unique(gbt_test_data$key$race_id))
+    )
+  ),
+  tar_target(sweep_single_win_3,     run_single_sweep(model_market_ratio_3_win)),
+  tar_target(sweep_single_place_3,   run_single_sweep(model_market_ratio_3_win, value_bets_place_3)),
+  tar_target(sweep_single_eachway_3, run_single_sweep(model_market_ratio_3_win, value_bets_eachway_3)),
+
+  # -- Out-of-sample importance (test split), both nulls ---------------------
+  tar_target(
+    gbt_perm_importance_within_test,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      permutation_importance_within_race(
+        bst, gbt_test_data$X, gbt_test_data$key$race_id, gbt_test_data$group_sizes,
+        HORSE_LEVEL_FEATS_3, k = 3L, n_repeats = 30L
+      )
+    }
+  ),
+  tar_target(
+    gbt_perm_importance_across_test,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      permutation_importance_across_races(
+        bst, gbt_test_data$X, gbt_test_data$key$race_id, gbt_test_data$group_sizes,
+        RACE_LEVEL_FEATS_3, k = 3L, n_repeats = 30L
+      )
+    }
+  ),
+
+  # -- Paired race-level bootstraps on the ranking metrics --------------------
+  # depth-3 (selected) vs paper 2b, vs the depth-1 diagnostic, and vs the
+  # discounted-Harville market -- the market comparison is the one contrast
+  # in the whole battery whose CIs exclude zero (see CLAUDE.md).
+  tar_target(
+    ranking_per_race_3,
+    build_ranking_per_race(
+      ranking_eval_runners_3, "win_model", alpha_2nd = 1, alpha_3rd = 1,
+      z = gbt_test_margin, group_sizes = gbt_test_data$group_sizes,
+      race_ids_ordered = as.integer(rle(as.character(gbt_test_data$key$race_id))$values)
+    )
+  ),
+  tar_target(
+    ranking_per_race_market_3,
+    build_ranking_per_race(ranking_eval_runners_3, "win_market", alpha_2nd = 0.80, alpha_3rd = 0.65)
+  ),
+  tar_target(
+    ranking_per_race_2b_for_3,
+    {
+      fp_lookup <- qualifying_runners |>
+        dplyr::transmute(race_id, runner_id,
+                         finish_pos = dplyr::coalesce(amended_position, finish_position))
+      test_race_ids <- unique(gbt_test_data$key$race_id)
+      ordered <- test_predictions_2b |>
+        dplyr::filter(!is.na(win_model), win_model > 0, race_id %in% test_race_ids) |>
+        dplyr::left_join(fp_lookup, by = c("race_id", "runner_id")) |>
+        arrange_for_xgb()
+      rl  <- rle(as.character(ordered$race_id))
+      z2b <- base::log(ordered$win_model)
+      rer_2b_subset <- ranking_eval_runners_2b |> dplyr::filter(race_id %in% test_race_ids)
+      build_ranking_per_race(rer_2b_subset, "win_model", alpha_2nd = 1, alpha_3rd = 1,
+                             z = z2b, group_sizes = rl$lengths, race_ids_ordered = as.integer(rl$values))
+    }
+  ),
+  tar_target(
+    ranking_per_race_depth1_3,
+    build_ranking_per_race(
+      build_ranking_eval_runners(test_predictions_3_depth1, qualifying_runners),
+      "win_model", alpha_2nd = 1, alpha_3rd = 1,
+      z = gbt_depth1_test_margin, group_sizes = gbt_test_data$group_sizes,
+      race_ids_ordered = as.integer(rle(as.character(gbt_test_data$key$race_id))$values)
+    )
+  ),
+  tar_target(
+    boot_ranking_3_vs_2b,
+    bootstrap_ranking_metrics(ranking_per_race_3, ranking_per_race_2b_for_3,
+                              "depth-3 (selected) - paper 2b")
+  ),
+  tar_target(
+    boot_ranking_3_vs_depth1,
+    bootstrap_ranking_metrics(ranking_per_race_3, ranking_per_race_depth1_3,
+                              "depth-3 (selected) - depth-1 (diagnostic)")
+  ),
+  tar_target(
+    boot_ranking_3_vs_market,
+    bootstrap_ranking_metrics(ranking_per_race_3, ranking_per_race_market_3,
+                              "depth-3 (selected) - discounted-Harville market")
+  ),
+
+  # -- Pre-drafting diagnostics: score agreement, disagreement set, PDP ------
+  tar_target(
+    aligned_2b_z_3,
+    align_2b_z_to_key(test_predictions_2b, gbt_test_data$key)
+  ),
+  tar_target(
+    score_agreement_3_vs_2b,
+    {
+      joined <- gbt_test_data$key |>
+        dplyr::mutate(z_p3 = gbt_test_margin) |>
+        dplyr::inner_join(aligned_2b_z_3, by = c("race_id", "runner_id"))
+      compute_score_agreement(joined$race_id, joined$runner_id, joined$z_p3, joined$z_2b)
+    }
+  ),
+  tar_target(
+    disagreement_set_3_vs_2b,
+    {
+      joined <- gbt_test_data$key |>
+        dplyr::mutate(z_p3 = gbt_test_margin) |>
+        dplyr::inner_join(aligned_2b_z_3, by = c("race_id", "runner_id")) |>
+        dplyr::inner_join(
+          test_predictions_3 |> dplyr::select(race_id, runner_id, starting_price_decimal, won),
+          by = c("race_id", "runner_id")
+        )
+      build_disagreement_set(joined$race_id, joined$runner_id, joined$z_p3, joined$z_2b,
+                             joined$starting_price_decimal, joined$won)
+    }
+  ),
+  tar_target(
+    boot_disagreement_3_vs_2b,
+    bootstrap_disagreement_diff(disagreement_set_3_vs_2b)
+  ),
+  tar_target(
+    gbt_pdp_or_relative,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      compute_partial_dependence(bst, gbt_test_data$X, "or_relative")
+    }
+  ),
+  tar_target(
+    gbt_pdp_going_sr_delta,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      compute_partial_dependence(bst, gbt_test_data$X, "going_sr_delta")
+    }
+  ),
+  tar_target(
+    gbt_pdp_stall_normalised,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      compute_partial_dependence(bst, gbt_test_data$X, "stall_normalised")
+    }
+  ),
+
   # -- Paper 1 render --------------------------------------------------------
   # tarchetypes::tar_quarto parses the master index.qmd (and its included
   # section files) for tar_read() / tar_load() calls and turns the
@@ -1001,6 +1424,28 @@ list(
       "papers/02b_ranking_model/_helpers.R",
       "papers/02b_ranking_model/references.bib",
       "papers/02b_ranking_model/_quarto.yml"
+    )
+  ),
+
+  # -- Paper 3 render: gradient boosted trees --------------------------------
+  # Scaffold only; the section partials are headings + one-line placeholders
+  # (structure/wiring pass, CLAUDE.md "Paper 3 plan" -- section content is
+  # drafted one section at a time in a later pass).
+  tar_quarto(
+    paper_3_gradient_boosted_trees,
+    path = "papers/03_gradient_boosted_trees",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/03_gradient_boosted_trees/_01_data.qmd",
+      "papers/03_gradient_boosted_trees/_02_method.qmd",
+      "papers/03_gradient_boosted_trees/_03_model.qmd",
+      "papers/03_gradient_boosted_trees/_04_results.qmd",
+      "papers/03_gradient_boosted_trees/_05_discussion.qmd",
+      "papers/03_gradient_boosted_trees/_appx_derivations.qmd",
+      "papers/03_gradient_boosted_trees/_appx_software.qmd",
+      "papers/03_gradient_boosted_trees/_helpers.R",
+      "papers/03_gradient_boosted_trees/references.bib",
+      "papers/03_gradient_boosted_trees/_quarto.yml"
     )
   )
 

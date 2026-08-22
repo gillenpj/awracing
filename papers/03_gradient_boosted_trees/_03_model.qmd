@@ -1,0 +1,6 @@
+# Model fitted {#sec-model}
+
+Placeholder — feature matrix, race grouping, the tuning grid and budget,
+the numerical tuning procedure subsection (grid, CV, early stopping,
+selection rule, refit, divergence guard), selected hyperparameters, and
+training McFadden pseudo-$R^2$. To be drafted.

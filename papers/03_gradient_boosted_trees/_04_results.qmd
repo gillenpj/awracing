@@ -1,0 +1,6 @@
+# Results {#sec-results}
+
+Placeholder — Q1 (ranking vs the market and vs paper 2b, predictor
+importance), Q2 (win-picking vs 2a/2b, paired bootstrap), Q3 (single-bet
+betting value, place/each-way, ratio sweep with CIs), in that order. To be
+drafted.

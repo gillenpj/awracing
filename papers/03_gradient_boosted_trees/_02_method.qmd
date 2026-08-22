@@ -1,0 +1,5 @@
+# Method {#sec-method}
+
+Placeholder — why the loss stops factorising per observation; latent
+scores; softmax over the field; interactions found rather than specified.
+Prose only here, maths to @sec-appx-derivations. To be drafted.

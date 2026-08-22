@@ -1,0 +1,8 @@
+# Appendix A: Derivation {#sec-appx-derivations .appendix}
+
+Placeholder — compressed derivation following `notes/Notes on Trees-based
+Methods.pdf`: squared error to pseudo-residuals under a general loss;
+likelihood substitution; the quadratic approximation giving the leaf value
+in closed form; the grouped Plackett–Luce likelihood and what breaks when
+the loss stops factorising; the gradient and diagonal Hessian, noting
+XGBoost consumes the diagonal only. To be drafted.

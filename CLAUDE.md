@@ -1394,10 +1394,12 @@ stage $s$, win probabilities a softmax over the field — matches papers
   to completion once, cleanly (**zero divergence events across all 72
   points** — the decisive confirmation that the entire multi-day
   divergence incident above was the `log()` shadowing bug and nothing
-  else). Still **not yet wired into `_targets.R`** — no `model_3_gbt`
-  target, no tuning-results target. `papers/03_*/` is not yet
-  scaffolded. Numbers below are training-side only; the test split has
-  not been touched by anything in this run.
+  else). **Now wired into `_targets.R` and `papers/03_gradient_boosted_trees/`
+  is scaffolded** — see the "`papers/03_gradient_boosted_trees/` scaffolded
+  and wired" entry further down this section (2026-08-22) for the full
+  design and verification record; this paragraph and the numbers below it
+  are left as the training-side-only snapshot from when they were first
+  produced (the test split had not been touched by anything in this run).
   - **Wall-clock: ~11h (10h59m) for 72 points** — validates the fallback
     ladder's decision to cut `colsample_bytree` to {0.7} rather than
     running the full 144-point grid: at this measured rate the full grid
@@ -1906,24 +1908,142 @@ stage $s$, win probabilities a softmax over the field — matches papers
     directional only, matching the series' existing convention for
     reporting a CI that straddles zero (see paper 2a's ROI-difference
     bootstrap note above).
-- **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
-  (`going_*`) columns, so its content hash changed; the next full
-  `tar_make()` will invalidate and re-fit/re-render every downstream
-  target, including papers 1, 2a and 2b, even though every pre-existing
-  `runners_augmented` column is verified byte-identical (see
-  `scripts/verify_going_features.R` assertion 6). This session only ran
-  a scoped `tar_make(names = "full_history")` — no downstream target has
-  actually been rebuilt yet. **Before republishing anything** off the
-  next full `tar_make()`, diff the headline published figures against
-  the current `docs/paperN/index.pdf` and confirm they are unchanged:
-  paper 1 §3.4 backtest ROI (−28.2%), paper 2a's `model_w_final` backtest
-  ROI (−25.4%), paper 2b's win/place single-bet ROI (−17.4% / −9.8%) and
-  its ranking metrics (P1_rank 0.00402 model vs 0.00543 market;
-  Brier_place 0.2013 vs 0.1875). Report any difference rather than
-  overwriting `docs/` — a byte-identical-columns fit that nonetheless
-  produces different numbers would mean something in the pipeline is
-  non-deterministic (e.g. an unset seed) and needs investigating before
-  anything is republished.
+- **Rebuild gate — RUN 2026-08-22, PASSED.** `runners_augmented` picked up
+  the new (`going_*`) columns as expected (content hash changed), so a full
+  `tar_make()` invalidated and re-fit/re-rendered every downstream target,
+  including papers 1, 2a and 2b. Every pre-existing `runners_augmented`
+  column was already verified byte-identical (`scripts/verify_going_features.R`
+  assertion 6); this run confirms the REFIT/RE-RENDER pipeline is also
+  unaffected. Diffed the freshly-rebuilt headline figures against the
+  values published in `docs/` (and against this file's own record of
+  them) — **exact match, all of them**:
+  - Paper 1: naive backtest ROI −28.169% (−28.2%), 1,713 bets. ✓
+  - Paper 2a: `model_w_final` naive backtest ROI −25.446% (−25.4%), 1,598
+    bets. ✓
+  - Paper 2b: win naive backtest ROI −17.426% (−17.4%), 1,426 bets;
+    single-bet place ROI −9.826% (−9.8%); single-bet each-way ROI
+    −7.668% (−7.7%); ranking metrics P1_rank 0.00402 (model) vs 0.00543
+    (market); Brier_place 0.201 (model) vs 0.188 (market), 2,183 test
+    races throughout. ✓
+
+  Nothing was republished (the diff was clean, so there was nothing to
+  publish) and nothing under `docs/` was touched. Full run: 39 targets
+  completed, 61 skipped (already up to date), ~11m12s wall-clock,
+  including both HTML and PDF renders for all three papers. This closes
+  the to-do from the going-features session — the pipeline is
+  deterministic across the `going_*` column addition, as hoped.
+- **`papers/03_gradient_boosted_trees/` scaffolded and wired into
+  `_targets.R`, 2026-08-22 — structure and wiring only, no body prose
+  yet.** Mirrors the 2a/2b pattern exactly: `_quarto.yml`, `index.qmd`
+  (setup chunk `tar_load()`s every paper-3 target so `tar_quarto()`'s
+  dependency scan picks them up), five numbered section partials
+  (`_01_data` .. `_05_discussion`) plus `_appx_derivations` /
+  `_appx_software`, each a heading and a one-line placeholder only.
+  `references.bib` carries the note's four sources (ISLR2 2nd ed. ch. 8,
+  Johansson's DIT866 notes, Cheng Li's Northeastern slides, Chen &
+  Guestrin 2016) plus the series' existing entries (Owen 2019, Harville
+  1973, Lo & Bacon-Shone 1994/2008); Friedman (2001) added fresh (not
+  previously cited in this series). Johansson's and Li's `@misc` entries
+  carry no `year` field — neither source states one, per the standing
+  "do not invent one" rule. `scripts/publish_docs.R` has the `paper3`
+  row added but was NOT run this session (Task 4 explicitly excluded
+  publishing).
+  - **All the results-pass / diagnostics computation is now wired as
+    live `{targets}` targets, not read from the standalone scripts'
+    scratch `.rds` files** — `tar_make()` from clean reproduces every
+    number, it does not replay a cached script run. New file
+    `R/gbt_results.R` holds the reusable pieces: `check_gbt_race_universe()`
+    (the Stage-A universe gate, now a `stopifnot()` inside a target
+    rather than a script that halts and writes `results_pass_STOPPED.rds`),
+    `build_test_predictions_3()`, `build_ranking_per_race()` +
+    `pl_race_contributions()` + `bootstrap_ranking_metrics()` (a new,
+    general paired race-level bootstrap for P1_rank / Brier_place / test
+    pl_r2 — supersedes the two near-duplicate one-off functions
+    `diag3_item1`'s `paired_boot()` and `diag4_market`'s
+    `paired_boot_2metric()` used ad hoc; an arm with no z scale, e.g. the
+    market, yields `NA` pl_r2 cells rather than a `quantile()` call over
+    an all-`NA` vector — the bug that broke the first attempt, see
+    below), `align_2b_z_to_key()`, `compute_score_agreement()`,
+    `build_disagreement_set()` + `bootstrap_disagreement_diff()`, and
+    `compute_partial_dependence()`. `RACE_LEVEL_FEATS_3` /
+    `HORSE_LEVEL_FEATS_3` are now proper constants there too (previously
+    script-local variables in `run_results_pass.R`).
+  - **Tuning-grid artefact split: frozen file vs. live target — the
+    Task 3 decision, stated explicitly.** The 72-point × 5-fold grid
+    search (~11h measured wall-clock) is NOT a `{targets}` target and is
+    never re-run by `tar_make()`. `gbt_tuning_final.rds` is treated as a
+    **frozen, git-committed artefact** (committed 2026-08-22 — see
+    `papers/03_gradient_boosted_trees/TUNING_PROVENANCE.md` for the full
+    record: git SHA of the code that produced it, the grid, the fallback
+    ladder and rung reached, wall-clock, seed, selection rule and
+    tie-break, selected configuration and `nrounds`, and the confirmed
+    zero-divergence count) — the same category as `renv.lock`, a pinned
+    empirical result rather than a build product — read by a
+    `format = "file"` target (`gbt_tuning_grid_file`) plus a plain target
+    that `readRDS()`s it (`gbt_tuning_results`).
+    **To reproduce it:** run
+    `"C:/Program Files/R/R-4.6.0/bin/Rscript.exe" scripts/run_gbt_tuning.R`
+    (via PowerShell/`Start-Process`, detached — native xgboost calls
+    crash under this project's Bash tool environment) from a checkout of
+    the commit `TUNING_PROVENANCE.md` names, then re-commit the
+    resulting file. **This takes ~11 hours**, which is the whole reason
+    the file is committed rather than built as a target — a `tar_make()`
+    that could take 11 hours on a stale cache is not an acceptable
+    default for this pipeline. Everything downstream of the
+    selected hyperparameters — the final fit (`model_3_gbt_path`, a
+    `format = "file"` target: `xgboost::xgb.save()`/`xgb.load()`, not
+    `{targets}`' own RDS/qs serialisation, matching the project's
+    existing xgb.Booster convention and `{targets}`' own recommended
+    idiom for a bespoke-serialised model object), every importance table
+    (gain; within-race and across-race permutation, training AND test),
+    every test-set prediction, and every bootstrap contrast — IS a live
+    target and reruns/reproduces deterministically (seed 42 throughout).
+    The depth-1 diagnostic (`model_3_depth1_diag_path`) is also live: its
+    own fresh 5-fold CV (it was never part of the frozen 72-point grid)
+    plus refit, ~20-25 minutes, the single most expensive live target.
+    `.gitignore` updated: the live targets' output files
+    (`gbt_final_model.xgb` + its meta sidecar, the depth-1 diagnostic's
+    equivalents) and the standalone scripts' now-superseded scratch
+    files (`gbt_tuning_checkpoint.csv`, `gbt_tuning_key.rds`, every
+    `diag{2,3,4}_*.rds`, `results_pass_stage*.rds`) are all gitignored;
+    `gbt_tuning_final.rds` deliberately is NOT.
+  - **First `tar_make()` attempt on the new targets errored** at
+    `boot_ranking_3_vs_market` — `bootstrap_ranking_metrics()` called
+    `stats::quantile()` on the `test_pl_r2` bootstrap-difference column,
+    which was entirely `NA` for the market arm (no z/margin scale, so no
+    `ll`/`nll` ingredient), and `quantile()` refuses an all-`NA` vector
+    without `na.rm = TRUE`. Fixed by skipping the bootstrap-replicate
+    loop for that column entirely when either arm lacks the pl_r2
+    ingredient (`has_pl` flag), rather than computing it and discarding
+    the result — the `test_pl_r2` row for a market contrast is `NA`
+    throughout (point, diff, CI), which is correct: there is no
+    market-side PL pseudo-R² to compare against. `tar_make()` resumed
+    and completed cleanly from that point (`{targets}` reruns only the
+    failed target and its downstream, not the 53 targets already
+    completed before the error).
+  - **Verified end-to-end, 2026-08-22.** Three consecutive `tar_make()`
+    runs: (1) the rebuild gate above (papers 1/2a/2b only — this run had
+    already started before the paper-3 `_targets.R` edits landed, so it
+    never saw the new targets: 39 completed / 61 skipped, ~11m12s); (2)
+    first paper-3 run, errored at `boot_ranking_3_vs_market` as above
+    (53 completed / 100 skipped, ~35m17s to the error — the depth-1
+    diagnostic and the training-side permutation-importance tables
+    account for most of that); (3) resumed after the fix, completed
+    cleanly including the `paper_3_gradient_boosted_trees` render (8
+    completed / 151 skipped, 56.2s — the render itself was 31.4s). A
+    fourth, immediately-following `tar_make()` did nothing (`159
+    skipped`, 1.3s) — the pipeline is idempotent at the current state,
+    including the new paper-3 targets and render. `papers/03_gradient_boosted_trees/_output/index.{html,pdf}`
+    both exist. Nothing was published: `docs/` was not touched, and
+    `scripts/publish_docs.R` was not run (Task 4's instruction).
+  - **Cosmetic, not fixed:** `xgboost::xgb.save()`/`xgb.load()` on a
+    `.xgb`-suffixed path logs a harmless per-call warning
+    ("Unknown file format: `xgb`. Using UBJSON (`ubj`) as a guess") since
+    xgboost infers format from the extension and doesn't recognise
+    `.xgb`; it falls back to auto-detection correctly every time (save
+    and load agree), so this is log noise, not a correctness issue.
+    Renaming to `.json`/`.ubj` would silence it; left as-is since it
+    doesn't affect any result.
 - **`{xgboost}` used directly, not via `{tidymodels}`/`{parsnip}`** —
   parsnip has no interface for a custom objective plus a custom eval
   metric plus group info. Same kind of documented exception as the

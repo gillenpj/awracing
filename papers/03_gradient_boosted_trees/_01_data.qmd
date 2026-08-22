@@ -1,0 +1,5 @@
+# Data and features {#sec-data}
+
+Placeholder — data, scope, and feature set are identical to papers 2a/2b
+(pointer to paper 2a §2), plus the one new feature this paper adds: going
+affinity, deferred from paper 2 (`R/build_going_features.R`). To be drafted.

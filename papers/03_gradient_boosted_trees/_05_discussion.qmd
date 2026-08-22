@@ -1,0 +1,5 @@
+# Discussion {#sec-discussion}
+
+Placeholder — the two honesty requirements (gain importance is in-sample;
+the capacity-and-selection asymmetry vs the linear models' hand-run Wald
+reduction), the temporal reading, and limitations. To be drafted.

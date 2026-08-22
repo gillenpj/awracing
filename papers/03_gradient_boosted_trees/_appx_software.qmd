@@ -1,0 +1,5 @@
+# Appendix B: Software and reproducibility {#sec-appx-software .appendix}
+
+Placeholder — following the papers 1/2a/2b pattern: the software stack,
+plus this paper's exception ({xgboost} used directly for the custom
+Plackett–Luce objective, not via {tidymodels}/{parsnip}). To be drafted.
