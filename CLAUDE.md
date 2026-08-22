@@ -1817,6 +1817,40 @@ stage $s$, win probabilities a softmax over the field — matches papers
     Wolverhampton, going_ordinal) flip negative on the test split, and
     the two that stay positive (Southwell, Lingfield) drop to well under
     half their training magnitude.
+- **Depth-1 diagnostic: permanently a diagnostic, not a candidate
+  model — record this explicitly, it is a discipline point for the
+  series.** Its test-split numbers (P1_rank, Brier_place, test `pl_r2`)
+  are now known (see above and the paired-bootstrap comparison below),
+  which means it CANNOT subsequently be promoted to a candidate or
+  selected model — doing so after seeing its test performance would be
+  exactly the model-selection-on-the-test-set the whole series' training
+  vs. test discipline exists to prevent. The depth-1 fit exists
+  specifically to establish whether depth-3's interactions generalise;
+  it is reported as a diagnostic in §5/§6, clearly labelled as such
+  wherever it appears. **Paper 3's model remains the depth-3 fit
+  selected on training-side CV** (`max_depth=3, eta=0.03,
+  min_child_weight=1, subsample=0.7, colsample_bytree=0.7`,
+  `nrounds=698`) — nothing about the depth-1 comparison changes that
+  selection after the fact.
+- **The temporal reading (record neutrally — an observation for the
+  drafting pass, not yet a conclusion).** The 5-fold CV folds are random
+  races drawn from WITHIN the training era (chronological cutoff
+  2012-12-30 and earlier); the test split is the chronologically LATER
+  races. Depth-3's advantage over depth-1 is present in-sample
+  (`train_pl_r2` 0.09200 vs. 0.06492) and present in CV
+  (`fold_mean_pl_r2` 0.06776 vs. 0.0600) — i.e., present on races from
+  the SAME era the model was fitted on, whether or not the model has
+  seen that exact race before — and is absent on the chronologically
+  later test split (test `pl_r2` 0.05145 vs. 0.05178; see the paired
+  bootstrap above for whether this specific reversal is distinguishable
+  from zero). The across-race permutation attenuation table shows the
+  same pattern from a different angle: all five race-level features
+  positive in training, three of five negative on the (later) test
+  split. Both observations point the same direction — whatever
+  additional structure this model class finds beyond a purely additive
+  fit is present within-era and does not clearly carry forward across
+  the training/test time boundary — stated here as where the advantage
+  does and does not appear, not as a claim about why.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
