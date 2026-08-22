@@ -1851,6 +1851,47 @@ stage $s$, win probabilities a softmax over the field — matches papers
   fit is present within-era and does not clearly carry forward across
   the training/test time boundary — stated here as where the advantage
   does and does not appear, not as a claim about why.
+- **Paired race-level bootstrap on the test comparisons — 2026-08-22,
+  `scripts/run_diagnostics_pass3.R`, B=2000, seed=42, common 2,183-race
+  set throughout.** No bootstrap infrastructure existed for the ranking
+  metrics before this (`bootstrap_roi_difference()` is ROI-specific);
+  built from per-race contributions — order probability for `P1_rank`,
+  per-race squared-error/runner-count for `Brier_place`, per-race
+  log-likelihood/null-log-likelihood for test `pl_r2` — so each metric's
+  bootstrap resamples races once and recomputes the SAME aggregation the
+  point estimate uses, preserving within-race structure exactly as
+  `bootstrap_roi_difference()` does for ROI.
+  | contrast | metric | diff (A−B) | 90% CI |
+  |---|---|---|---|
+  | depth-3 − paper 2b | P1_rank | −0.0000057 | [−0.0000491, 0.0000355] |
+  | depth-3 − paper 2b | Brier_place | 0.000138 | [−0.000454, 0.000764] |
+  | depth-3 − paper 2b | test pl_r2 | −0.000243 | [−0.00213, 0.00152] |
+  | depth-3 − depth-1 | P1_rank | −0.0000075 | [−0.0000363, 0.0000205] |
+  | depth-3 − depth-1 | Brier_place | 0.000217 | [−0.000174, 0.000631] |
+  | depth-3 − depth-1 | test pl_r2 | −0.000323 | [−0.00156, 0.000870] |
+
+  **All six CIs straddle zero.** This includes the depth-3-vs-depth-1
+  contrast the CV/test reversal turns on: the point estimate confirms
+  the direction already seen (depth-3 trails depth-1 on test `pl_r2` by
+  0.000323, having led it on CV by 0.0078 and in-sample by 0.0271), but
+  the 90% CI does not exclude zero at `n=2183` races. **Consequence for
+  §5/§6: the reversal is directionally consistent with the temporal
+  reading above but not confirmed as statistically distinguishable from
+  zero at this sample size — state both halves.** The paper can say the
+  interactions add nothing DETECTABLE on the test split; it cannot yet
+  say, on this evidence alone, that they are confirmed not to
+  generalise. The same qualification applies to the depth-3-vs-2b
+  contrast on all three metrics.
+  - **Disagreement-set intervals (same B/seed, 713 races):** win-rate
+    difference (GBT − 2b) = −0.0140, 90% CI [−0.0547, 0.0238]; mean-SP
+    difference (GBT − 2b) = −0.176, 90% CI [−0.513, 0.146]. Both
+    straddle zero — the "double penalty" reading (GBT's disagreement-set
+    pick has both a lower win rate and a shorter mean price than 2b's)
+    is directionally what the point estimates show, but neither
+    component is distinguishable from zero on 713 races. State as
+    directional only, matching the series' existing convention for
+    reporting a CI that straddles zero (see paper 2a's ROI-difference
+    bootstrap note above).
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
