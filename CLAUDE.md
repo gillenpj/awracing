@@ -1380,16 +1380,103 @@ stage $s$, win probabilities a softmax over the field — matches papers
   that) and again in **§4** where the fit is described (the mechanism:
   XGBoost learns a default split direction per node from the training
   data and routes every missing value that way).
-- **Status: research/tooling phase.** `R/pl_objective.R` (the custom
-  PL objective for `{xgboost}`, `{data.table}`-vectorised as of
-  2026-08-20) and its verification gate (`scripts/verify_pl_objective.R`,
-  8 assertions), `R/build_going_features.R` and its verification gate
-  (`scripts/verify_going_features.R`), and `R/gbt_data.R` /
-  `R/gbt_folds.R` (feature-matrix builder + race-grouped CV folds, both
-  tested) all exist. The tuning grid is decided (72 points x 5 folds,
-  fallback ladder above) but **not yet run** — no `model_3_gbt`, no
-  tuning-results target, no fold-assignment target wired into
-  `_targets.R` yet. `papers/03_*/` is not yet scaffolded.
+- **Status: tuning grid run to completion 2026-08-22; results below.**
+  `R/pl_objective.R` (the custom PL objective for `{xgboost}`,
+  `{data.table}`-vectorised as of 2026-08-20, `log()`-shadowing fixed
+  2026-08-21) and its verification gate (`scripts/verify_pl_objective.R`,
+  9 assertions, see the divergence-guard note above for what #9 covers),
+  `R/build_going_features.R` and its verification gate
+  (`scripts/verify_going_features.R`), `R/gbt_data.R` / `R/gbt_folds.R`
+  (feature-matrix builder + race-grouped CV folds), and Stage E
+  (`fit_final_model()`, `permutation_importance_within_race()`,
+  `paper2b_training_pl_r2()`, all in `R/gbt_tuning.R`) all exist and are
+  tested. The 72-point grid, Stage D selection, and Stage E have now run
+  to completion once, cleanly (**zero divergence events across all 72
+  points** — the decisive confirmation that the entire multi-day
+  divergence incident above was the `log()` shadowing bug and nothing
+  else). Still **not yet wired into `_targets.R`** — no `model_3_gbt`
+  target, no tuning-results target. `papers/03_*/` is not yet
+  scaffolded. Numbers below are training-side only; the test split has
+  not been touched by anything in this run.
+  - **Wall-clock: ~11h (10h59m) for 72 points** — validates the fallback
+    ladder's decision to cut `colsample_bytree` to {0.7} rather than
+    running the full 144-point grid: at this measured rate the full grid
+    would have taken **~22 hours**, not the ~12.9h estimated when the
+    ladder was applied. The reduction was necessary, not cosmetic.
+  - **Selected: `max_depth=3, eta=0.03, min_child_weight=1,
+    subsample=0.7, colsample_bytree=0.7`, refit at `nrounds=698`**
+    (fold-mean best iteration 698.4, rounded). Not a boundary optimum
+    (`max_depth≠6`, `eta≠0.1`). Tie-break invoked: 11 of 72 points
+    scored within the pre-declared 0.001 window of the grid max
+    (0.06867); this point was the shallowest among them with the fewest
+    rounds, per the fixed rule.
+  - **Every one of the top 10 points has `subsample=0.7`** —
+    `subsample=1.0` appears nowhere in the top 10 of 72. Row
+    subsampling reliably helps in this grid; worth one line in §4.
+  - **The grid is flatter than the 0.001 tie window alone suggests, but
+    not as flat as the marginal fold sd (~0.006, six times the tie
+    threshold) makes it look at first glance — properly measured, it's
+    narrower than either naive read.** A paired fold-level comparison
+    (same 5 folds throughout the grid, so paired SE — not the marginal
+    per-point fold sd — is the right yardstick) between the grid max
+    (depth=4, eta=0.01, mcw=20, subsample=0.7, mean=0.06867) and every
+    other point finds only **3 of 72 points fall within 1 paired SE of
+    the max** — the max itself plus the two other depth=4/eta=0.01
+    points differing only in `min_child_weight` (paired mean diff
+    0.0000558 and 0.000182 against paired SEs of 0.000279 and 0.000268).
+    The selected point (depth=3, eta=0.03) is NOT among these three: its
+    paired mean diff from the max is 0.000905 against a paired SE of
+    0.000717 (~1.26 SE away) — close in absolute terms (0.0009 in
+    `pl_r2`) but outside the strict 1-SE band. **§4 should report this
+    paired result, not the marginal-sd comparison**: "3 of 72
+    configurations are statistically indistinguishable from the grid
+    maximum" is the properly-measured version of the flatness finding,
+    and it still supports (if somewhat more narrowly than the naive
+    read) the same conclusion for §6: tuning bought little, which
+    weakens tuning as an alternative explanation for any GBT-vs-linear
+    performance gap found later.
+  - **In-sample training `pl_r2`: GBT 0.09200 vs. paper 2b's own
+    training `pl_r2` (k=3, identical metric) 0.05416 — label this
+    IN-SAMPLE everywhere it appears and do not let it into §5 as a
+    result.** A 698-tree depth-3 ensemble out-fitting a linear model
+    in-sample is expected by construction (more capacity, no
+    out-of-sample penalty here) and is not evidence the GBT ranks
+    better out of sample — that question is Q1/Q2 of the results pass,
+    against the test split.
+  - **Permutation importance: no feature's `mean_drop` is smaller than
+    its own `sd_drop`** (checked across all 24 features, 30 repeats
+    each) — every nonzero importance value is statistically
+    distinguishable from noise at this repeat count. The 5 features
+    with an exact `mean_drop = sd_drop = 0` (`going_ordinal` and all
+    four course dummies) were never used by the fitted model in a way
+    permutation detects — a clean zero, not noise.
+  - **Correlation caveat for the going features (record here AND
+    surface in §5 alongside the importance table):**
+    `going_sr_delta` and `going_sr_shrunk` correlate at **r=0.319** on
+    the training split (unsurprising — `going_sr_delta` is
+    `going_sr_shrunk` minus the horse's career win rate, so the two
+    share a term by construction). `going_runs_prior` and
+    `going_ordinal` are both close to uncorrelated with everything
+    (|r|≤0.10). **Permutation importance systematically UNDERSTATES
+    correlated predictors** — permuting one of a correlated pair still
+    leaves its partner intact to partially compensate for the lost
+    signal, so a correlated feature's measured importance is a lower
+    bound, not a point estimate. `going_sr_shrunk` (rank 12) and
+    `going_sr_delta` (rank 13) should be read with this in mind; their
+    true joint contribution is understated by looking at either one's
+    permutation rank alone. `going_ordinal`'s rank-24 zero is NOT
+    subject to this caveat (nothing to be correlated away — it is
+    genuinely unused, consistent with the near-constant-going finding).
+  - **Going features' positions, both rankings (of 24 features):**
+    | feature | gain rank | gain | permutation rank | mean_drop |
+    |---|---|---|---|---|
+    | going_sr_shrunk | 9 | 0.0338 | 12 | 0.00283 |
+    | going_sr_delta | 11 | 0.0240 | 13 | 0.00272 |
+    | going_runs_prior | 12 | 0.0223 | 16 | 0.00195 |
+    | going_ordinal | 23 | 0.0014 | 24 (last) | 0.0000 |
+    `going_ordinal` landing dead last with an exact zero permutation
+    drop is the clean, direct confirmation the 98.9%-Standard-going
+    finding (above) predicted — reportable as such in §5.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
