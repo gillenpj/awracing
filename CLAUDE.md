@@ -1577,6 +1577,23 @@ stage $s$, win probabilities a softmax over the field — matches papers
     the question for §4: the tie-break's practical stakes are low —
     whichever of the near-tied configurations the fixed rule had
     selected, the substantive feature-importance story is the same.**
+  - **Nrounds-cap check (2026-08-22, `scripts/diagnose_nrounds_cap.R`,
+    training-side): none of the near-cap points were truncated.** Four
+    grid points had `mean_best_iteration >= 1900` (close to the 2000
+    cap): the three `max_depth=2, eta=0.01` points (mcw 1/5/20, all
+    ~1998) and `max_depth=3, eta=0.01, mcw=1` (1943, the tie-break's
+    second-highest scorer). Per-fold `best_iteration` isn't stored in
+    the checkpoint (only the fold mean), so this re-ran all 4 points'
+    5 folds each (deterministic given the seed fix, reproducing the
+    original run's `fold_mean_pl_r2` exactly) and recorded each fold's
+    own `best_iteration`. **Result: 0 of 20 folds hit the exact 2000
+    cap** — every fold's early stopping genuinely triggered on its own
+    (individual fold iterations ranged 1724-1999). None of these four
+    points' scores are understated by truncation; all are converged
+    values. Flagged as low-value before running (all four points score
+    below the selected/tie-break set, so truncation could only have
+    raised already-losing scores) and the result confirms there was
+    nothing to find — recorded for completeness.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
