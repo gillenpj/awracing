@@ -1747,6 +1747,76 @@ stage $s$, win probabilities a softmax over the field — matches papers
     script itself, committed). Run artifacts (`.rds`/`.log`), not
     committed, per the project's standing convention for
     `gbt_tuning_*` outputs.
+- **Pre-drafting diagnostics (test split) — 2026-08-22,
+  `scripts/run_diagnostics_pass2.R`.** All descriptive; item 2 is an
+  explicitly-authorized training-side diagnostic fit that does not enter
+  model selection. Numbers only — no characterisation of whether any of
+  this is good or bad for the paper; that reading belongs to drafting.
+  - **1. Score agreement, GBT vs paper 2b, 2,183 test races.** Latent
+    scores centred within race first (the softmax is translation-
+    invariant, so raw levels aren't comparable): **Pearson r = 0.918,
+    Spearman r = 0.9225**. Same top-horse pick in **67.3%** of races
+    (1,470 of 2,183). Mean absolute within-race rank difference:
+    **0.847**.
+  - **2. Depth-1 diagnostic fit (stumps — additive by construction, no
+    interactions possible), NOT a candidate model, does not enter
+    selection.** Same other hyperparameters as the selected point
+    (`eta=0.03, min_child_weight=1, subsample=0.7, colsample_bytree=0.7`),
+    own early-stopped rounds on the same 5 folds: training CV
+    `fold_mean_pl_r2 = 0.0600` (vs. the selected depth-3 point's
+    0.06776), final refit `nrounds=1795`, in-sample `train_pl_r2 =
+    0.06492` (vs. depth-3's 0.09200). **Test split:** P1_rank 0.00402
+    (depth-3: 0.00401), Brier_place 0.201 (depth-3: 0.201, identical to
+    3 s.f.), test `pl_r2` (k=3) 0.05178 (depth-3: 0.05145). Depth-1
+    trails depth-3 on every training-side number (CV score, in-sample
+    fit) but matches or marginally exceeds it on every test-side ranking
+    number reported here.
+  - **3. Partial dependence, depth-3 model, test split (25-point
+    quantile grid, mean margin `z`; full tibbles in `diag2_item3.rds`).**
+    `or_relative`: broadly monotone increasing across the grid (from
+    −0.217 at the low end to 1.14 at the high end), with a flatter
+    stretch between roughly −8 and −4 before rising more steadily —
+    not perfectly linear, not non-monotone either. `going_sr_delta`:
+    rises from −0.153 (most negative) to a peak of 0.0688 near
+    small-positive values, then declines slightly across the remaining,
+    larger-positive range (down to 0.0430 at the top of the grid) —
+    non-monotone. `stall_normalised`: rises from −0.093 to a broad
+    plateau (~0.04–0.054) across roughly 0.3–0.9, then declines,
+    including a sharp drop at the single largest grid value (1.8,
+    → −0.193) — non-monotone, and that top value is the
+    `stall_normalised > 1` regime `R/build_going_features.R`'s roxygen
+    already documents as arising from post-scratching field-size
+    changes (see "Settled drop decisions" — kept as a feature, not
+    imputed).
+  - **4. Disagreement-set analysis (mechanism check for the Q2/Q3 ROI
+    gap despite the Q1 tie).** GBT and 2b pick a different top horse in
+    **32.7%** of races (713 of 2,183). Within that disagreement set:
+    GBT's pick wins **20.6%** of the time, 2b's pick wins **22.0%**.
+    Starting price of each model's pick:
+    | | GBT mean SP | GBT median SP | 2b mean SP | 2b median SP |
+    |---|---|---|---|---|
+    | Overall (2,183) | 4.68 | 4 | 4.73 | 4 |
+    | Disagreement set (713) | 5.60 | 4.5 | 5.77 | 5 |
+
+    Overall SP profiles are close between the two models; within the
+    disagreement set, the GBT's alternative pick runs at slightly lower
+    mean and median SP than 2b's, alongside a slightly lower win rate.
+  - **5. Attenuation check — confirmed like-for-like.** Same function
+    (`permutation_importance_across_races()`), same `n_repeats=30`, same
+    `seed=42` (set inside the function on each call); only the input
+    split (training vs. test matrix/group_sizes/race_id) differs.
+    | feature | train mean_drop | train sd_drop | test mean_drop | test sd_drop |
+    |---|---|---|---|---|
+    | course_Southwell | 0.000201 | 0.0000202 | 0.0000845 | 0.0000326 |
+    | course_Wolverhampton | 0.000190 | 0.0000259 | −0.0000387 | 0.0000358 |
+    | course_Kempton | 0.000166 | 0.0000169 | −0.0000129 | 0.0000207 |
+    | going_ordinal | 0.000129 | 0.0000141 | −0.0000112 | 0.00000876 |
+    | course_Lingfield | 0.000102 | 0.0000133 | 0.0000192 | 0.0000142 |
+
+    All five training-side drops are positive; three of five (Kempton,
+    Wolverhampton, going_ordinal) flip negative on the test split, and
+    the two that stay positive (Southwell, Lingfield) drop to well under
+    half their training magnitude.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
