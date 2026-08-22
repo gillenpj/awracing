@@ -1770,6 +1770,28 @@ stage $s$, win probabilities a softmax over the field — matches papers
   metric plus group info. Same kind of documented exception as the
   `{mlogit}` route in papers 1/2 (see "Tidyverse-first style" above).
 
+## On the horizon (paper 4 — placeholder, not a plan)
+
+Nothing here is decided. No scaffolding, no targets, and none of this
+affects how paper 3 is written.
+
+Paper 4 will likely hold the function class fixed at the GBT and change
+the information reaching it, rather than changing the model again. Two
+candidate directions, both open:
+- A sequence encoder reading a horse's raw run history, learning its
+  own fixed-length representation end to end on the PL objective.
+  Preferred direction. Distinct from an autoencoder: the compression is
+  learned to serve the ranking objective, not to reconstruct the input.
+- Race-relative features computed across the field rather than down a
+  horse's own record — dispersion / field-composition quantities that
+  don't exist at horse level. Discussed, not settled.
+
+Rationale, worth recording now while it's fresh: papers 1, 2a and 2b
+changed the features and the objective; paper 3 changed the function
+class and found that wasn't the binding constraint. That makes the
+information in the features the next lever — and makes paper 3's null
+result the reason paper 4 exists, not an embarrassment to route around.
+
 ## Longer-term direction (post-paper-3, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
 and refresh the pipeline with current data. Goal: paper-trade on
