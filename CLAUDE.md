@@ -1594,6 +1594,56 @@ stage $s$, win probabilities a softmax over the field — matches papers
     below the selected/tie-break set, so truncation could only have
     raised already-losing scores) and the result confirms there was
     nothing to find — recorded for completeness.
+- **Paper 3 results pass (test split) — 2026-08-22,
+  `scripts/run_results_pass.R`. THE ONLY TEST-SET CONTACT for paper 3.**
+  Every modelling decision (feature set, hyperparameters, `nrounds`, the
+  fitted `gbt_final_model.xgb`) was fixed by the training-side pass above
+  before this ran; nothing here fed back into model selection. Figures
+  below are marked test-split throughout — this is the single source for
+  the drafting pass.
+  - **Two test universes exist for paper 2b, and paper 3 sits on the
+    smaller one throughout — state this in §2 where the universe is
+    defined, and use the RESTRICTED comparison in every §5 table.**
+    `prepare_exploded_data()` (the same function `build_gbt_matrix()`
+    reuses for paper 3, matching the training-side convention) requires
+    a **clean top-3**: positions 1, 2 and 3 each recorded exactly once,
+    because a depth-3 model needs a well-defined top-3 to explode into
+    choice sets. A plain win-only backtest doesn't need this — it only
+    needs to know who won. Consequence: paper 2b's own **ranking**
+    evaluation (`ranking_eval_runners_2b`) runs on **2,183** test races,
+    while its **win-backtest** evaluation (`test_predictions_2b`,
+    feeding `backtest_naive_2b_win` etc.) runs on **2,193** — ten more,
+    the messy-top-3 races that are unscorable for ranking but perfectly
+    fine for "did the favourite-ish pick win." Paper 3's feature matrix
+    comes through the exploded/ranking-compatible path only (there is no
+    separate, looser construction), so it uses 2,183 throughout, for
+    Q1/Q2/Q3 alike — ten races short of 2a's and 2b's own published
+    win-backtest and single-bet figures. The ten excluded races are
+    **not random** (they are specifically the dead-heat / amended-
+    position-gap races), so this is a real asymmetry, not a rounding
+    footnote. **Fix applied throughout Stages C and D:** every 2a/2b
+    comparison figure is reported in three columns — PUBLISHED (the
+    model's own, larger universe, as originally reported), RESTRICTED
+    (the identical stored predictions and backtest functions, recomputed
+    on paper 3's 2,183-race subset, no refit), and PAPER 3 (2,183). The
+    restricted column is the only like-for-like comparison and is what
+    every §5 table must use; the published column stays alongside it so
+    a reader can see whether restricting the universe changed anything
+    materially. The paired race-level ROI bootstrap
+    (`bootstrap_roi_difference()`) intersects race sets automatically
+    regardless, so the contrast and its CI were never affected by this —
+    but report which universe and how many races it actually used
+    (`n_common` in its own output) alongside the point estimate, rather
+    than leaving it implicit.
+  - **Stage A gate (race-universe check): compares against
+    `ranking_eval_runners_2b` (2,183), not the raw `test_predictions_2b`
+    win-backtest universe (2,193)** — the first version of this check
+    compared against the wrong reference and stopped on an apparent
+    10-race mismatch; investigating (rather than loosening the check)
+    found the real two-universe structure above, and confirmed all 10
+    "missing" races are absent from `ranking_eval_runners_2b` too, for
+    the identical clean-top-3 reason. Corrected reference: exact match
+    (0 races either side), as required before Stage B proceeds.
 - **Rebuild gate — to-do, not yet run.** `runners_augmented` now has new
   (`going_*`) columns, so its content hash changed; the next full
   `tar_make()` will invalidate and re-fit/re-render every downstream
