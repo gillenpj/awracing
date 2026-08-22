@@ -929,6 +929,30 @@ list(
   # clean reproduces all of it deterministically (seed 42 throughout,
   # inherited from R/gbt_tuning.R).
 
+  # -- Going-affinity decile bootstrap (paper 3 §2, general train population) -
+  # Race-clustered bootstrap of the win-rate difference between the top and
+  # bottom going_sr_delta deciles -- same design as bootstrap_roi_difference()
+  # (R/scoring.R): races are the resampling unit. Unlike ROI, the decile
+  # ASSIGNMENT is itself data-dependent (dplyr::ntile() on the resampled
+  # sample), so bootstrap_decile_difference() recomputes deciles fresh on
+  # each resampled runner population rather than resampling from two fixed,
+  # already-computed per-decile summaries (an earlier, rejected design that
+  # treated the two deciles as independent samples, understating uncertainty
+  # -- a race can supply runners to both). Computed on the general
+  # runners_model_ready training population (matching
+  # scripts/verify_going_features.R's own diagnostic), not paper 3's own
+  # narrower exploded-complete-case set -- this is a property of the
+  # going_sr_delta feature itself, not of the GBT fit.
+  tar_target(
+    going_decile_bootstrap,
+    bootstrap_decile_difference(
+      runners_model_ready |>
+        dplyr::filter(split == "train", !is.na(going_sr_delta)) |>
+        dplyr::select(race_id, won, going_sr_delta),
+      value_col = "going_sr_delta"
+    )
+  ),
+
   # -- Feature matrices + CV folds (training races only for folds) ----------
   tar_target(
     gbt_train_data,
@@ -1017,6 +1041,60 @@ list(
       )
     }
   ),
+  # -- Tie-break evidence: refit at the grid MAXIMUM, compare importance -----
+  # The selected point (§4) sits ~1.26 paired SE from the grid maximum --
+  # not tied with it on a paired test, even though the fixed 0.001 tie
+  # window admitted it. This is the evidence for whether that gap matters:
+  # one refit at the grid maximum's own hyperparameters and its own
+  # fold-mean rounds, compared to the selected model on top-10 gain
+  # importance. One refit only -- this does not reopen model selection,
+  # which stays the training-side-CV-selected point per the fixed rule.
+  tar_target(
+    gbt_gridmax_config,
+    gbt_tuning_results$all_results[
+      which.max(gbt_tuning_results$all_results$fold_mean_pl_r2), ,
+      drop = FALSE
+    ]
+  ),
+  tar_target(
+    model_3_gridmax_path,
+    {
+      fit <- fit_final_model(gbt_train_data$X, gbt_train_data$y,
+                             gbt_train_data$group_sizes, gbt_gridmax_config, k = 3L)
+      xgboost::xgb.save(fit$bst, "gbt_gridmax_model.xgb")
+      saveRDS(list(nrounds = fit$nrounds, train_pl_r2 = fit$train_pl_r2),
+              "gbt_gridmax_model_meta.rds")
+      c("gbt_gridmax_model.xgb", "gbt_gridmax_model_meta.rds")
+    },
+    format = "file"
+  ),
+  tar_target(
+    gbt_gridmax_meta,
+    readRDS(model_3_gridmax_path[2])
+  ),
+  tar_target(
+    gbt_gridmax_gain_importance,
+    {
+      bst <- xgboost::xgb.load(model_3_gridmax_path[1])
+      imp <- xgboost::xgb.importance(model = bst) |> tibble::as_tibble()
+      imp$rank <- seq_len(nrow(imp))
+      imp
+    }
+  ),
+  # Top-10 (by the SELECTED model's own ranking) gain importance, both
+  # models side by side.
+  tar_target(
+    gbt_gridmax_vs_selected_importance,
+    dplyr::full_join(
+      gbt_gain_importance_train |> dplyr::slice_head(n = 10) |>
+        dplyr::select(Feature, selected_rank = rank, selected_gain = Gain),
+      gbt_gridmax_gain_importance |>
+        dplyr::select(Feature, gridmax_rank = rank, gridmax_gain = Gain),
+      by = "Feature"
+    ) |>
+      dplyr::arrange(selected_rank)
+  ),
+
   # Paper 2b's own training pl_r2 (k=3), for the in-sample comparison table.
   tar_target(
     paper2b_train_pl_r2,

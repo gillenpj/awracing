@@ -365,6 +365,64 @@ bootstrap_disagreement_diff <- function(disagreement_set, n_boot = 2000L, seed =
   )
 }
 
+#' Race-clustered bootstrap of a top-vs-bottom decile win-rate difference
+#'
+#' Follows the same design as `bootstrap_roi_difference()` (R/scoring.R):
+#' races are the resampling unit, resampled with replacement, `set.seed()`
+#' called once before the loop. It cannot reuse that function directly,
+#' because ROI there is a sum over FIXED per-race quantities (bets, gross
+#' return) computed once outside the loop, whereas here the grouping itself
+#' — which decile a runner falls in — is data-dependent (`dplyr::ntile()`
+#' on `value_col`) and must be recomputed fresh on each resampled runner
+#' population, not read off two fixed, already-computed per-decile
+#' summaries. Resampling each decile's contributing races independently (an
+#' earlier, rejected design) treats the two deciles as separate samples,
+#' when in fact a single race can supply runners to several deciles at
+#' once — that design understates the true uncertainty.
+#'
+#' @param runners Tibble, one row per runner, already restricted to the
+#'   population of interest (e.g. training split, `value_col` non-NA):
+#'   `race_id`, `won`, and `value_col`.
+#' @param value_col Name of the column to split into tiles.
+#' @param n_tiles Number of tiles (default 10, deciles).
+#' @param group_lo,group_hi Which two tile numbers to difference (default
+#'   1 and 10 — bottom and top decile).
+#' @param n_boot,seed Bootstrap replicates and RNG seed (2000 / 42, the
+#'   series-wide convention).
+#' @return A one-row tibble: `point_diff` (win rate in `group_hi` minus
+#'   `group_lo`, computed once on the full sample), `ci_lo`, `ci_hi`
+#'   (90% bootstrap percentile interval), `n_races`, `n_boot`.
+bootstrap_decile_difference <- function(runners, value_col, n_tiles = 10L,
+                                         group_lo = 1L, group_hi = 10L,
+                                         n_boot = 2000L, seed = 42L) {
+  race_ids <- unique(runners$race_id)
+  n <- length(race_ids)
+  by_race <- split(runners, runners$race_id)[as.character(race_ids)]
+
+  decile_diff <- function(df) {
+    tile   <- dplyr::ntile(df[[value_col]], n_tiles)
+    won_lo <- df$won[tile == group_lo]
+    won_hi <- df$won[tile == group_hi]
+    mean(won_hi) - mean(won_lo)
+  }
+
+  point_diff <- decile_diff(runners)
+
+  set.seed(seed)
+  diffs <- vapply(seq_len(n_boot), function(b) {
+    idx       <- sample.int(n, n, replace = TRUE)
+    resampled <- dplyr::bind_rows(by_race[idx])
+    decile_diff(resampled)
+  }, numeric(1))
+
+  tibble::tibble(
+    point_diff = point_diff,
+    ci_lo      = stats::quantile(diffs, 0.05, names = FALSE),
+    ci_hi      = stats::quantile(diffs, 0.95, names = FALSE),
+    n_races    = n, n_boot = n_boot
+  )
+}
+
 #' Partial dependence (mean margin) over a feature's quantile grid
 #'
 #' @param bst Fitted `xgb.Booster`.

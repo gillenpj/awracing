@@ -1225,13 +1225,25 @@ stage $s$, win probabilities a softmax over the field — matches papers
     share in §2 alongside the near-constant-going point — it is a
     second reason a large share of the feature's mass sits at or near
     zero, distinct from the "no career history" NA case.
-  - **Follow-up check result, reported for the record (not yet in any
-    model):** on the train split, mean field size is flat across
+  - **Follow-up check result, now a proper target
+    (`going_decile_bootstrap`, `R/gbt_results.R::bootstrap_decile_difference()`,
+    2026-08-23):** on the train split, mean field size is flat across
     `going_sr_delta` deciles (9.4–10.1, no gradient), which rules out
     a field-size-mechanical explanation for the decile pattern; a
-    race-level bootstrap (B = 2000, seed 42) on the win-rate difference
-    between decile 10 and decile 1 gives a point estimate of +0.030
-    with a 90% CI of **[0.019, 0.040] — excludes zero**. This is
+    race-clustered bootstrap (B = 2000, seed 42, the same
+    resample-races-with-replacement design as `bootstrap_roi_difference()`)
+    on the win-rate difference between decile 10 and decile 1 gives a
+    point estimate of **0.0297** with a 90% CI of **[0.0187, 0.0402] —
+    excludes zero** (5,205 races). The design matters here: because a
+    single race can supply runners to more than one decile, the decile
+    assignment and both deciles' win rates are recomputed FRESH within
+    every bootstrap resample, rather than resampling each decile's
+    contributing races independently (a first attempt at wiring this took
+    the latter, wrong shortcut, which treats the two deciles as
+    independent samples and understates the interval — [0.0215, 0.0376]
+    on the same data; corrected before committing). The corrected number
+    is, reassuringly, almost exactly the figure this entry originally
+    reported from an ungoverned ad hoc script run. This is
     evidence the feature (as it actually operates in this near-
     constant-going universe, i.e. mostly a ground-type-form signal)
     correlates with the outcome on the training data; it is not
@@ -2044,6 +2056,30 @@ stage $s$, win probabilities a softmax over the field — matches papers
     and load agree), so this is log noise, not a correctness issue.
     Renaming to `.json`/`.ubj` would silence it; left as-is since it
     doesn't affect any result.
+- **§2 and §4 drafted (prose), 2026-08-23 — plus two targets added to back
+  claims the first drafting pass had made without a reproducible source.**
+  When §4 was first drafted, the "refit at the grid maximum gives
+  near-identical importance" honesty-paragraph claim was left out rather
+  than sourced from an untracked, gitignored scratch file
+  (`gbt_gridmax_refit.rds`) from an earlier ad hoc pass. Fixed by making it
+  a proper target pair: `gbt_gridmax_config` (the untied grid maximum's own
+  row from `gbt_tuning_results$all_results`), `model_3_gridmax_path` (one
+  refit at that configuration's own fold-mean rounds — 1,507, over twice
+  the selected model's 698 — `format = "file"`, same convention as
+  `model_3_gbt_path`), `gbt_gridmax_meta`, `gbt_gridmax_gain_importance`,
+  and `gbt_gridmax_vs_selected_importance` (top-10 gain importance, both
+  models side by side). Result: the same 10 features in the selected
+  model's own top 10 all appear in the grid maximum's top 10 too, 8 of the
+  10 at the identical rank; the only difference is `pos_lag2_nonzero` and
+  `trainer_aw_premium` swapping ranks 7 and 8. The tie-break's practical
+  stakes are confined to that one swap — this is now stated in §4 sourced
+  from the two targets, not asserted from memory.
+
+  Separately, §2's `going_sr_delta` decile-difference bootstrap (first
+  drafted as an inline qmd computation, resampling each decile's
+  contributing races independently) was corrected to the series'
+  race-clustered design and moved to a target — see the "Follow-up check
+  result" entry above for the fix and the corrected interval.
 - **`{xgboost}` used directly, not via `{tidymodels}`/`{parsnip}`** —
   parsnip has no interface for a custom objective plus a custom eval
   metric plus group info. Same kind of documented exception as the

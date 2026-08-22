@@ -1,6 +1,235 @@
 # Model fitted {#sec-model}
 
-Placeholder — feature matrix, race grouping, the tuning grid and budget,
-the numerical tuning procedure subsection (grid, CV, early stopping,
-selection rule, refit, divergence guard), selected hyperparameters, and
-training McFadden pseudo-$R^2$. To be drafted.
+```{r}
+#| label: p3-model-setup
+#| include: false
+
+all_results <- gbt_tuning_results$all_results
+sel         <- gbt_selected_config
+
+n_grid_points   <- nrow(all_results)
+total_cv_secs   <- sum(all_results$elapsed_secs)
+total_cv_hours  <- total_cv_secs / 3600
+
+# Grid dimensions, read off the actual grid rather than restated by hand.
+grid_dims <- list(
+  max_depth        = sort(unique(all_results$max_depth)),
+  eta              = sort(unique(all_results$eta)),
+  min_child_weight = sort(unique(all_results$min_child_weight)),
+  subsample        = sort(unique(all_results$subsample)),
+  colsample_bytree = sort(unique(all_results$colsample_bytree))
+)
+
+# Tie window: points within 0.001 of the grid maximum.
+best_val         <- max(all_results$fold_mean_pl_r2)
+tie_contenders   <- all_results[all_results$fold_mean_pl_r2 >= best_val - 0.001, ]
+n_tie_contenders <- nrow(tie_contenders)
+
+# Paired comparison against the grid maximum: the SAME 5 folds run through
+# every grid point, so a paired difference/SE is the correct yardstick
+# (not the marginal per-point fold sd).
+fold_cols  <- paste0("fold_r2_", 1:5)
+max_idx    <- which.max(all_results$fold_mean_pl_r2)
+max_row    <- all_results[max_idx, ]
+max_folds  <- as.numeric(max_row[fold_cols])
+paired_mat <- t(apply(all_results[fold_cols], 1, function(r) as.numeric(r) - max_folds))
+paired_mean <- rowMeans(paired_mat)
+paired_se   <- apply(paired_mat, 1, function(d) stats::sd(d) / sqrt(length(d)))
+# The maximum's own row compares to itself: mean 0, sd 0, se 0 -- defined as
+# 0 paired-SE from itself rather than 0/0, so it is counted among the points
+# "within 1 paired SE of the maximum" below.
+se_multiple <- ifelse(paired_se == 0, 0, abs(paired_mean) / paired_se)
+n_within_1se <- sum(se_multiple <= 1)
+
+sel_match <- which(
+  all_results$max_depth        == sel$max_depth &
+  all_results$eta               == sel$eta &
+  all_results$min_child_weight  == sel$min_child_weight &
+  all_results$subsample         == sel$subsample &
+  all_results$colsample_bytree  == sel$colsample_bytree
+)
+sel_se_multiple <- se_multiple[sel_match]
+
+# Top 10 by fold_mean_pl_r2: subsample values.
+top10 <- all_results[order(-all_results$fold_mean_pl_r2), ][1:10, ]
+top10_all_subsample_07 <- all(top10$subsample == 0.7)
+
+sel_is_boundary <- sel$max_depth == max(grid_dims$max_depth) ||
+                   sel$eta       == max(grid_dims$eta)
+
+n_144_grid <- length(grid_dims$max_depth) * length(grid_dims$eta) *
+              length(grid_dims$min_child_weight) * length(grid_dims$subsample) * 2L
+
+# Tie-break evidence: does the selected model's top-10 gain-importance
+# ranking match a refit at the untied grid maximum?
+gm <- gbt_gridmax_vs_selected_importance
+n_top10_same_feature <- sum(!is.na(gm$gridmax_rank) & gm$gridmax_rank <= 10)
+n_top10_same_rank    <- sum(gm$selected_rank == gm$gridmax_rank, na.rm = TRUE)
+```
+
+## The objective
+
+The GBT is fitted under the same objective as paper 2b's ranking model:
+the depth-$k = 3$ Plackett–Luce likelihood over each race's finishing order
+— the derivation is identical, only the function class changes (from a
+linear predictor to an additive tree ensemble). `{xgboost}` takes a custom
+objective as a gradient and a Hessian, one value of each per training row;
+`R/pl_objective.R` supplies both in closed form (@sec-appx-derivations).
+The Hessian XGBoost consumes is the diagonal only — the second derivative
+of each row's own score, ignoring the cross terms between runners in the
+same race that the full Plackett–Luce likelihood actually has (a race's
+denominator couples every runner still in contention at each stage). This
+is an approximation to the true Hessian, standard practice for a grouped
+loss under a boosting library built around one Hessian value per row, and
+is the same approximation underlying `{xgboost}`'s own built-in ranking
+objectives.
+
+`{xgboost}`'s built-in ranking objectives (`rank:pairwise`, `rank:ndcg`,
+LambdaMART-style objectives) are a different objective — they optimise
+pairwise or list-wise ranking losses, not the Plackett–Luce likelihood —
+and were not used; the custom objective is what keeps this paper's model
+and paper 2b's model comparable at the same likelihood.
+
+## Tuning procedure
+
+The tuning grid was fixed in advance of fitting anything, before any
+test-set number existed: a full factorial over five hyperparameters,
+`r n_grid_points` points in all.
+
+```{r}
+#| label: tbl-tuning-grid
+knitr::kable(
+  tibble::tibble(
+    Hyperparameter = c("max_depth", "eta", "min_child_weight", "subsample", "colsample_bytree"),
+    `Values tested` = c(
+      paste(grid_dims$max_depth, collapse = ", "),
+      paste(grid_dims$eta, collapse = ", "),
+      paste(grid_dims$min_child_weight, collapse = ", "),
+      paste(grid_dims$subsample, collapse = ", "),
+      paste(grid_dims$colsample_bytree, collapse = ", ")
+    )
+  ),
+  caption = sprintf("The %d-point tuning grid (full factorial).", n_grid_points)
+)
+```
+
+Each of the `r n_grid_points` points was fit under race-grouped 5-fold
+cross-validation: races, not runner-rows, are assigned to folds, so no
+race is split across an analysis/assessment pair. Within each fold, boosting
+ran for up to 2,000 rounds with early stopping — the number of rounds is
+determined by the fold's own held-out Plackett–Luce pseudo-$R^2$
+(`pl_r2`), patience 50 rounds. This per-fold early-stopped round count
+decides `nrounds` **during selection only**; a separate decision governs
+the eventual refit on all training data, below.
+
+**Fallback ladder.** The full grid also varies `colsample_bytree` over
+`{0.7, 1.0}` — `r n_144_grid` points, five-fold, projected at roughly 12.9
+hours, not comfortably under this project's working limit of about 12
+hours for a single run. The fixed rule was to stop cutting as soon as the
+projection came in under that limit. Fixing `colsample_bytree` at `{0.7}`
+alone cut the grid to the `r n_grid_points` points actually run, projected
+at roughly 6.5 hours, and that was enough: the further rungs (also fixing
+`subsample`, dropping `eta = 0.01`, or narrowing `min_child_weight`) were
+not needed. The measured cost came in higher than the projection: summed
+across all `r n_grid_points` points, cross-validation used
+`r sprintf("%.1f", total_cv_hours)` hours — at that rate the un-reduced
+`r n_144_grid`-point grid would have taken roughly twice as long,
+confirming the cut was necessary rather than a precaution that turned out
+unneeded.
+
+**Selection rule.** The winning point is the one with the highest
+fold-mean `pl_r2`; among points within 0.001 of that maximum, the rule
+prefers the shallowest tree, then the fewest rounds. `r n_tie_contenders`
+of the `r n_grid_points` points fell within that 0.001 window, and the
+selected point —
+max_depth `r sel$max_depth`, eta `r sel$eta`, min_child_weight
+`r sel$min_child_weight`, subsample `r sel$subsample`, colsample_bytree
+`r sel$colsample_bytree` — was the shallowest and fastest-converging among
+them.
+
+Because the same 5 folds run through every grid point, a **paired**
+difference and standard error against the grid maximum is the correct
+comparison — not the marginal spread of fold scores within each point
+taken on its own. On that basis, `r n_within_1se` of `r n_grid_points`
+points (the maximum itself included) sit within one paired standard error
+of the maximum; the selected point is not one of them; it sits
+`r sprintf("%.2f", sel_se_multiple)` paired standard errors from the
+maximum. The 0.001 tie window used for selection is therefore wider than
+the paired standard errors actually observed near the top of this grid —
+a fixed constant chosen before the paired structure of the data was known,
+rather than a multiple of it. The rule was fixed in advance and stands;
+this note records that, as specified, it selected among points a paired
+test would not call tied.
+
+Whether that gap matters was checked with one refit: the grid maximum
+(max_depth `r gbt_gridmax_config$max_depth`, eta `r gbt_gridmax_config$eta`,
+min_child_weight `r gbt_gridmax_config$min_child_weight`, subsample
+`r gbt_gridmax_config$subsample`) refit on all training data at its own
+fold-mean rounds (`r gbt_gridmax_meta$nrounds`), the same way the selected
+model was. This is one refit; it does not reopen model selection, which
+stays the point chosen by the fixed rule above.
+
+```{r}
+#| label: tbl-gridmax-importance
+#| code-fold: true
+gm |>
+  dplyr::transmute(
+    Feature,
+    `Selected: rank` = selected_rank,
+    `Selected: gain` = round(selected_gain, 4),
+    `Grid max: rank` = gridmax_rank,
+    `Grid max: gain` = round(gridmax_gain, 4)
+  ) |>
+  knitr::kable(caption = "Gain importance, top 10 by the selected model's own ranking, compared against a refit at the untied grid maximum.")
+```
+
+`r n_top10_same_feature` of the selected model's top 10 features by gain
+also appear in the grid maximum's own top 10, and `r n_top10_same_rank`
+of those hold the identical rank in both models. The tie-break's practical
+consequences are confined to whatever reordering the table above shows;
+it did not admit a materially different model.
+
+Every one of the top ten points by fold-mean `pl_r2`
+`r if (top10_all_subsample_07) "has subsample 0.7" else "does not all share one subsample value"`.
+The selected configuration is
+`r if (sel_is_boundary) "" else "not "`on a boundary of the grid
+(`max_depth` `r if (sel$max_depth == max(grid_dims$max_depth)) "is" else "is not"`
+the largest tested, `eta`
+`r if (sel$eta == max(grid_dims$eta)) "is" else "is not"` the largest
+tested).
+
+No grid point diverged: `gbt_tuning_results$n_grid_points_with_divergence`
+is `r gbt_tuning_results$n_grid_points_with_divergence` across all
+`r n_grid_points` points (`R/gbt_tuning.R`'s divergence guard logs, rather
+than silently drops, any configuration whose scores run away during
+boosting; none did here).
+
+**The refit.** The selected configuration is refit once on all training
+data, no held-out set and no early stopping (there is none left to stop
+against): `nrounds` is the **mean**, across the selected point's five
+folds, of each fold's own early-stopped round count, rounded —
+`r model_3_gbt_meta$nrounds` rounds — rather than the fold median or the
+fold maximum, for consistency with fold-mean `pl_r2` already being the
+grid's own selection criterion. The resulting fit's training
+$\text{pl\_r2}$ is `r sprintf("%.5f", model_3_gbt_meta$train_pl_r2)`,
+in-sample.
+
+**Where the compute goes.** The custom objective and its matching
+evaluation metric are each evaluated once per boosting round — every round
+needs both the gradient/Hessian pair for the next tree and the held-out
+`pl_r2` for early stopping — and this dominates the per-round cost;
+building the trees themselves, once the gradient and Hessian are in hand,
+is comparatively cheap. Summed cross-validation time for the
+`r n_grid_points`-point grid was `r sprintf("%.1f", total_cv_hours)` hours.
+
+**A limitation carried by row subsampling.** `subsample` in XGBoost draws
+a random fraction of training *rows* before growing each tree — rows here
+are individual horses, not races, because XGBoost has no notion of a
+race-level grouping to subsample by. Under the Plackett–Luce objective,
+rows in the same race are not independent: a race's likelihood couples
+every horse still in contention at each stage, so dropping some of a
+race's runners at random changes the remaining rows' own gradients and
+Hessians, not just the sample size. Every one of the top ten configurations
+in this grid uses `subsample = 0.7`, so this row-level, cross-race
+subsampling clearly helps; @sec-discussion returns to what it means that
+the subsampling unit and the likelihood's own grouping unit do not match.
