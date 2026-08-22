@@ -1882,6 +1882,20 @@ stage $s$, win probabilities a softmax over the field — matches papers
   say, on this evidence alone, that they are confirmed not to
   generalise. The same qualification applies to the depth-3-vs-2b
   contrast on all three metrics.
+  - **Depth-3 vs. the discounted-Harville market baseline (alpha
+    0.80/0.65), same B/seed/race set — the one comparison in this whole
+    battery where the interval EXCLUDES zero.** P1_rank: diff (GBT −
+    market) = −0.00141, 90% CI **[−0.00155, −0.00128]**. Brier_place:
+    diff (GBT − market, higher is worse) = +0.0139, 90% CI **[+0.0126,
+    +0.0153]**. Both intervals exclude zero cleanly — unlike every
+    model-vs-model contrast above, this one is not a directional read,
+    it is confirmed. **The honest frame for §5/§6: the market's
+    advantage over the model is the one distinguishable-from-zero result
+    in the series' whole ranking-metric comparison set, on any of the
+    three model classes tried (2a's linear win model, 2b's linear
+    ranking model, paper 3's GBT) — the function-class change does not
+    close the gap to the market any more than the feature and objective
+    changes in papers 1/2a/2b did.**
   - **Disagreement-set intervals (same B/seed, 713 races):** win-rate
     difference (GBT − 2b) = −0.0140, 90% CI [−0.0547, 0.0238]; mean-SP
     difference (GBT − 2b) = −0.176, 90% CI [−0.513, 0.146]. Both
