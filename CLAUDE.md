@@ -1504,27 +1504,63 @@ stage $s$, win probabilities a softmax over the field — matches papers
     got written up. The training matrix itself is clean too: all four
     columns present, correctly named, non-degenerate (variance
     0.12–0.21), no NA, and exactly one course dummy is `1` per row
-    across all 45,970 training rows. **Consequence for the write-up:**
-    do not cite the permutation-importance zero as evidence about
-    `going_ordinal` or the course dummies at all — it would be true for
-    an all-important race-level feature too. The GAIN-importance rank is
-    the one of the two metrics actually informative about a race-level
-    feature's use, since it is not blind to within-race-constant
-    columns.
+    across all 45,970 training rows. **This must be stated in §5,
+    not left implicit: the within-race permutation column is silent on
+    any race-level feature — a reader must not take that zero as a
+    finding of unimportance.** Name the course dummies as the proof
+    (19–23 splits each, so the model demonstrably uses them, and
+    permutation still reports exactly nothing) — that is the concrete,
+    checkable evidence that the zero is a method artefact, not a
+    substantive result.
+  - **`permutation_importance_across_races()` (`R/gbt_tuning.R`,
+    2026-08-22): the correct null for a race-level feature.** Permutes
+    the feature's value ACROSS races (which race gets which value) while
+    holding it constant WITHIN each race, preserving the feature's
+    race-level structure and breaking only its association with the
+    outcome — the within-race function's null (shuffle who holds a
+    value within a race) is meaningless when nobody in the race holds a
+    different value to begin with. Verified before trusting it: a
+    pre-check confirms all five race-level features have exactly `0`
+    races with more than one distinct value (i.e. they really are
+    constant within every race, not merely assumed to be). Same
+    convention as the within-race function: 30 repeats, seed 42,
+    training split only. **Uses a DIFFERENT null than the within-race
+    function and is NOT directly comparable to it — report as a
+    separate table in §5, not merged into the horse-level one.**
+    Results, sorted by `mean_drop` (all 5 comfortably exceed their own
+    `sd_drop` — none is noise):
+    | feature | mean_drop | sd_drop | rank (of 5) |
+    |---|---|---|---|
+    | course_Southwell | 0.000201 | 0.0000202 | 1 |
+    | course_Wolverhampton | 0.000190 | 0.0000259 | 2 |
+    | course_Kempton | 0.000166 | 0.0000169 | 3 |
+    | going_ordinal | 0.000129 | 0.0000141 | 4 |
+    | course_Lingfield | 0.000102 | 0.0000133 | 5 |
+    All five race-level features have a small but genuine, statistically
+    real effect under the correct null — roughly two to three orders of
+    magnitude smaller than the top horse-level features (`or_relative`
+    mean_drop 0.078), consistent with them being minor, not negligible,
+    contributors. `going_ordinal` ranks 4th of 5 among race-level
+    features specifically — it contributes less than three of the four
+    course dummies, but more than `course_Lingfield`.
   - **Going features' positions, both rankings (of 24 features):**
     | feature | gain rank | gain | permutation rank | mean_drop |
     |---|---|---|---|---|
     | going_sr_shrunk | 9 | 0.0338 | 12 | 0.00283 |
     | going_sr_delta | 11 | 0.0240 | 13 | 0.00272 |
     | going_runs_prior | 12 | 0.0223 | 16 | 0.00195 |
-    | going_ordinal | 23 | 0.0014 | 24 (last, structurally forced) | 0.0000 |
-    `going_ordinal`'s permutation rank of 24 is NOT evidence of
-    anything (see structural limitation above) — its gain rank of
-    23/24 with `Gain=0.0014` (19 splits, the same order of magnitude as
-    the course dummies' 19–23) is the honest read: rarely useful, which
-    IS consistent with the near-constant-going finding (98.9% Standard
-    leaves little cross-race variation for a tree to exploit), but say
-    it that way — via the gain rank — not via the permutation zero.
+    | going_ordinal | 23 | 0.0014 | 24 (within-race; not comparable — see across-race table above) | — |
+    **`going_ordinal`'s within-race permutation rank of 24 is NOT
+    confirmation of the near-constant-going finding — it is a method
+    artefact, guaranteed for any race-level feature regardless of true
+    importance.** Its across-race permutation result (rank 4 of 5 race-
+    level features, mean_drop 0.000129, real and nonzero) is the
+    honest permutation-based number. Its gain rank of 23/24
+    (`Gain=0.0014`, 19 splits — the same order of magnitude as the
+    course dummies' 19–23) is separately informative and IS consistent
+    with the near-constant-going finding (98.9% Standard leaves little
+    cross-race variation for a tree to exploit) — but it supports that
+    conclusion only weakly, and only in-sample.
   - **Tie-break robustness check (2026-08-22, one refit, training-side
     only):** the pre-declared 0.001 tie window is an absolute constant,
     not scaled to the paired SE (~0.0007–0.0003 near the top of this

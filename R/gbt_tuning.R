@@ -358,6 +358,74 @@ permutation_importance_within_race <- function(bst, X, race_id, group_sizes,
   out
 }
 
+#' Across-race permutation importance for race-level features
+#'
+#' `permutation_importance_within_race()` is structurally blind to any
+#' feature that is constant for every runner in a race (today's going,
+#' which course the race is at): shuffling WHICH HORSE holds a value that
+#' every horse already shares is a no-op, so a race-level feature gets an
+#' exact-zero drop regardless of its true importance -- found 2026-08-22
+#' when the four `course_*` dummies returned an exact zero despite
+#' demonstrably being split on by the fitted model (verified via
+#' `xgb.model.dt.tree()`). This function is the correct null for that
+#' case instead: it permutes the feature's value ACROSS RACES (which
+#' race gets which value) while keeping it constant WITHIN each race,
+#' preserving the feature's race-level structure and breaking only its
+#' association with the outcome.
+#'
+#' Uses a DIFFERENT null than `permutation_importance_within_race()` and
+#' is not directly comparable to it -- report as a separate table, not
+#' merged into the within-race one (see CLAUDE.md's paper-3 notes).
+#'
+#' @param bst Fitted `xgb.Booster` (from `fit_final_model()`).
+#' @param X Numeric feature matrix, `build_gbt_matrix()` row order.
+#' @param race_id Character/integer vector, one per `X` row, same order.
+#' @param group_sizes Integer vector, per-race sizes in `X` row order —
+#'   also used to identify each race's first row (the value to carry,
+#'   since the feature is assumed constant within every race; not
+#'   re-verified here).
+#' @param feature_names Character vector, the race-level columns to
+#'   test (e.g. `going_ordinal`, the `course_*` dummies).
+#' @param k Plackett-Luce depth.
+#' @param n_repeats Integer, permutation repeats per feature (30, matching
+#'   `permutation_importance_within_race()`'s spec).
+#' @return Tibble, one row per feature, sorted by `mean_drop` descending:
+#'   `feature`, `mean_drop`, `sd_drop`, `rank`.
+permutation_importance_across_races <- function(bst, X, race_id, group_sizes,
+                                                 feature_names, k = 3L,
+                                                 n_repeats = 30L) {
+  eval_fn <- make_pl_eval(group_sizes, k)
+  baseline_preds <- predict(bst, X, outputmargin = TRUE)
+  baseline_r2    <- eval_fn(baseline_preds, NULL)$value
+
+  race_starts <- cumsum(c(1L, group_sizes[-length(group_sizes)]))
+
+  set.seed(42L)
+  results <- vector("list", length(feature_names))
+  for (fi in seq_along(feature_names)) {
+    feat  <- feature_names[fi]
+    per_race_vals <- X[race_starts, feat]
+    drops <- numeric(n_repeats)
+    for (r in seq_len(n_repeats)) {
+      permuted_race_vals <- sample(per_race_vals)
+      X_perm <- X
+      X_perm[, feat] <- rep.int(permuted_race_vals, group_sizes)
+      perm_preds <- predict(bst, X_perm, outputmargin = TRUE)
+      perm_r2    <- eval_fn(perm_preds, NULL)$value
+      drops[r]   <- baseline_r2 - perm_r2
+    }
+    results[[fi]] <- tibble::tibble(
+      feature   = feat,
+      mean_drop = mean(drops),
+      sd_drop   = stats::sd(drops)
+    )
+  }
+
+  out <- dplyr::bind_rows(results) |> dplyr::arrange(dplyr::desc(mean_drop))
+  out$rank <- seq_len(nrow(out))
+  out
+}
+
 #' Paper 2b's own training-split PL pseudo-R^2 (k = 3), for direct comparison
 #'
 #' Reconstructs `model_2b_exploded_draw_final`'s implied full-field z scores
