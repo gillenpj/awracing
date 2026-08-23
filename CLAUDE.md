@@ -94,9 +94,33 @@ Two calibration examples (2026-08-20):
   - **Pre-split draft archived.** `papers/02_extended_features_ARCHIVE/`
     is the combined pre-split paper-2 draft, kept for reference (not
     rendered).
-- **Paper 3 — planned, model class change.** *Non-linear /
-  interaction-friendly model class, applied to AW racing.* See
-  "Paper 3 plan" below.
+- **Paper 3 — complete and PUBLISHED.** *Gradient boosted trees as the
+  model class, holding paper 2b's feature set and ranking objective
+  fixed.* Source: `papers/03_gradient_boosted_trees/`. Live at
+  <https://gillenpj.github.io/awracing/paper3/> (HTML + PDF), pinned
+  date 2026-08-23. The paper asks the same **three questions, in the
+  same order**, as papers 2a/2b, and answers all three the same way —
+  negative: (Q1) does the tree ensemble rank better than paper 2b's
+  linear predictor? No — a paired bootstrap contains zero on P1_rank,
+  Brier_place and test pseudo-R² alike (GBT 0.00401 / 0.201 vs 2b's
+  0.00402 / 0.201), while the discounted-Harville market beats both
+  decisively (P1_rank 0.00543, Brier_place 0.188 — the one contrast in
+  the whole series whose interval excludes zero), despite the two
+  models being genuinely different (score correlation 0.918, a
+  different top pick in a third of test races); (Q2) does it pick
+  winners better than papers 2a/2b? No — on the naive rule the GBT
+  returns −21.3% against 2b's −17.0% and 2a's −25.7% (restricted,
+  like-for-like universe), the point estimate running the wrong way,
+  and the paired-bootstrap intervals don't distinguish any of the
+  three models; (Q3) does single-bet betting value improve? No — win
+  (−22.3%), place (−14.0%) and each-way (−13.5%) all overlap paper 2b's
+  own figures (−15.1% / −9.8% / −7.7%) throughout. The headline
+  reading: changing the function class did not close the gap the
+  feature set (2a) and the objective (2b) also left open — the linear
+  predictor was not the binding constraint, framed in the discussion as
+  a more informative result than a marginal improvement would have
+  been, and pointing to the feature set (not the model class) as the
+  next lever. See "Paper 3 plan" below.
 - **Beyond the papers — possible direction.** Live Smartform feed
   + paper-trading on Betfair, exploiting early-market non-
   convergence. See "Longer-term direction" below.
@@ -2092,6 +2116,34 @@ stage $s$, win probabilities a softmax over the field — matches papers
   contributing races independently) was corrected to the series'
   race-clustered design and moved to a target — see the "Follow-up check
   result" entry above for the fix and the corrected interval.
+- **§1, §3, §5 revision, §6, the abstract, and both appendices drafted,
+  2026-08-23** — completing the paper. §3 rewrites the theory note's
+  "Applications to Horse Racing" section into paper prose (course×draw
+  substituted for the note's going×distance interaction example, since
+  going barely varies in this paper's own modelling universe); Appendix
+  A's gradient/Hessian derivation was checked by hand against the actual
+  objective's implementation, not only transcribed from the note. Two
+  real rendering defects were found and fixed by reading the rendered
+  PDF page by page rather than trusting a successful render: a
+  math-delimiter bug (a trailing space inside `$r = $` broke Pandoc's
+  inline-math detection in one of three otherwise-identical instances,
+  leaving literal dollar signs in the §5.1 text) and the feature table's
+  `horse-level`/`race-level` Type column, shortened to single words to
+  remove a line-wrap risk. `tar_make()` confirmed idempotent throughout;
+  papers 1/2a/2b untouched.
+- **PUBLISHED 2026-08-23.** `scripts/publish_docs.R` run, paper 3's HTML
+  + PDF copied into `docs/paper3/`, the landing page
+  (`docs/index.html`) given its entry, `docs/` committed and pushed. The
+  paper's own pinned `date:` was set to 2026-08-23 at this point (was
+  deliberately left unset on the scaffold — see the file's own comment,
+  now removed) and the paper re-rendered/re-published once more so the
+  live copy carries it. Confirmed live: `https://gillenpj.github.io/awracing/paper3/`
+  (HTML, 200) and `.../paper3/index.pdf` (PDF, 200, matches the local
+  build's size); the landing page shows the new entry. Papers 1/2a/2b's
+  `docs/` PDFs were re-copied alongside (byte-identical file sizes to
+  the versions already committed — a fresh LaTeX compile timestamp
+  only, not a content change, per the 2026-08-22 rebuild-gate
+  comparison and this run's own `tar_make()` idempotency).
 - **`{xgboost}` used directly, not via `{tidymodels}`/`{parsnip}`** —
   parsnip has no interface for a custom objective plus a custom eval
   metric plus group info. Same kind of documented exception as the
