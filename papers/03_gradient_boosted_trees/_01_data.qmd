@@ -90,27 +90,27 @@ introduced in this paper.
 ```{r}
 #| label: tbl-feature-set
 tibble::tribble(
-  ~Feature,               ~Description,                                                 ~Type,        ~Source,
-  "pos_lag1_nonzero",     "Most recent prior finishing position (1st-4th; 0 if none)",   "horse-level", "paper 1",
-  "pos_lag2_nonzero",     "Second most recent prior finishing position",                 "horse-level", "paper 1",
-  "age_diff",             "Symmetric distance from peak age (3 on AW)",                  "horse-level", "paper 1",
-  "days_LTO_log",         "Log days since last run",                                     "horse-level", "paper 1",
-  "trainerSR",            "Cumulative pre-race trainer strike rate",                     "horse-level", "paper 1",
-  "sireSR",               "Cumulative pre-race sire strike rate",                        "horse-level", "paper 1",
-  "jockeySR",             "Cumulative pre-race jockey strike rate",                      "horse-level", "paper 2a",
-  "entire / gelding",     "Sex indicators",                                              "horse-level", "paper 1",
-  "cheekpieces",          "Tack indicator",                                              "horse-level", "paper 1",
-  "rel_weight",           "Weight carried minus race-mean weight",                       "horse-level", "paper 2a",
-  "or_relative",          "Official rating minus race-mean rating (0 where undefined)",  "horse-level", "paper 2a",
-  "or_missing",           "Indicator: official rating was undefined",                    "horse-level", "paper 2a",
-  "trainer_aw_premium",   "Trainer AW strike rate minus overall strike rate",            "horse-level", "paper 2a",
-  "has_wins",             "Indicator: any prior career win",                             "horse-level", "paper 2a",
-  "stall_normalised",     "Starting stall divided by field size",                        "horse-level", "paper 2a",
-  "course (4 indicators)","Which of the four AW courses",                                "race-level",   "paper 2a",
-  "going_runs_prior",     "Count of prior runs on today's kind of going",                "horse-level", "paper 3",
-  "going_sr_shrunk",      "Win rate on today's kind of going, shrunk toward career rate","horse-level", "paper 3",
-  "going_sr_delta",       "going_sr_shrunk minus overall career win rate",               "horse-level", "paper 3",
-  "going_ordinal",        "Today's going, on a common fast-to-slow scale",               "race-level",   "paper 3"
+  ~Feature,               ~Description,                                                 ~Type,   ~Source,
+  "pos_lag1_nonzero",     "Most recent prior finishing position (1st-4th; 0 if none)",   "horse", "paper 1",
+  "pos_lag2_nonzero",     "Second most recent prior finishing position",                 "horse", "paper 1",
+  "age_diff",             "Symmetric distance from peak age (3 on AW)",                  "horse", "paper 1",
+  "days_LTO_log",         "Log days since last run",                                     "horse", "paper 1",
+  "trainerSR",            "Cumulative pre-race trainer strike rate",                     "horse", "paper 1",
+  "sireSR",               "Cumulative pre-race sire strike rate",                        "horse", "paper 1",
+  "jockeySR",             "Cumulative pre-race jockey strike rate",                      "horse", "paper 2a",
+  "entire / gelding",     "Sex indicators",                                              "horse", "paper 1",
+  "cheekpieces",          "Tack indicator",                                              "horse", "paper 1",
+  "rel_weight",           "Weight carried minus race-mean weight",                       "horse", "paper 2a",
+  "or_relative",          "Official rating minus race-mean rating (0 where undefined)",  "horse", "paper 2a",
+  "or_missing",           "Indicator: official rating was undefined",                    "horse", "paper 2a",
+  "trainer_aw_premium",   "Trainer AW strike rate minus overall strike rate",            "horse", "paper 2a",
+  "has_wins",             "Indicator: any prior career win",                             "horse", "paper 2a",
+  "stall_normalised",     "Starting stall divided by field size",                        "horse", "paper 2a",
+  "course (4 indicators)","Which of the four AW courses",                                "race",  "paper 2a",
+  "going_runs_prior",     "Count of prior runs on today's kind of going",                "horse", "paper 3",
+  "going_sr_shrunk",      "Win rate on today's kind of going, shrunk toward career rate","horse", "paper 3",
+  "going_sr_delta",       "going_sr_shrunk minus overall career win rate",               "horse", "paper 3",
+  "going_ordinal",        "Today's going, on a common fast-to-slow scale",               "race",  "paper 3"
 ) |>
   knitr::kable(caption = sprintf("Paper-3 feature set: %d features (course and the sex indicators are each one row here but several terms).", n_features))
 ```

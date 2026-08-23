@@ -1,8 +1,89 @@
 # Appendix A: Derivation {#sec-appx-derivations .appendix}
 
-Placeholder — compressed derivation following `notes/Notes on Trees-based
-Methods.pdf`: squared error to pseudo-residuals under a general loss;
-likelihood substitution; the quadratic approximation giving the leaf value
-in closed form; the grouped Plackett–Luce likelihood and what breaks when
-the loss stops factorising; the gradient and diagonal Hessian, noting
-XGBoost consumes the diagonal only. To be drafted.
+This appendix assumes the reader is already familiar with regression
+trees, pruning, bagging and random forests [@islr2021, ch. 8] and picks
+up from ordinary (squared-error) boosting.
+
+**From squared error to a general loss.** An ensemble built by boosting
+fits each new tree to the pseudo-residual of the current model: the
+negative gradient of the loss with respect to each observation's current
+fitted value [@friedman2001; @johanssongboost; @ligboost]. Under half the
+squared-error loss that pseudo-residual is the ordinary residual, and the
+familiar fit-a-tree-to-the-residuals recipe falls out as a special case.
+Nothing in that recipe actually depends on the loss being squared error
+— only on being able to compute its gradient at the current fit — so the
+same procedure carries over to any differentiable loss simply by
+substituting its own gradient in place of the residual.
+
+**Likelihoods supply a loss.** A likelihood states how probable the
+observed data are under a probability model; its negative logarithm is
+smaller exactly when the model assigns the outcome higher probability, so
+it is already a loss, and maximising the likelihood is minimising it. Any
+distributional assumption about the outcome therefore hands the boosting
+algorithm a loss ready to use, with no change to the algorithm beyond
+which gradient is computed.
+
+**The quadratic approximation and the closed-form leaf value.** For most
+losses there is no formula for the constant a new tree's leaf should
+predict, and it would have to be searched for numerically. XGBoost avoids
+the search by minimising a second-order (quadratic) Taylor approximation
+to the loss around the current fit instead, which does have a closed
+form. Writing $g_i$ and $h_i$ for the first and second derivatives of the
+loss at observation $i$'s current fitted value, the leaf weight that
+minimises the approximate loss over the observations $i \in R_m$ falling
+in leaf $R_m$ (with an $L_2$ penalty $\lambda$ on the weight, one of
+XGBoost's regularisation terms) is
+$$
+w_m^* = -\frac{\sum_{i \in R_m} g_i}{\sum_{i \in R_m} h_i + \lambda}
+$$
+[@chenguestrin2016]. This is why a custom objective must supply both a
+gradient and a Hessian, not the gradient alone: the Hessian enters the
+leaf value directly, not only the choice of split.
+
+**The grouped Plackett–Luce likelihood.** Every loss above — squared
+error, or a likelihood-based loss for a binary or count outcome — is a
+sum of one term per observation, so the pseudo-residual for an
+observation depends on that observation alone. The likelihood this paper
+fits does not factorise this way. Race $i$ is the chooser and horse $j$
+the alternative; each horse carries a score $z_{ij}$, and win
+probabilities within the race are given by the softmax
+$$
+p_{ij} = \exp(z_{ij}) \Big/ \sum_{m} \exp(z_{im}),
+$$
+the sum running over the runners in race $i$. Writing $j_1, \ldots, j_S$
+for the top $S$ finishers in order and $\mathcal{C}_{is} = \{j_s, j_{s+1},
+\ldots, j_J\}$ for the horses not yet ranked at stage $s$, the
+Plackett–Luce log-likelihood over a set of races is
+$$
+\sum_{i} \sum_{s=1}^{S} \left( z_{i j_s} - \log \sum_{j \in
+\mathcal{C}_{is}} \exp(z_{ij}) \right),
+$$
+and the loss is its negative. One term of this loss — the sum over $s$
+for a single race $i$ — spans every runner still in contention in that
+race, not one observation in isolation; the pseudo-residual for horse $j$
+therefore depends on where every other horse in its race currently
+stands, and the neat one-row-at-a-time computation the earlier losses
+allowed no longer applies.
+
+**Gradient and Hessian.** Differentiating the negative log-likelihood
+with respect to a single horse's score $z_{ij}$ gives
+$$
+g_{ij} = \sum_{s=1}^{S} p_{sj} - \mathbb{1}\{j \in \text{top } S\},
+\qquad
+h_{ij} = \sum_{s=1}^{S} p_{sj}(1 - p_{sj}),
+$$
+where $p_{sj}$ is horse $j$'s softmax probability at stage $s$ (zero once
+$j$ has already been placed at an earlier stage). The indicator term in
+$g_{ij}$ is the direct pull toward a horse's true finishing position; the
+$p_{sj}$ terms are the softmax's own contribution, present at every stage
+the horse is still a candidate.
+
+XGBoost's custom-objective interface takes one Hessian value per row, so
+it consumes $h_{ij}$ above and nothing more. The true Hessian of this
+likelihood is not diagonal — differentiating $g_{ij}$ again with respect
+to a different horse $z_{ik}$ in the same race gives a further term,
+$-\sum_{s} p_{sj} p_{sk}$, that couples every pair of horses still
+contending at each stage — and that coupling is dropped. This is the
+standard approximation XGBoost makes for any grouped loss, the same one
+its own built-in ranking objectives rely on, not something particular to
+the objective built here.

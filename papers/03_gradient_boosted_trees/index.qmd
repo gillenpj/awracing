@@ -6,7 +6,29 @@ author: "Patrick Gillen"
 # 1/2a/2b's date: "YYYY-MM-DD") only once this paper is actually published;
 # do not fabricate a placeholder publication date on a scaffold.
 abstract: |
-  Placeholder — one-paragraph summary to be drafted once §5 is written.
+  Papers 2a and 2b changed the feature set and then the prediction
+  objective for a conditional-logit model of UK All-Weather Flat
+  handicaps. This paper holds both fixed and changes the function class
+  instead, replacing the linear score with a gradient-boosted ensemble of
+  decision trees fitted on the same depth-three Plackett–Luce likelihood,
+  selected from a `r nrow(targets::tar_read(gbt_tuning_results)$all_results)`-point
+  cross-validated grid on
+  `r scales::comma(dplyr::n_distinct(targets::tar_read(gbt_train_data)$key$race_id))`
+  training races. Scored on
+  `r scales::comma(dplyr::n_distinct(targets::tar_read(gbt_test_data)$key$race_id))`
+  held-out test races, the tree ensemble ranks no better than paper 2b's
+  linear predictor: a paired bootstrap of the two models' P1_rank,
+  Brier_place and pseudo-$R^2$ contains zero on every metric, despite the
+  two being materially different models (within-race score correlation
+  `r sprintf("%.3f", targets::tar_read(score_agreement_3_vs_2b)$pearson_r)`;
+  a different top pick in
+  `r scales::percent(1 - targets::tar_read(score_agreement_3_vs_2b)$share_same_top, accuracy = 1)`
+  of races). Naive win-picking and single-bet betting value show the same
+  pattern against both papers 2a and 2b. The market's own probabilities
+  beat the tree ensemble decisively on both ranking metrics — the one
+  contrast in the paper whose interval excludes zero — continuing the
+  pattern of every paper in this series. Changing the function class does
+  not close the gap the feature set and the objective also left open.
 format:
   html: default
   pdf:
@@ -42,7 +64,7 @@ tar_config_set(store = file.path(
 tar_load(c(
   # data and scope (_01)
   qualifying_runners, runners_model_ready, test_predictions_2b, ranking_eval_runners_2b,
-  going_decile_bootstrap,
+  going_decile_bootstrap, model_2b_exploded_draw_final,
   # data / tuning (training side; _02, _03)
   gbt_train_data, gbt_test_data, gbt_race_folds,
   gbt_tuning_results, gbt_selected_config,
@@ -82,9 +104,43 @@ tar_load(c(
 
 # Introduction {#sec-intro}
 
-Placeholder — one-line summary of the paper's motivation and the three
-questions (Q1 ranking, Q2 win-picking, Q3 betting value), matching papers
-2a/2b's introduction pattern. To be drafted.
+Paper 2a extended paper 1's feature set; paper 2b extended the objective
+from predicting the winner to predicting the finishing order. This paper
+holds both fixed and changes the function class instead: the linear score
+of a conditional logit is replaced by an ensemble of decision trees,
+fitted by gradient boosting on the same depth-three ranking likelihood
+paper 2b uses. A tree finds interactions among features on its own,
+rather than needing each one specified as a term in advance, and it is
+the model class chosen specifically to admit going affinity — a horse's
+own record on the going it faces today — without the explicit
+interaction a linear model would need and paper 2b did without.
+
+The three questions are the ones papers 2a and 2b ask, and the answer to
+each is the same. **Q1 — ranking performance.** Does the tree ensemble
+predict the finishing order better than paper 2b's linear model? It does
+not: a paired bootstrap of the two models' ranking metrics on the same
+test races contains zero on every metric compared, and the market's own
+probabilities beat both. **Q2 — win-picking.** Does richer, data-found
+interaction structure make it a better winner-picker than papers 2a or
+2b? It does not: on the naive betting rule the point estimates run the
+wrong way against both comparators, and the intervals do not distinguish
+any of the three models. **Q3 — betting value.** Turned into a
+single bet per race, does that reach a return paper 2b's own single-bet
+rule does not already reach? It does not: win, place and each-way returns
+overlap paper 2b's figures throughout.
+
+The tree ensemble and the linear predictor are not the same model
+reaching the same answer by default — they disagree on the top horse in a
+third of test races — but they rank, pick and bet alike, and both lose to
+the market by about the margin the series has shown throughout. What that
+tie means, and what it does not settle, is taken up in @sec-discussion.
+
+@sec-data sets out the shared data and feature set, including the
+going-affinity feature this change of model class was chosen to
+accommodate; @sec-method motivates the objective and the model class;
+@sec-model describes the fit and how it was tuned; @sec-results answers
+the three questions in order; and @sec-discussion draws the series'
+three changes together.
 
 {{< include _01_data.qmd >}}
 
@@ -102,8 +158,24 @@ questions (Q1 ranking, Q2 win-picking, Q3 betting value), matching papers
 
 # Acknowledgments {.unnumbered}
 
-Placeholder — carry paper 2b's acknowledgments paragraph forward once this
-paper is ready to publish.
+I have been interested in modelling horse racing since first
+acquiring the Smartform database more than a decade ago. The project
+has been picked up and put down many times, the obstacle almost
+always being the gap between an idea and a running implementation.
+What is different now is that working alongside Claude Code
+(Anthropic's coding agent), with web-based Claude as a research
+companion, has compressed that gap dramatically. I am grateful to
+my brother, Michael Gillen, for the suggestion to build the model
+on All-Weather races — the foundation of the scope choices set out
+in @sec-data. The design choices — dataset, scope, model,
+comparison, editorial line — are mine. The implementation, the bulk
+of the draft prose, and a great deal of the verification were
+Claude Code's, under my direction; every output was reviewed and
+edited before it reached the paper. I do not yet know what general
+lessons this experiment points to about the value of human–AI
+collaboration in applied statistics. That uncertainty is part of
+why I am doing the work, and these papers are partly a record of
+that experiment.
 
 # References {.unnumbered}
 

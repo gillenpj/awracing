@@ -1,5 +1,61 @@
 # Method {#sec-method}
 
-Placeholder — why the loss stops factorising per observation; latent
-scores; softmax over the field; interactions found rather than specified.
-Prose only here, maths to @sec-appx-derivations. To be drafted.
+Every loss an ensemble of trees is ordinarily fitted against is a sum of
+one term per observation: the correction owed to a given observation
+depends on that observation's own error and nothing else. Racing does
+not fit this pattern. A finishing order ranks an entire field against
+itself — a horse's chance is only ever defined relative to the others it
+runs against on the day — so the natural unit is not the horse but the
+race, and a single term of the loss has to span every runner in the
+field at once. This is the one structural change this paper makes to the
+method, and everything else below follows from it.
+
+The likelihood is the one built for paper 2b. Each horse in a race is
+given a score by the model, and within that race the scores are turned
+into win probabilities by a softmax: a horse's probability is its own
+score, exponentiated, as a share of the same sum taken over every runner
+still in the field. The finishing order becomes a likelihood by working
+down through the placings — first asking which horse won, out of the
+whole field; then which horse came second, with the winner now removed;
+and so on to the top three, as paper 2b uses — and combining the
+probability of each step. This is the Plackett–Luce likelihood, and it
+is what the ensemble is trained to maximise (@sec-appx-derivations).
+Stopping after the first step, and modelling only the winner, recovers
+the conditional logit of paper 1; the likelihood used here is that same
+construction, carried further into an ordering of the whole field, as
+paper 2b already established.
+
+A score is not a prediction of anything a race result reveals directly,
+the way a fitted value in an ordinary regression stands in for an
+observable response. It exists only to be compared, through the softmax,
+against the other scores in its own race. What the model observes is
+which horse won, which came second, and so on, and it adjusts scores so
+that the probabilities those results imply move toward what happened: a
+horse the current scores under-favour has its score raised, one they
+over-favour has it lowered, and the outcomes of many past races
+determine, indirectly, what score a horse with a given set of
+characteristics ends up receiving. Ability, in other words, is inferred
+from results rather than measured directly.
+
+A tree does not need to be told in advance which characteristics
+interact. A branch that splits first on which course a race is run at,
+and only then, further down, on the horse's stall position, produces a
+value that applies only to horses satisfying both conditions — a
+particular draw, at a particular course. The effect of the draw is then
+free to differ from one course to the next, which is what an interaction
+means; a linear predictor can only express this by being handed that
+interaction term explicitly, and only for the combinations a modeller
+thinks to specify in advance. A tree of depth $d$ can express
+interactions among up to $d$ variables this way, discovered from the
+data rather than listed beforehand — an advantage wherever a horse's
+characteristics are unlikely to combine additively, which every
+conditional-logit model in this series has had to assume regardless.
+
+Put together, the space the model works over is partitioned into regions
+on which a horse's score is constant, and because every split is a
+threshold on one variable at a time, those regions are rectangles
+aligned to the feature axes: a horse shares a region with another only
+if it matches it on every threshold the ensemble has found, whatever
+else distinguishes them. Two horses in the same race will generally fall
+in different regions, and it is that difference, carried through the
+softmax, that becomes the model's ordering of the field.

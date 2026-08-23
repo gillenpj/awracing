@@ -1,5 +1,126 @@
 # Discussion {#sec-discussion}
 
-Placeholder — the two honesty requirements (gain importance is in-sample;
-the capacity-and-selection asymmetry vs the linear models' hand-run Wald
-reduction), the temporal reading, and limitations. To be drafted.
+```{r}
+#| label: p3-disc-setup
+#| include: false
+
+loadNamespace("mlogit")
+n_coef_2b <- length(stats::coef(model_2b_exploded_draw_final))
+
+pct_diff_top <- 100 * (1 - score_agreement_3_vs_2b$share_same_top)
+
+d1_meta   <- model_3_depth1_diag_meta
+d1_cv     <- d1_meta$cv_summary$fold_mean_pl_r2
+d3_cv     <- gbt_selected_config$fold_mean_pl_r2
+boot_d1_plr2 <- boot_ranking_3_vs_depth1 |> dplyr::filter(metric == "test_pl_r2")
+
+n_across_train_pos <- sum(gbt_perm_importance_across_train$mean_drop > 0)
+n_across_test_neg  <- sum(gbt_perm_importance_across_test$mean_drop < 0)
+```
+
+The series has changed one thing at a time: paper 2a changed the feature
+set, paper 2b changed the objective, and this paper changes the function
+class. A gradient-boosted ensemble with depth-3 interactions and
+`r model_3_gbt_meta$nrounds` trees ranks no better than a linear predictor
+with `r n_coef_2b` terms, fitted on the identical objective, features,
+split and metrics as this one: the paired bootstrap against paper 2b
+(@sec-results) contains zero on P1_rank, on Brier_place, and on test
+pseudo-$R^2$ alike. This is not two routes to the same model. Their
+within-race-centred scores correlate at $r =$
+`r sprintf("%.3f", score_agreement_3_vs_2b$pearson_r)`, and they pick a
+different top horse in `r sprintf("%.0f", pct_diff_top)`% of test races —
+two different models that rank equally well.
+
+The reading is that the linear predictor was not the binding constraint.
+Neither a linear combination of these features nor a tree ensemble with
+real interaction depth closes any distance to the market on this
+objective, so whatever limits both is not the form of the function
+reading the features — it is more likely the information the features
+themselves carry. That makes the feature set the natural next lever, not
+the function class. It is worth stating plainly: a marginal improvement
+here would have left the function-class question open for a later paper
+to revisit; a clean tie closes it, and that is a more useful result than
+a marginal improvement would have been.
+
+Set against that tie, the one contrast in the paper that is
+distinguishable is the market. Its discounted-Harville probabilities beat
+the model decisively on both ranking metrics — P1_rank by
+`r sprintf("%.2e", boot_ranking_3_vs_market$diff_point[boot_ranking_3_vs_market$metric == "P1_rank"])`
+[`r sprintf("%.2e", boot_ranking_3_vs_market$ci_lo[boot_ranking_3_vs_market$metric == "P1_rank"])`,
+`r sprintf("%.2e", boot_ranking_3_vs_market$ci_hi[boot_ranking_3_vs_market$metric == "P1_rank"])`],
+Brier_place by
+`r sprintf("%.4f", boot_ranking_3_vs_market$diff_point[boot_ranking_3_vs_market$metric == "Brier_place"])`
+[`r sprintf("%.4f", boot_ranking_3_vs_market$ci_lo[boot_ranking_3_vs_market$metric == "Brier_place"])`,
+`r sprintf("%.4f", boot_ranking_3_vs_market$ci_hi[boot_ranking_3_vs_market$metric == "Brier_place"])`]
+— as it has beaten every model this series has tried, on the win
+objective in papers 1 and 2a and on the ranking objective in paper 2b.
+Three changes to the model in turn have each left that gap untouched.
+
+Five limitations are stated here rather than left for a reader to find.
+
+- **Tuning asymmetry.** The linear models in this series were reduced by
+  a hand-run significance rule; this model was selected from a 72-point,
+  cross-validated grid. That is a capacity-and-selection asymmetry, and on
+  its own a live alternative explanation for any difference found. Two
+  things temper it: the grid is nearly flat near its maximum — only
+  `r n_within_1se` of 72 points sit within one paired standard error of
+  it — and the model given the more generous search did not win.
+- **Row-level subsampling.** XGBoost draws its row subsample from
+  individual horses; the likelihood's own grouping unit is the race, and
+  the two do not match. Dropping some of a race's runners at random
+  changes the remaining runners' own gradients and Hessians, not merely
+  how many rows are left. Every one of the top ten tuning configurations
+  used subsampling at 0.7, so it clearly helps; the mismatch between the
+  two units is unresolved.
+- **Gain importance is in-sample.** It is an accounting of where the
+  fitted loss went, not evidence a feature helps out of sample.
+- **The Hessian is an approximation.** The custom objective supplies
+  XGBoost one Hessian value per row, the diagonal of a likelihood whose
+  true Hessian couples every runner still in contention within a race.
+- **Going affinity measures ground-type form, not a preference for
+  today's going.** AW going is `r sprintf("%.1f", pct_standard_train)`%
+  Standard across the training races, so the feature reaching the model
+  is mostly a horse's record on Standard-or-Good ground relative to its
+  own career rate. The question paper 2b deferred to this paper has been
+  answered only in the weaker sense this data permits.
+
+A depth-3 fit's advantage over a depth-1 (stumps only, additive)
+diagnostic model appears in cross-validation — fold-mean pseudo-$R^2$
+`r sprintf("%.4f", d3_cv)` against `r sprintf("%.4f", d1_cv)` — and
+in-sample — `r sprintf("%.4f", model_3_gbt_meta$train_pl_r2)` against
+`r sprintf("%.4f", d1_meta$train_pl_r2)` — where both the folds and the
+training data are drawn from the same era the model is fitted on. It is
+absent on the chronologically later test split
+(`r sprintf("%+.4f", boot_d1_plr2$diff_point)`, 90% CI
+[`r sprintf("%.4f", boot_d1_plr2$ci_lo)`, `r sprintf("%.4f", boot_d1_plr2$ci_hi)`]).
+The race-level features show the same pattern from another angle: all
+five permutation drops are positive on the training split
+(`r n_across_train_pos` of 5) and `r n_across_test_neg` of 5 are negative
+on the test split.
+
+We state the direction and stop there. An interval containing zero is
+consistent with era-specific structure that does not carry forward to
+later data, with ordinary sampling noise, and with a test set too small
+to separate the two; deciding between them needs several chronological
+blocks and a longer span of data than 2006–2015 provides, which we do not
+have. We do not adjudicate, and this observation is not offered as the
+paper's explanation for the null result above. The depth-1 fit is a
+diagnostic, not a candidate: its test-split numbers were computed only
+after model selection had closed, and it was never eligible to be chosen.
+
+The series has now changed the features, the objective, and the function
+class, and none has closed the gap to the market. What is left is the
+information reaching the model in the first place — hand-built summaries
+of a horse's run history rather than the run history itself — and
+learning a representation of that history directly, on the same ranking
+objective, is the direction under consideration next. Separately: the two
+models disagree on the top pick in `r sprintf("%.0f", pct_diff_top)`% of
+test races, which suggests a rule that backs only where they agree.
+That cannot be evaluated here — the disagreement figures come from the
+test split, and building and testing a rule on them would be selection on
+the data meant to test it — and it carries a caution worth recording
+alongside it: two independently-specified models are more likely to
+agree where both are confident, which tends to mean a shorter-priced
+horse, and the starting-price margin bites hardest at short prices, so a
+higher strike rate on an agreement subset need not mean a better return.
+Neither is a result of this paper; both are left as open directions.

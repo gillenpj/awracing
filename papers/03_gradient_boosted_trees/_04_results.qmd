@@ -76,7 +76,7 @@ whose interval excludes zero.
 
 That the two models tie is not the same as the two models agreeing
 race by race. Within-race-centred scores from the GBT and paper 2b
-correlate at $r = $ `r sprintf("%.3f", score_agreement_3_vs_2b$pearson_r)`
+correlate at $r =$ `r sprintf("%.3f", score_agreement_3_vs_2b$pearson_r)`
 (Spearman `r sprintf("%.3f", score_agreement_3_vs_2b$spearman_r)`), and
 the two models pick a different top horse in
 `r sprintf("%.1f", 100 * (1 - score_agreement_3_vs_2b$share_same_top))`%
