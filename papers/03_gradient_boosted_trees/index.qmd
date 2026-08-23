@@ -2,9 +2,7 @@
 title: "Gradient boosted trees for UK All-Weather Flat handicaps"
 subtitle: "Paper 3 in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-# date: intentionally unset — pin per the series convention (see paper
-# 1/2a/2b's date: "YYYY-MM-DD") only once this paper is actually published;
-# do not fabricate a placeholder publication date on a scaffold.
+date: "2026-08-23"
 abstract: |
   Papers 2a and 2b changed the feature set and then the prediction
   objective for a conditional-logit model of UK All-Weather Flat
