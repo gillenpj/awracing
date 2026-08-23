@@ -1,6 +1,248 @@
 # Results {#sec-results}
 
-Placeholder — Q1 (ranking vs the market and vs paper 2b, predictor
-importance), Q2 (win-picking vs 2a/2b, paired bootstrap), Q3 (single-bet
-betting value, place/each-way, ratio sweep with CIs), in that order. To be
-drafted.
+```{r}
+#| label: p3-results-setup
+#| include: false
+
+roi_pct <- function(x) scales::percent(x, accuracy = 0.1)
+pp      <- function(x) sprintf("%+.1f pp", 100 * x)
+comma   <- function(x) format(x, big.mark = ",")
+
+ci_at <- function(sweep, tau0 = 1.3) {
+  r <- sweep[abs(sweep$tau - tau0) < 1e-9, ]
+  sprintf("[%s, %s]", roi_pct(r$ci_lo), roi_pct(r$ci_hi))
+}
+
+p1_gbt    <- ranking_metrics_3      |> dplyr::filter(metric == "P1_rank")
+p1_2b     <- ranking_metrics_2b     |> dplyr::filter(metric == "P1_rank")
+p1_2a     <- ranking_metrics_2a_fresh |> dplyr::filter(metric == "P1_rank")
+brp_gbt   <- ranking_metrics_3      |> dplyr::filter(metric == "Brier_place")
+brp_2b    <- ranking_metrics_2b     |> dplyr::filter(metric == "Brier_place")
+brp_2a    <- ranking_metrics_2a_fresh |> dplyr::filter(metric == "Brier_place")
+
+boot_2b_p1     <- boot_ranking_3_vs_2b |> dplyr::filter(metric == "P1_rank")
+boot_2b_brier  <- boot_ranking_3_vs_2b |> dplyr::filter(metric == "Brier_place")
+boot_2b_plr2   <- boot_ranking_3_vs_2b |> dplyr::filter(metric == "test_pl_r2")
+boot_mkt_p1    <- boot_ranking_3_vs_market |> dplyr::filter(metric == "P1_rank")
+boot_mkt_brier <- boot_ranking_3_vs_market |> dplyr::filter(metric == "Brier_place")
+
+course_splits <- gbt_split_counts |> dplyr::filter(grepl("^course_", Feature))
+
+going_within  <- gbt_perm_importance_within_test |> dplyr::filter(feature %in% c("going_sr_shrunk", "going_sr_delta", "going_runs_prior"))
+going_ordinal_across <- gbt_perm_importance_across_test |> dplyr::filter(feature == "going_ordinal")
+```
+
+The three questions are the same ones papers 2a and 2b ask, in the same
+order: how well the model ranks, how well it picks winners, and whether
+that translates into betting value. All three are scored on the
+`r comma(n_races_p3_test)`-race test universe (@sec-data).
+
+## Q1 — Ranking
+
+```{r}
+#| label: tbl-q1-ranking
+tibble::tibble(
+  Metric  = c("P1_rank (higher is better)", "Brier_place (lower is better)"),
+  GBT     = c(signif(p1_gbt$model, 3),  signif(brp_gbt$model, 3)),
+  `Paper 2b` = c(signif(p1_2b$model, 3), signif(brp_2b$model, 3)),
+  `Paper 2a*` = c(signif(p1_2a$model, 3), signif(brp_2a$model, 3)),
+  Market  = c(signif(p1_gbt$market, 3), signif(brp_gbt$market, 3))
+) |>
+  knitr::kable(caption = sprintf("Ranking metrics on the %s test races: the GBT, paper 2b's exploded model, paper 2a's win model, and the discounted-Harville market. *Paper 2a's figures are computed fresh from its stored test predictions for this comparison and were not part of its published results.", comma(n_races_p3_test)))
+```
+
+On the same test races, test-split McFadden pseudo-$R^2$ is
+`r sprintf("%.5f", test_pl_r2_3)` for the GBT and
+`r sprintf("%.5f", test_pl_r2_2b)` for paper 2b.
+
+A paired race-level bootstrap ($B = 2\,000$, seed 42) of the GBT against
+paper 2b gives a 90% interval containing zero on all three metrics:
+P1_rank `r sprintf("%+.2e", boot_2b_p1$diff_point)`
+[`r sprintf("%.2e", boot_2b_p1$ci_lo)`, `r sprintf("%.2e", boot_2b_p1$ci_hi)`],
+Brier_place `r sprintf("%+.4f", boot_2b_brier$diff_point)`
+[`r sprintf("%.4f", boot_2b_brier$ci_lo)`, `r sprintf("%.4f", boot_2b_brier$ci_hi)`],
+and test pseudo-$R^2$ `r sprintf("%+.4f", boot_2b_plr2$diff_point)`
+[`r sprintf("%.4f", boot_2b_plr2$ci_lo)`, `r sprintf("%.4f", boot_2b_plr2$ci_hi)`].
+The same bootstrap against the discounted-Harville market excludes zero
+on both metrics: P1_rank `r sprintf("%+.2e", boot_mkt_p1$diff_point)`
+[`r sprintf("%.2e", boot_mkt_p1$ci_lo)`, `r sprintf("%.2e", boot_mkt_p1$ci_hi)`],
+Brier_place `r sprintf("%+.4f", boot_mkt_brier$diff_point)`
+[`r sprintf("%.4f", boot_mkt_brier$ci_lo)`, `r sprintf("%.4f", boot_mkt_brier$ci_hi)`].
+
+The tree ensemble and the linear predictor rank equally well on this test
+set: neither ranking metric distinguishes them. The market ranks better
+than both, on both metrics, and this is the only contrast in the paper
+whose interval excludes zero.
+
+That the two models tie is not the same as the two models agreeing
+race by race. Within-race-centred scores from the GBT and paper 2b
+correlate at $r = $ `r sprintf("%.3f", score_agreement_3_vs_2b$pearson_r)`
+(Spearman `r sprintf("%.3f", score_agreement_3_vs_2b$spearman_r)`), and
+the two models pick a different top horse in
+`r sprintf("%.1f", 100 * (1 - score_agreement_3_vs_2b$share_same_top))`%
+of races. They are different models that rank equally well.
+
+## Predictor importance
+
+**Gain importance** is an in-sample accounting of where the fitted loss
+went — evidence the model used a feature, not evidence it helps out of
+sample.
+
+```{r}
+#| label: tbl-gain-importance
+#| code-fold: true
+gbt_gain_importance_train |>
+  dplyr::transmute(Feature, Rank = rank, Gain = round(Gain, 4)) |>
+  knitr::kable(caption = "Gain importance, all 24 features, in-sample.")
+```
+
+**Permutation importance**, scored on the test split, is the out-of-sample
+measure, reported in two variants. Shuffling which horse holds a value
+within its own race is the right test for a horse-level feature, but it
+is a structural no-op for a feature constant within every race — today's
+going, which course the race is at — so those five race-level features
+are instead permuted across races.
+
+```{r}
+#| label: tbl-perm-within
+#| code-fold: true
+gbt_perm_importance_within_test |>
+  dplyr::transmute(Feature = feature, Rank = rank,
+                   `Mean drop` = round(mean_drop, 5), `SD` = round(sd_drop, 5)) |>
+  knitr::kable(caption = "Within-race permutation importance, test split, 19 horse-level features, 30 repeats.")
+```
+
+```{r}
+#| label: tbl-perm-across
+#| code-fold: true
+gbt_perm_importance_across_test |>
+  dplyr::transmute(Feature = feature, Rank = rank,
+                   `Mean drop` = round(mean_drop, 6), `SD` = round(sd_drop, 6)) |>
+  knitr::kable(caption = "Across-race permutation importance, test split, 5 race-level features, 30 repeats.")
+```
+
+The four course indicators are split on between
+`r min(course_splits$n_splits)` and `r max(course_splits$n_splits)` times
+each in the fitted trees — evidence the model uses them, since within-race
+permutation still returns exactly zero for every one.
+
+Permutation also understates a correlated pair of predictors, since
+permuting one leaves its partner free to compensate for the lost signal —
+`going_sr_shrunk` and `going_sr_delta` correlate at $r =$
+`r sprintf("%.2f", cor(gbt_test_data$X[, "going_sr_shrunk"], gbt_test_data$X[, "going_sr_delta"], use = "complete.obs"))`
+by construction, so their individual ranks in @tbl-perm-within are a
+lower bound on their joint contribution, not a point estimate.
+
+The three horse-level going features sit mid-table, each clearing its
+own noise floor: `going_sr_shrunk` ranks
+`r going_within$rank[going_within$feature == "going_sr_shrunk"]`,
+`going_runs_prior`
+`r going_within$rank[going_within$feature == "going_runs_prior"]`, and
+`going_sr_delta`
+`r going_within$rank[going_within$feature == "going_sr_delta"]` of 19.
+`going_ordinal` ranks last of the five race-level features, its mean drop
+smaller in magnitude than its own standard deviation — indistinguishable
+from noise, as `r sprintf("%.1f", pct_standard_train)`% of training races
+sharing one going value predicts. A model carrying these four features
+ranks no better, out of sample, than paper 2b's model, which did not have
+them.
+
+## Q2 — Win-picking
+
+Owen's naive rule (model win probability above 0.15, model/market ratio
+above 1.3), priced at real starting prices.
+
+```{r}
+#| label: tbl-q2-naive
+tibble::tibble(
+  Model      = c("GBT", "Paper 2b", "Paper 2b", "Paper 2a", "Paper 2a"),
+  Universe   = c(comma(n_races_p3_test), "published", sprintf("restricted (%s)", comma(n_races_p3_test)),
+                 "published", sprintf("restricted (%s)", comma(n_races_p3_test))),
+  Bets       = comma(c(backtest_naive_3_win$n_bets, backtest_naive_2b_win$n_bets,
+                       backtest_naive_2b_win_restricted_3$n_bets, backtest_naive_w_final$n_bets,
+                       backtest_naive_w_final_restricted_3$n_bets)),
+  Wins       = comma(c(backtest_naive_3_win$n_wins, backtest_naive_2b_win$n_wins,
+                       backtest_naive_2b_win_restricted_3$n_wins, backtest_naive_w_final$n_wins,
+                       backtest_naive_w_final_restricted_3$n_wins)),
+  ROI        = roi_pct(c(backtest_naive_3_win$roi, backtest_naive_2b_win$roi,
+                         backtest_naive_2b_win_restricted_3$roi, backtest_naive_w_final$roi,
+                         backtest_naive_w_final_restricted_3$roi))
+) |>
+  knitr::kable(caption = "Naive win backtest (prob > 0.15, ratio > 1.3), real starting prices. Published columns are each model's own reported universe; restricted recomputes the same stored predictions on the GBT's 2,183-race universe, no refit.")
+```
+
+```{r}
+#| label: tbl-q2-boot
+dplyr::bind_rows(roi_diff_3_vs_2b, roi_diff_3_vs_2a) |>
+  dplyr::transmute(
+    Contrast     = contrast,
+    `ROI diff.`  = pp(diff_point),
+    `90% CI`     = paste0("[", pp(ci_lo), ", ", pp(ci_hi), "]"),
+    `Common races` = comma(n_common)
+  ) |>
+  knitr::kable(caption = "Paired race-level ROI-difference bootstrap, GBT against paper 2b and against paper 2a.")
+```
+
+Both intervals contain zero. On the restricted, like-for-like universe the
+point estimate runs the wrong way for the GBT against both comparators —
+`r roi_pct(backtest_naive_3_win$roi)` against paper 2b's
+`r roi_pct(backtest_naive_2b_win_restricted_3$roi)` and paper 2a's
+`r roi_pct(backtest_naive_w_final_restricted_3$roi)` — and the bootstrap
+intervals do not distinguish any of the three.
+
+In the `r disagreement_set_3_vs_2b$n_disagree` of
+`r disagreement_set_3_vs_2b$n_total` races where the GBT and paper 2b
+pick a different top horse, the GBT's pick wins
+`r sprintf("%.1f", 100 * disagreement_set_3_vs_2b$win_rate_a_dis)`% of the
+time against paper 2b's
+`r sprintf("%.1f", 100 * disagreement_set_3_vs_2b$win_rate_b_dis)`%, at a
+mean starting price of
+`r sprintf("%.2f", disagreement_set_3_vs_2b$sp_summary$mean_sp[disagreement_set_3_vs_2b$sp_summary$model == "A (disagreement set)"])`
+against `r sprintf("%.2f", disagreement_set_3_vs_2b$sp_summary$mean_sp[disagreement_set_3_vs_2b$sp_summary$model == "B (disagreement set)"])`.
+A race-level bootstrap of both differences contains zero: the win-rate
+difference is `r sprintf("%+.3f", boot_disagreement_3_vs_2b$winrate_diff_point)`
+[`r sprintf("%.3f", boot_disagreement_3_vs_2b$winrate_ci[1])`, `r sprintf("%.3f", boot_disagreement_3_vs_2b$winrate_ci[2])`]
+and the price difference is
+`r sprintf("%+.2f", boot_disagreement_3_vs_2b$sp_diff_point)`
+[`r sprintf("%.2f", boot_disagreement_3_vs_2b$sp_ci[1])`, `r sprintf("%.2f", boot_disagreement_3_vs_2b$sp_ci[2])`].
+
+## Q3 — Betting value
+
+Single bet per race — the highest-model-win-probability qualifier under
+Owen's naive rule — priced at real starting prices, win, place and
+each-way, the same construction as paper 2b.
+
+```{r}
+#| label: tbl-q3-single-bet
+tibble::tibble(
+  `Bet type` = c("Win", "Win", "Win", "Place", "Place", "Each-way", "Each-way"),
+  Model      = c("GBT", "Paper 2b", "Paper 2b",
+                 "GBT", "Paper 2b",
+                 "GBT", "Paper 2b"),
+  Universe   = c(comma(n_races_p3_test), "published", sprintf("restricted (%s)", comma(n_races_p3_test)),
+                 comma(n_races_p3_test), "published",
+                 comma(n_races_p3_test), "published"),
+  Bets       = comma(c(backtest_single_win_3$n_bets, backtest_single_win_2b$n_bets, backtest_single_win_2b_restricted_3$n_bets,
+                       backtest_single_place_3$n_bets, backtest_single_place_2b$n_bets,
+                       backtest_single_eachway_3$n_bets, backtest_single_eachway_2b$n_bets)),
+  ROI        = roi_pct(c(backtest_single_win_3$roi, backtest_single_win_2b$roi, backtest_single_win_2b_restricted_3$roi,
+                         backtest_single_place_3$roi, backtest_single_place_2b$roi,
+                         backtest_single_eachway_3$roi, backtest_single_eachway_2b$roi)),
+  `90% CI`   = c(ci_at(sweep_single_win_3), ci_at(backtest_single_win_sweep_2b), "",
+                 ci_at(sweep_single_place_3), ci_at(backtest_single_place_sweep_2b),
+                 ci_at(sweep_single_eachway_3), ci_at(backtest_single_eachway_sweep_2b))
+) |>
+  knitr::kable(caption = "Single-bet-per-race backtest, real starting prices. 90% CI from a race-level bootstrap (B = 2000, seed 42) at the naive ratio threshold; blank where no sweep was run on that restricted comparison.")
+```
+
+Paper 2a's single-bet win ROI, for reference, is
+`r roi_pct(backtest_single_win_2a$roi)` published and
+`r roi_pct(backtest_single_win_2a_restricted_3$roi)` on the restricted
+universe; paper 2a reports no place or each-way figures.
+
+The paper 3 and paper 2b intervals overlap on all three bet types.
+
+Overall, the change of function class from a linear predictor to a
+gradient-boosted tree ensemble does not improve ranking, win-picking, or
+betting value against paper 2b, and does not narrow the gap to the
+market on any measure tested. @sec-discussion takes up what that means.

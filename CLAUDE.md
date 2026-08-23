@@ -1920,6 +1920,18 @@ stage $s$, win probabilities a softmax over the field — matches papers
     directional only, matching the series' existing convention for
     reporting a CI that straddles zero (see paper 2a's ROI-difference
     bootstrap note above).
+  - **§6 drafting note, added 2026-08-23:** the GBT and paper 2b pick a
+    different top horse in a third of test races, which suggests a
+    strategy of betting only where the two models agree. This cannot be
+    evaluated in this paper — the disagreement figures above come from
+    the test split, so building and testing an agreement rule on them
+    would be selection on the test set — and it belongs in §6 as a
+    direction for later work, not as a result. Note the reason for
+    caution alongside it: agreement between two independently-specified
+    models will tend to select shorter-priced horses (the ones both
+    models are confident about), and the starting-price margin bites
+    hardest at short prices, so a higher strike rate on an agreement
+    subset need not mean a better return.
 - **Rebuild gate — RUN 2026-08-22, PASSED.** `runners_augmented` picked up
   the new (`going_*`) columns as expected (content hash changed), so a full
   `tar_make()` invalidated and re-fit/re-rendered every downstream target,

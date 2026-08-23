@@ -58,6 +58,7 @@ tar_load(c(
   test_predictions_3, ranking_eval_runners_3, ranking_metrics_3,
   ranking_metrics_2a_fresh, ranking_metrics_2b, test_pl_r2_3, test_pl_r2_2b,
   gbt_perm_importance_within_test, gbt_perm_importance_across_test,
+  gbt_split_counts,
   boot_ranking_3_vs_2b, boot_ranking_3_vs_depth1, boot_ranking_3_vs_market,
   # Q2 win-picking (_04)
   model_market_ratio_3_win, backtest_naive_3_win,
@@ -71,6 +72,8 @@ tar_load(c(
   backtest_single_eachway_2b_restricted_3,
   backtest_single_win_2a, backtest_single_win_2a_restricted_3,
   sweep_single_win_3, sweep_single_place_3, sweep_single_eachway_3,
+  backtest_single_win_sweep_2b, backtest_single_place_sweep_2b,
+  backtest_single_eachway_sweep_2b,
   # pre-drafting diagnostics (_05 discussion)
   score_agreement_3_vs_2b, disagreement_set_3_vs_2b, boot_disagreement_3_vs_2b,
   gbt_pdp_or_relative, gbt_pdp_going_sr_delta, gbt_pdp_stall_normalised

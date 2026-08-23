@@ -1308,6 +1308,20 @@ list(
       )
     }
   ),
+  # Split counts per feature in the fitted trees -- the evidence that
+  # within-race permutation's exact-zero result for a race-level feature
+  # (course, going_ordinal) is a null-design artefact, not a finding of
+  # unimportance: a feature the model never split on would show zero
+  # splits here, but the course dummies plainly are split on.
+  tar_target(
+    gbt_split_counts,
+    {
+      bst <- xgboost::xgb.load(model_3_gbt_path[1])
+      tree_dt <- as.data.frame(xgboost::xgb.model.dt.tree(model = bst))
+      tree_dt[!is.na(tree_dt$Feature), ] |>
+        dplyr::count(Feature, name = "n_splits", sort = TRUE)
+    }
+  ),
 
   # -- Paired race-level bootstraps on the ranking metrics --------------------
   # depth-3 (selected) vs paper 2b, vs the depth-1 diagnostic, and vs the
