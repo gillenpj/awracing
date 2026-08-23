@@ -57,24 +57,32 @@ for (src in names(papers)) {
 }
 
 # Supplementary material — standalone reference documents copied straight
-# from notes/, not produced by any paper's render. The source filename
-# carries a _CLEAN suffix as a working label only (metadata- and
-# footer-stripped version of the corporate-templated original); the
-# published slug must never carry that suffix.
+# from notes/, not produced by any paper's render. notes/*.pdf is
+# gitignored, so this file exists only on machines that have it locally;
+# a fresh clone has no way to reproduce it (see CLAUDE.md's "Project
+# structure" note on the note's provenance). Fail loudly rather than
+# skipping it, since a silent skip would leave the published copy stale
+# with no indication anything was wrong.
 supplements <- list(
   list(
-    src  = file.path(root, "notes", "Notes_on_Tree-based_Methods_CLEAN.pdf"),
-    dest = file.path(root, "docs", "paper3", "notes-on-tree-based-methods.pdf"),
+    src   = file.path(root, "notes", "Notes_on_Tree-based_Methods.pdf"),
+    dest  = file.path(root, "docs", "paper3", "notes-on-tree-based-methods.pdf"),
     label = file.path("docs", "paper3", "notes-on-tree-based-methods.pdf")
   )
 )
 for (s in supplements) {
-  if (file.exists(s$src)) {
-    file.copy(s$src, s$dest, overwrite = TRUE)
-    copied <- c(copied, s$label)
-  } else {
-    missing <- c(missing, s$src)
+  if (!file.exists(s$src)) {
+    stop(
+      "Supplementary source file not found: ", s$src, "\n",
+      "notes/*.pdf is gitignored, so this file must already exist locally ",
+      "-- it is not reproduced by tar_make() or any other step. See ",
+      "CLAUDE.md's Project structure note on this file's provenance ",
+      "before recreating it.",
+      call. = FALSE
+    )
   }
+  file.copy(s$src, s$dest, overwrite = TRUE)
+  copied <- c(copied, s$label)
 }
 
 if (length(copied)) {

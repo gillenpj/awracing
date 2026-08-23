@@ -232,8 +232,23 @@ complete and published.
     once when the paper is first published.
 - `notes/` — kept as a reference shelf only; not consumed by the
   pipeline. Includes the Owen (2019) paper paper 1 replicates and
-  `Notes on Trees-based Methods.pdf` (paper 3's theory source — regression
-  trees through gradient boosting and its application to horse racing).
+  `Notes_on_Tree-based_Methods.pdf` (paper 3's theory source — regression
+  trees through gradient boosting and its application to horse racing),
+  published as supplementary material at
+  `docs/paper3/notes-on-tree-based-methods.pdf` (`publish_docs.R` copies
+  it on every publish run and fails loudly, rather than skipping it, if
+  the source is absent — it is gitignored, so a fresh clone won't have
+  it). **Provenance, load-bearing:** the file in `notes/` today is
+  already a cleaned export — the original Word document carried an
+  author email address (tied to a former employer) in its custom
+  document properties and a corporate sensitivity-label footer
+  ("Information Classification: General") baked into every page. Do
+  **not** restore or re-export from any pre-cleaning copy of that Word
+  document. Any future revision starts from the cleaned file; before
+  publishing a re-export, check both the text layer (`pdftotext`) and
+  the metadata (Info dict *and* the full XMP packet — the footer and an
+  email are exactly the kind of thing that hides in one but not the
+  other) for anything identifying.
 - `scripts/`
   - `verify_rebuild.R` — standing read-only integrity check on
     `qualifying_races` / `qualifying_runners` / `candidate_races`. Run
