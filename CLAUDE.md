@@ -177,6 +177,13 @@ complete and published.
   objective plus a custom eval metric plus group info together. Same
   kind of exception as the `{mlogit}` route in papers 1/2 (see
   "Modelling notes" below).
+- **Documented exception (paper 4, planned): `{torch}` and `{luz}` used
+  directly, not via `{tidymodels}`/`{parsnip}`.** `{tidymodels}` has no
+  interface for a custom Plackett–Luce objective over variable-length,
+  padded sequences — the same class of gap the `{mlogit}` and
+  `{xgboost}` exceptions above cover. The project stays tidyverse-first
+  throughout; this is a scorer-fitting exception, not a departure from
+  it.
 
 ## Project structure
 - `R/` — functions, sourced by `_targets.R` via `tar_source()`.
@@ -595,22 +602,41 @@ observations are documented in §4.3 of paper 1.
 Nothing here is decided. No scaffolding, no targets, and none of this
 affects how paper 3 is written.
 
-Paper 4 will likely hold the function class fixed at the GBT and change
-the information reaching it, rather than changing the model again. Two
-candidate directions, both open:
-- A sequence encoder reading a horse's raw run history, learning its
-  own fixed-length representation end to end on the PL objective.
-  Preferred direction. Distinct from an autoencoder: the compression is
-  learned to serve the ranking objective, not to reconstruct the input.
-- Race-relative features computed across the field rather than down a
-  horse's own record — dispersion / field-composition quantities that
-  don't exist at horse level. Discussed, not settled.
+Paper 4's lever is the information reaching the model, not the form of
+the score function — but the function class necessarily changes too: an
+end-to-end sequence encoder needs a differentiable scoring head, and
+gradients don't flow back through a boosted tree ensemble, so a GBT
+can't sit downstream of a trained encoder. The scorer becomes a neural
+network, fitted in `{torch}`.
+
+The paper carries two arms on the same Plackett–Luce objective:
+- **Control** — a shared-weight MLP on paper 3's flat feature set.
+- **Treatment** — the same scorer with a sequence encoder in front,
+  reading the horse's raw run history and learning its own
+  fixed-length representation end to end on the PL objective. Distinct
+  from an autoencoder: the compression is learned to serve the ranking
+  objective, not to reconstruct the input.
+
+Treatment against control is the comparison that carries the paper: it
+isolates the representation change while holding architecture,
+objective, features and split fixed.
+
+Considered and rejected: a two-stage variant — train an encoder, freeze
+it, feed its output to a GBT. Strictly weaker than the end-to-end
+treatment arm, since a frozen encoder has no reason to summarise the
+history in a way that serves the prediction it was never trained
+against.
+
+Unresolved design question, not a decision: whether the paper also uses
+an encoder over the field (the other runners in today's race) rather
+than only over the horse's own history.
 
 Rationale, worth recording now while it's fresh: papers 1, 2a and 2b
 changed the features and the objective; paper 3 changed the function
 class and found that wasn't the binding constraint. That makes the
-information in the features the next lever — and makes paper 3's null
-result the reason paper 4 exists, not an embarrassment to route around.
+information reaching the model the next lever — and makes paper 3's
+null result the reason paper 4 exists, not an embarrassment to route
+around.
 
 ## Longer-term direction (post-paper-3, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
