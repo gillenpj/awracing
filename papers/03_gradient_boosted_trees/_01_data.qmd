@@ -39,8 +39,7 @@ n_delta_zero     <- sum(delta_train_defined == 0)
 pct_delta_zero   <- 100 * n_delta_zero / n_delta_defined
 
 # Train-split-only decile table of going_sr_delta (general model-ready
-# population, matching scripts/verify_going_features.R's own diagnostic),
-# with mean field size joined in.
+# population), with mean field size joined in.
 field_size <- qualifying_runners |>
   dplyr::group_by(race_id) |>
   dplyr::summarise(field_size = dplyr::n(), .groups = "drop")
@@ -68,86 +67,86 @@ The data, the race-selection rules, and the feature set before the additions
 below are identical to papers 2a and 2b; we refer the reader there (paper 2a,
 §2; paper 2b, @sec-data) rather than repeat them. The chronological
 race-level train/test split at 2012-12-30 and the complete-case rule
-(a race is dropped if any modelling column is undefined for any of its
+(a race is dropped if any modelling feature is undefined for any of its
 runners) both carry over unchanged.
 
 ## The test universe
 
-Paper 2b evaluates on two different test universes, because its two tasks
-need different things from a race. A win backtest only needs to know who
-won, so `test_predictions_2b` keeps every test race with a usable win
-probability — `r format(n_races_winonly_2b, big.mark = ",")` races. The
-ranking task needs a clean top three (positions 1, 2 and 3 each recorded
-exactly once, so the field can be exploded into nested choice sets), which
-`r format(n_races_winonly_2b - n_races_ranking_2b, big.mark = ",")` fewer
-races satisfy; `ranking_eval_runners_2b` accordingly covers
-`r format(n_races_ranking_2b, big.mark = ",")` races.
-
-Paper 3's feature matrix is built by the same exploded construction paper
-2b's ranking model uses (`prepare_exploded_data()`), because the training
-objective is the same depth-3 Plackett–Luce likelihood. Its test build
-therefore uses the clean-top-three universe throughout —
-`r format(n_races_p3_test, big.mark = ",")` races, matching
-`ranking_eval_runners_2b` exactly (checked at build time; see
-`R/gbt_results.R::check_gbt_race_universe()`) — for every table in
-@sec-results, including the win-picking and betting comparisons against
-papers 2a and 2b's own, larger win-only universes. Those comparisons are
-reported on both the published universe and this restricted one, so a
-reader can see whether the restriction changes anything. The training
-side uses the same construction: `r format(n_races_p3_train, big.mark = ",")`
-races, the same set `model_2b_exploded_draw_final` was fitted and evaluated
-on.
+A win backtest needs only to know who won, so paper 2b's largest test
+universe keeps every race with a usable win probability. The ranking
+construction instead needs a clean top three — finishing positions one,
+two and three each recorded exactly once — so it works from a smaller
+universe. Paper 3 shares that second requirement, so it uses the
+`r format(n_races_p3_test, big.mark = ",")`-race universe throughout, and
+@sec-results reports every comparison against papers 2a and 2b on both
+universes.
 
 ## Feature set
 
-The feature set is paper 2b's own final specification —
-`r length(stats::coef(model_2b_exploded_draw_final))` terms — plus the four
-going-affinity columns below, giving `r n_features` columns in all:
-`r paste(feature_names, collapse = ", ")`.
+@tbl-feature-set lists the `r n_features` features the model is fitted on:
+paper 2b's own final specification, plus the four going-affinity features
+introduced in this paper.
 
-Two substitutions were made where paper 2b's specification exists only to
-work around what a conditional logit needs and a tree does not:
+```{r}
+#| label: tbl-feature-set
+tibble::tribble(
+  ~Feature,               ~Description,                                                 ~Type,        ~Source,
+  "pos_lag1_nonzero",     "Most recent prior finishing position (1st-4th; 0 if none)",   "horse-level", "paper 1",
+  "pos_lag2_nonzero",     "Second most recent prior finishing position",                 "horse-level", "paper 1",
+  "age_diff",             "Symmetric distance from peak age (3 on AW)",                  "horse-level", "paper 1",
+  "days_LTO_log",         "Log days since last run",                                     "horse-level", "paper 1",
+  "trainerSR",            "Cumulative pre-race trainer strike rate",                     "horse-level", "paper 1",
+  "sireSR",               "Cumulative pre-race sire strike rate",                        "horse-level", "paper 1",
+  "jockeySR",             "Cumulative pre-race jockey strike rate",                      "horse-level", "paper 2a",
+  "entire / gelding",     "Sex indicators",                                              "horse-level", "paper 1",
+  "cheekpieces",          "Tack indicator",                                              "horse-level", "paper 1",
+  "rel_weight",           "Weight carried minus race-mean weight",                       "horse-level", "paper 2a",
+  "or_relative",          "Official rating minus race-mean rating (0 where undefined)",  "horse-level", "paper 2a",
+  "or_missing",           "Indicator: official rating was undefined",                    "horse-level", "paper 2a",
+  "trainer_aw_premium",   "Trainer AW strike rate minus overall strike rate",            "horse-level", "paper 2a",
+  "has_wins",             "Indicator: any prior career win",                             "horse-level", "paper 2a",
+  "stall_normalised",     "Starting stall divided by field size",                        "horse-level", "paper 2a",
+  "course (4 indicators)","Which of the four AW courses",                                "race-level",   "paper 2a",
+  "going_runs_prior",     "Count of prior runs on today's kind of going",                "horse-level", "paper 3",
+  "going_sr_shrunk",      "Win rate on today's kind of going, shrunk toward career rate","horse-level", "paper 3",
+  "going_sr_delta",       "going_sr_shrunk minus overall career win rate",               "horse-level", "paper 3",
+  "going_ordinal",        "Today's going, on a common fast-to-slow scale",               "race-level",   "paper 3"
+) |>
+  knitr::kable(caption = sprintf("Paper-3 feature set: %d features (course and the sex indicators are each one row here but several terms).", n_features))
+```
+
+Two substitutions replace terms that exist only to work around what a
+conditional logit needs and a tree does not.
 
 - **Position lags.** Paper 2b encodes each prior finishing position as a
-  pair of terms, `pos_lagN_zero` (an indicator for "no prior run") and
-  `pos_lagN_nonzero` (the raw position where one exists) — a linear model
-  needs the split so a real finish of, say, 2nd is not read on the same
-  numeric scale as "no run." A tree splits on `pos_lagN_nonzero == 0`
-  directly, so the indicator is dropped and only the raw value kept: four
-  columns become two (`pos_lag1_nonzero`, `pos_lag2_nonzero`).
-- **Course and draw.** Paper 2b's course effect only appears at all because
-  it is crossed with the horse-level draw (`stall_x_kempton`,
-  `stall_x_southwell`, `stall_x_wolverhampton`) — a conditional logit cannot
-  use a race-level covariate on its own; it cancels in the softmax. Here
-  `stall_normalised` and one-hot columns for all four courses
-  (`course_Kempton`, `course_Lingfield`, `course_Southwell`,
-  `course_Wolverhampton`) are entered separately, and a tree is free to
-  split on course, on draw, or on both together, at any depth, for any
-  course — not only the three the linear reduction happened to keep. Three
-  columns become five.
+  pair of terms — an indicator for "no prior run" and the raw position
+  where one exists — because a linear model needs the split to avoid
+  reading a real finish on the same numeric scale as "no run." A tree
+  splits on the raw position directly, so the indicator is dropped: four
+  terms become two.
+- **Course and draw.** Paper 2b's course effect only appears crossed with
+  the horse-level draw, because a conditional logit cannot use a
+  race-level covariate on its own — it cancels in the softmax. Here the
+  draw and the four course indicators are entered separately, and a tree
+  is free to split on either, or both together, at any depth, for any
+  course — not only the ones the linear reduction happened to keep. Three
+  terms become five.
 
-Two further cases keep paper 2b's own form rather than being substituted.
-`or_relative` (the official-rating gap to the race average) and its
-companion flag `or_missing` stay as 2b built them: the zero-imputation plus
-flag is a considered missing-not-at-random strategy in its own right (an
-unrated horse is a distinct population, not a value to be guessed), not
-merely an encoding workaround, so there is no clear case for replacing it
-with XGBoost's native missing-value handling here. `days_LTO_log` also
-carries over unchanged; a tree's splits are invariant to a monotonic
-transform of a single feature; keeping the log form costs nothing and
-keeps this paper's training pseudo-$R^2$
-(`r sprintf("%.5f", model_3_gbt_meta$train_pl_r2)`, in-sample) on the same
-footing as paper 2b's own
-(`r sprintf("%.5f", paper2b_train_pl_r2)`, likewise in-sample).
+Two further cases keep paper 2b's own form. `or_relative` and its
+companion flag `or_missing` stay as built: the imputation is a considered
+missing-not-at-random strategy in its own right, not merely an encoding
+workaround. `days_LTO_log` also carries over unchanged, since a tree only
+asks whether a value falls above or below a threshold, and taking logs
+does not change which runners fall on which side.
 
 ## Going affinity
 
 `going_runs_prior`, `going_sr_shrunk`, `going_sr_delta` and `going_ordinal`
-are the one feature paper 2 deferred to this paper (going is a race-level
-quantity that cancels in a conditional-logit softmax unless interacted with
-a horse-level term; a tree needs no such interaction). They are built from
-each horse's full cross-surface career history, strictly before today's
-race, in `R/build_going_features.R`.
+are the one feature paper 2 deferred to this paper — going is a race-level
+quantity that cancels in a conditional-logit softmax unless interacted
+with a horse-level term, and a tree needs no such interaction. They are
+built from each horse's full cross-surface career history, strictly before
+today's race.
 
 Today's going is `r sprintf("%.1f", pct_standard_train)`% "Standard" across
 the `r format(n_races_p3_train, big.mark = ",")` training races
@@ -161,32 +160,27 @@ a preference for today's specific going in any finer sense; with going this
 close to constant across the training data, there is little room for a
 finer sense to be estimated from it.
 
-`going_sr_shrunk` is the horse's win rate in today's going bucket, shrunk
-toward its own overall career win rate `career_sr` with prior weight
-$m = 5$: $(\text{wins}_{\text{bucket}} + m \cdot \text{career\_sr}) /
-(\text{runs}_{\text{bucket}} + m)$. $m = 5$ is a judgement call, not derived
-from the data, and is not tuned. `going_sr_delta` is
-`going_sr_shrunk` minus `career_sr` — the term that separates going
-affinity from general ability, since the raw bucket rate alone would partly
-proxy what `or_relative` already carries. `going_sr_delta` is exactly zero
-by construction whenever every one of a horse's prior runs falls in the
-same going bucket as today's: the bucket win rate and the career win rate
-are then identical, so the shrinkage formula returns `career_sr` unchanged.
-That accounts for `r sprintf("%.1f", pct_delta_zero)`% of the
+A horse with very few prior runs on today's kind of going has an
+unreliable win rate on it, so the figure used, `going_sr_shrunk`, is a
+blend of that rate and the horse's overall career rate — weighted toward
+the career rate when the horse has run few times on this going, and
+toward the observed rate as those runs accumulate:
+$(\text{wins}_{\text{bucket}} + m \cdot \text{career\_sr}) /
+(\text{runs}_{\text{bucket}} + m)$, with $m = 5$ a judgement call, not
+derived from the data or tuned. `going_sr_delta` is that shrunk rate minus
+the career rate, the term that separates going affinity from general
+ability. `going_sr_delta` is exactly zero by
+construction whenever every one of a horse's prior runs falls in the same
+going bucket as today's (`r sprintf("%.1f", pct_delta_zero)`% of the
 `r format(n_delta_defined, big.mark = ",")` training runner-rows with a
-defined `going_sr_delta`.
-
-`going_sr_delta` is undefined (`NA`) for a horse with no prior run in
-today's bucket — including a true debut, where all three horse-level
-columns are `NA` — in
-`r sprintf("%.2f", going_na_table$pct_na[going_na_table$split == "train"])`%
-of training runner-rows and
+defined value), and undefined for a horse with no prior run in today's
+bucket, including a true debut
+(`r sprintf("%.2f", going_na_table$pct_na[going_na_table$split == "train"])`%
+of training runner-rows,
 `r sprintf("%.2f", going_na_table$pct_na[going_na_table$split == "test"])`%
-of test runner-rows. These values are left missing rather than imputed:
-XGBoost learns a default split direction for each tree node from the
-training data and routes every missing value that way, so the fact that a
-horse has no relevant record is available to the model as information in
-its own right, rather than being masked by a stand-in value.
+of test). These values are left missing rather than imputed: the model
+learns a default routing direction for a missing value at each split,
+rather than being given a stand-in value in its place.
 
 ```{r}
 #| label: tbl-going-decile
@@ -207,8 +201,7 @@ in mean field size — the ten deciles' mean field sizes range from
 `r sprintf("%.1f", field_size_range[1])` to
 `r sprintf("%.1f", field_size_range[2])` runners, which rules out a smaller
 or larger field as the mechanical explanation. A race-clustered bootstrap
-of the win-rate difference between decile 10 and decile 1 —
-`R/gbt_results.R::bootstrap_decile_difference()`, the same
+of the win-rate difference between decile 10 and decile 1 — the same
 resample-races-with-replacement design as the ROI-difference bootstrap
 used throughout this series, races resampled `r going_decile_bootstrap$n_boot`
 times with seed 42, the decile assignment and both win rates recomputed

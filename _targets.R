@@ -1081,18 +1081,24 @@ list(
       imp
     }
   ),
-  # Top-10 (by the SELECTED model's own ranking) gain importance, both
-  # models side by side.
+  # Top-10-by-both gain importance, side by side: each model's own top 10,
+  # full-joined on feature name (union, not a fixed 24-row frame padded with
+  # NA for whichever features one model's own top 10 doesn't reach -- an
+  # earlier version joined the selected model's top 10 against the grid
+  # maximum's FULL 24-feature importance table, producing 14 all-NA rows
+  # for features outside the maximum's own top 10). In practice the two
+  # top-10 sets are identical (same 10 features, different order), so this
+  # returns exactly 10 rows.
   tar_target(
     gbt_gridmax_vs_selected_importance,
     dplyr::full_join(
       gbt_gain_importance_train |> dplyr::slice_head(n = 10) |>
         dplyr::select(Feature, selected_rank = rank, selected_gain = Gain),
-      gbt_gridmax_gain_importance |>
+      gbt_gridmax_gain_importance |> dplyr::slice_head(n = 10) |>
         dplyr::select(Feature, gridmax_rank = rank, gridmax_gain = Gain),
       by = "Feature"
     ) |>
-      dplyr::arrange(selected_rank)
+      dplyr::arrange(dplyr::coalesce(selected_rank, gridmax_rank))
   ),
 
   # Paper 2b's own training pl_r2 (k=3), for the in-sample comparison table.

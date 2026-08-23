@@ -42,13 +42,13 @@ tar_config_set(store = file.path(
 tar_load(c(
   # data and scope (_01)
   qualifying_runners, runners_model_ready, test_predictions_2b, ranking_eval_runners_2b,
-  model_2b_exploded_draw_final, going_decile_bootstrap,
+  going_decile_bootstrap,
   # data / tuning (training side; _02, _03)
   gbt_train_data, gbt_test_data, gbt_race_folds,
   gbt_tuning_results, gbt_selected_config,
   model_3_gbt_path, model_3_gbt_meta,
   gbt_gain_importance_train, gbt_perm_importance_within_train,
-  gbt_perm_importance_across_train, paper2b_train_pl_r2,
+  gbt_perm_importance_across_train,
   # tie-break evidence: grid-maximum refit (_03)
   gbt_gridmax_config, model_3_gridmax_path, gbt_gridmax_meta,
   gbt_gridmax_gain_importance, gbt_gridmax_vs_selected_importance,

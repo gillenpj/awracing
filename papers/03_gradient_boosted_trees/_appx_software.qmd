@@ -1,5 +1,41 @@
 # Appendix B: Software and reproducibility {#sec-appx-software .appendix}
 
-Placeholder — following the papers 1/2a/2b pattern: the software stack,
-plus this paper's exception ({xgboost} used directly for the custom
-Plackett–Luce objective, not via {tidymodels}/{parsnip}). To be drafted.
+The software stack is the same as papers 1, 2a and 2b's, described in full
+in paper 1's Appendix B: R, the tidyverse, `{DBI}`/`{RMariaDB}` for the
+Smartform database, `{renv}` for package pinning, and Quarto for
+typesetting, all run as a single reproducible pipeline in which each step
+is cached and only rebuilt when its own inputs change. The one addition
+here is `{xgboost}`, used directly rather than through
+`{tidymodels}`/`{parsnip}`: fitting under a custom objective, a custom
+evaluation metric, and race-grouping information together has no
+`{parsnip}` interface, the same kind of exception papers 1 and 2 make for
+`{mlogit}`.
+
+## Tuning grid: budget and implementation
+
+The full factorial grid, before any reduction, also varies
+`colsample_bytree` over two values —
+`r n_144_grid` points under the same five-fold cross-validation, projected
+at roughly 12.9 hours, above this project's working limit of about 12
+hours for a single run. Fixing `colsample_bytree` at its lower value alone
+cut the grid to the `r n_grid_points` points actually run, projected at
+roughly 6.5 hours; that was enough, and the further rungs available (also
+fixing `subsample`, dropping the lowest `eta`, or narrowing
+`min_child_weight`) were not needed. The measured cost came in higher than
+projected: cross-validation summed to `r sprintf("%.1f", total_cv_hours)`
+hours across the `r n_grid_points` points, meaning the un-reduced grid
+would have taken roughly twice as long — the cut was necessary, not a
+precaution that turned out unneeded.
+
+Most of that time is spent evaluating the custom objective and its
+matching evaluation metric, once each per boosting round: every round
+needs the gradient/Hessian pair for the next tree and the held-out score
+for early stopping, and this dominates the per-round cost, with building
+the trees themselves comparatively cheap.
+
+No grid point diverged. A guard logs, rather than silently discards, any
+configuration whose scores run away during boosting; it recorded zero
+such events across all `r n_grid_points` points.
+
+Every one of the top ten points by fold-mean score
+`r if (top10_all_subsample_07) "uses subsample = 0.7" else "does not share one subsample value"`.
