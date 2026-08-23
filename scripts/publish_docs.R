@@ -56,6 +56,27 @@ for (src in names(papers)) {
   }
 }
 
+# Supplementary material — standalone reference documents copied straight
+# from notes/, not produced by any paper's render. The source filename
+# carries a _CLEAN suffix as a working label only (metadata- and
+# footer-stripped version of the corporate-templated original); the
+# published slug must never carry that suffix.
+supplements <- list(
+  list(
+    src  = file.path(root, "notes", "Notes_on_Tree-based_Methods_CLEAN.pdf"),
+    dest = file.path(root, "docs", "paper3", "notes-on-tree-based-methods.pdf"),
+    label = file.path("docs", "paper3", "notes-on-tree-based-methods.pdf")
+  )
+)
+for (s in supplements) {
+  if (file.exists(s$src)) {
+    file.copy(s$src, s$dest, overwrite = TRUE)
+    copied <- c(copied, s$label)
+  } else {
+    missing <- c(missing, s$src)
+  }
+}
+
 if (length(copied)) {
   cat("Published:\n"); cat(paste0("  ", copied), sep = "\n"); cat("\n")
 }
