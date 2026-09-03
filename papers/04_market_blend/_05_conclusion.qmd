@@ -1,0 +1,24 @@
+# Conclusion {#sec-conclusion}
+
+```{r}
+#| label: p4-conc-setup
+#| include: false
+c_pool_B1 <- cf(p4_arm_grid_pooled, "B1", "mod")
+c_pool_B2 <- cf(p4_arm_grid_pooled, "B2", "mod")
+```
+
+Blended with the starting price on `r comma(n_common)` held-out races,
+the model contributes `r fmt_b(c_pool_B1$estimate)` and
+`r fmt_b(c_pool_B2$estimate)`.
+
+That raises the bar for paper 5. Paper 3 pointed at a learned
+representation of a horse's run history in place of hand-built summaries
+of it. If the settled market already prices what these features carry,
+compressing the same histories more efficiently produces a model that is
+already priced, however good the compression. The representation has to
+extract something the summaries discard *and* that the market has not
+itself inferred.
+
+Anyone else using Smartform should note @sec-appx-provenance: the two
+forecast-price columns disagree on a third of rows, and the
+documentation gives no reason why.

@@ -1,0 +1,102 @@
+# Appendix A: Forecast-price provenance in Smartform {#sec-appx-provenance .appendix}
+
+```{r}
+#| label: p4-provenance-setup
+#| include: false
+
+pf <- p4_provenance_facts
+
+amd_arch <- p4_amendment2$coefficients |>
+  dplyr::filter(stringr::str_detect(term, "mkt_C"))
+amd_feed <- p4_amendment2$coefficients |>
+  dplyr::filter(stringr::str_detect(term, "mkt_A"))
+amd_lr_arch <- p4_amendment2$lr |>
+  dplyr::filter(stringr::str_detect(contrast, "feed only"))
+
+corr_ac <- p4_market_correlations |>
+  dplyr::filter(x == "log_p_mkt_A", y == "log_p_mkt_C")
+
+feed_alone <- p4_amendment2$feed_only
+arch_alone <- p4_amendment2$archive_only
+```
+
+This appendix is for anyone else reusing Smartform. It records a
+divergence between two columns the documentation describes identically.
+
+Smartform holds a forecast price in two places. `daily_runners` carries
+the forthcoming day's racecards, available from the night before racing;
+`historic_runners` is the results archive, written the following day with
+the previous day's results. On this machine the daily tables update at
+00:30 and the historic tables at 05:30. Arm A of this paper takes the
+daily value, arm B the starting price from the archive, and arm C the
+archive's own forecast price.
+
+The Smartform manual [@smartform2011] documents both forecast columns
+identically, as the forecast price from the racecard. It gives no reason
+for the two to differ, and it predates the end of this paper's data
+window by four years.
+
+They do differ. On the `r comma(pf$n_compared)` training-split runner
+rows carrying both values and a starting price, the two disagree on
+`r scales::percent(pf$pct_disagreeing, accuracy = 0.1)` — typically by
+one or two steps of the bookmakers' fractional ladder, 10/1 against 12/1
+rather than anything wholesale. Where they disagree the archived value
+sits closer to the starting price: mean absolute log distance
+`r sprintf("%.3f", pf$mean_dist_arch)` against
+`r sprintf("%.3f", pf$mean_dist_feed)`, with
+`r scales::percent(pf$pct_archive_closer_to_sp, accuracy = 0.1)` of the
+`r comma(pf$n_disagreeing)` disagreeing rows moving toward it.
+
+Fitted alone on the test universe, the archived value is the better
+predictor of the two.
+
+```{r}
+#| label: tbl-provenance-alone
+dplyr::bind_rows(feed_alone, arch_alone) |>
+  dplyr::transmute(
+    Column = dplyr::if_else(stringr::str_detect(price_source, "feed"),
+                            "Pre-race (daily)", "Archived (historic)"),
+    `$\\beta_{\\text{mkt}}$` = fmt_b(estimate),
+    SE = fmt_b(std_error),
+    `$z$` = fmt_z(z),
+    `Log-likelihood` = sprintf("%.1f", logLik),
+    `McFadden $R^2$` = fmt_r2(mcfadden_r2)
+  ) |>
+  knitr::kable(caption = "Each forecast-price column fitted alone as the market term, same races.")
+```
+
+Carrying both in one conditional logit, the archived value adds to the
+pre-race one: a likelihood-ratio statistic of
+`r sprintf("%.1f", amd_lr_arch$lr_stat)` on `r amd_lr_arch$df` degree of
+freedom against the pre-race-only model. The two columns correlate within
+race at `r sprintf("%.3f", corr_ac$corr_within_race)`, so that fit is
+identified off little residual variation and its individual coefficients
+are unstable — the pre-race coefficient turns negative
+(`r fmt_b(amd_feed$estimate)`) while the same column fitted alone is
+strongly positive (`r fmt_b(feed_alone$estimate)`). Nothing here rests on
+that sign.
+
+Two explanations remain live, and they bias $\beta_{\text{mod}}$ in
+opposite directions.
+
+* **A later racecard edition.** Forecast prices are revised between
+  editions, the daily feed holds an earlier one and the archive a later
+  one. Arm C is then contaminated by information that accrued after arm A
+  was available.
+* **The same price with transcription noise removed.** The daily value
+  carries error, the archive is the corrected version, and the two differ
+  by noise rather than timing. Arm A then carries an errors-in-variables
+  attenuation that inflates $\beta_{\text{mod}}$.
+
+The design does not separate them. Both predict exactly what is observed:
+a later price knows more, and a de-noised price also predicts better and
+sits closer to the starting price once the noisy one is conditioned on.
+The manual, documenting both as the same racecard price, gives no support
+for the first over the second. We do not claim to have resolved it, and
+@sec-discussion carries the consequence — that the arm A to arm C gap is
+an upper bound on the attenuation rather than an estimate of it.
+
+For reuse: take the forecast price from `daily_runners` wherever a
+verifiably pre-race value is needed, expecting it to be absent before
+March 2008 and patchy for a year after (@sec-data). The `historic_runners`
+column is written after the race and does not reproduce it.

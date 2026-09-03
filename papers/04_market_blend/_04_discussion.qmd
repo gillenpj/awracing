@@ -1,0 +1,68 @@
+# Discussion and limitations {#sec-discussion}
+
+```{r}
+#| label: p4-disc-setup
+#| include: false
+
+d_pool_B1 <- cf(p4_arm_grid_pooled, "B1", "mod")
+d_pool_B2 <- cf(p4_arm_grid_pooled, "B2", "mod")
+d_a_A1    <- cf(p4_arm_grid, "A1", "mod")
+d_mkt_A   <- mktonly(p4_arm_grid, "A")
+d_mkt_B   <- mktonly(p4_arm_grid, "B")
+
+best_a_blend <- max(p4_arm_grid$coefficients$mcfadden_r2[
+  stringr::str_starts(p4_arm_grid$coefficients$arm, "A")])
+
+att_pooled <- p4_attenuation |> dplyr::filter(sample == "pooled")
+
+trade_lo <- d_pool_B1$estimate
+trade_hi <- d_a_A1$estimate
+```
+
+Papers 1 to 3 could not tell a model the market dominates from one that
+is partly complementary. On the starting price it is the first:
+everything the model's features carry is, so far as this construction
+detects, already in the price. That is bounded rather than absolute — a
+contribution up to
+`r fmt_b(max(d_pool_B1$conf_high, d_pool_B2$conf_high))` sits inside the
+interval. What the result rules out is a contribution of the size the
+same models produce against a forecast price.
+
+## Limitations
+
+**The forecast price is a published opinion, not a traded price.** It is
+printed in a racecard, no money stands behind it, and nobody is exposed
+if it is wrong. Fitted alone its market coefficient is
+`r fmt_b(d_mkt_A$estimate)`, below 1, meaning the likelihood wants it
+flattened — a price making sharper distinctions between runners than
+outcomes justify. That is measurement error, and it leaves signal the
+market should have claimed for the model term to pick up. So arm A
+measures the model against a published opinion, not against a market.
+The trading-relevant quantity is the model's value against an early
+*exchange* price, traded and money-backed. It lies between the two
+figures this paper reports — `r sprintf("%.3f", trade_lo)` against the
+settled starting price and `r sprintf("%.3f", trade_hi)` against the
+forecast price — and Smartform holds no exchange prices at any
+timestamp, so this dataset cannot place it.
+
+**A large coefficient against a weak price is not the model approaching
+the market.** The starting price alone reaches a McFadden pseudo-$R^2$ of
+`r fmt_r2(d_mkt_B$mcfadden_r2)` on test-A; the best blend built on the
+forecast price reaches `r fmt_r2(best_a_blend)`, and the forecast price
+alone `r fmt_r2(d_mkt_A$mcfadden_r2)`. Adding the model to the forecast
+price helps a great deal and still leaves it well short of the starting
+price with no model attached.
+
+**The size of the measurement error is not known.** The archived
+forecast price is cleaner than the pre-race one, and possibly also later
+(@sec-appx-provenance). The gap between the two arms — pooled,
+`r fmt_b(att_pooled$gap_A_minus_C[1])` and
+`r fmt_b(att_pooled$gap_A_minus_C[2])`, about
+`r scales::percent(mean(att_pooled$pct_of_A_that_is_gap), accuracy = 1)`
+of arm A — therefore shows that arm A's coefficient is too high, without
+fixing by how much.
+
+**One racing code, one surface, one decade.** UK All-Weather Flat
+handicaps at four courses, 2006 to 2015. Nothing here establishes the
+result holds for turf, for jumps, for another jurisdiction, or for
+today's market.

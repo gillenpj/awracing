@@ -1,0 +1,317 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
+## Database: smartform 
+
+### Tables in schema
+       TABLE_NAME TABLE_ROWS ENGINE
+      daily_races      99848 MyISAM
+    daily_runners    1064594 MyISAM
+   historic_races     150529 MyISAM
+ historic_runners    1718100 MyISAM
+         my_races       8453 InnoDB
+       my_runners      83159 InnoDB
+
+### Every column named like a price / forecast / odds, anywhere in the schema
+       TABLE_NAME                 COLUMN_NAME COLUMN_TYPE IS_NULLABLE
+      daily_races              last_winner_sp    char(10)         YES
+      daily_races      last_winner_sp_decimal  float(8,2)         YES
+      daily_races last_winner_betting_ranking         int         YES
+    daily_runners              forecast_price    char(10)         YES
+    daily_runners      forecast_price_decimal  float(8,2)         YES
+   historic_races                speed_rating         int         YES
+   historic_races           winning_time_disp varchar(20)         YES
+   historic_races          standard_time_disp varchar(20)         YES
+ historic_runners                speed_rating         int         YES
+ historic_runners           speed_rating_type varchar(80)         YES
+ historic_runners              forecast_price    char(10)         YES
+ historic_runners      forecast_price_decimal  float(8,2)         YES
+ historic_runners              starting_price    char(10)         YES
+ historic_runners      starting_price_decimal  float(8,2)         YES
+ historic_runners                betting_text        text         YES
+ historic_runners         position_in_betting     tinyint         YES
+       my_runners                          sp       float         YES
+ COLUMN_DEFAULT COLUMN_COMMENT
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+           <NA>               
+
+### Full column list for historic_runners
+ ORDINAL_POSITION            COLUMN_NAME  COLUMN_TYPE IS_NULLABLE
+                1              runner_id          int          NO
+                2                race_id          int          NO
+                3                   name varchar(255)          NO
+                4           foaling_date         date          NO
+                5                 colour  varchar(20)          NO
+                6     distance_travelled          int         YES
+                7           form_figures  varchar(80)         YES
+                8                 gender      char(1)         YES
+                9                    age      tinyint         YES
+               10                   bred      char(3)         YES
+               11           cloth_number      tinyint         YES
+               12           stall_number      tinyint         YES
+               13      num_fences_jumped      tinyint         YES
+               14          long_handicap          int         YES
+               15           how_easy_won          int         YES
+               16        in_race_comment         text         YES
+               17        official_rating          int         YES
+               18   official_rating_type  varchar(80)         YES
+               19           speed_rating          int         YES
+               20      speed_rating_type  varchar(80)         YES
+               21       private_handicap          int         YES
+               22  private_handicap_type  varchar(80)         YES
+               23           trainer_name  varchar(80)         YES
+               24             trainer_id          int         YES
+               25             owner_name  varchar(80)         YES
+               26               owner_id          int         YES
+               27            jockey_name  varchar(80)         YES
+               28              jockey_id          int         YES
+               29           jockey_claim          int         YES
+               30               dam_name  varchar(80)         YES
+               31                 dam_id          int         YES
+               32              sire_name  varchar(80)         YES
+               33                sire_id          int         YES
+               34          dam_sire_name  varchar(80)         YES
+               35            dam_sire_id          int         YES
+               36         forecast_price     char(10)         YES
+               37 forecast_price_decimal   float(8,2)         YES
+               38         starting_price     char(10)         YES
+               39 starting_price_decimal   float(8,2)         YES
+               40           betting_text         text         YES
+               41    position_in_betting      tinyint         YES
+               42        finish_position      tinyint         YES
+               43       amended_position      tinyint         YES
+               44             unfinished  varchar(30)         YES
+               45        distance_beaten   float(8,2)         YES
+               46           distance_won   float(8,2)         YES
+               47 distance_behind_winner   float(8,2)         YES
+               48            prize_money   float(8,2)         YES
+               49               tote_win   float(8,2)         YES
+               50             tote_place   float(8,2)         YES
+               51         days_since_ran          int         YES
+               52      last_race_type_id          int         YES
+               53         last_race_type  varchar(80)         YES
+               54   last_race_beaten_fav          int         YES
+               55          weight_pounds          int         YES
+               56         penalty_weight          int         YES
+               57            over_weight          int         YES
+               58              tack_hood   tinyint(1)         YES
+               59             tack_visor   tinyint(1)         YES
+               60          tack_blinkers   tinyint(1)         YES
+               61        tack_eye_shield   tinyint(1)         YES
+               62         tack_eye_cover   tinyint(1)         YES
+               63       tack_cheek_piece   tinyint(1)         YES
+               64         tack_pacifiers   tinyint(1)         YES
+               65      tack_tongue_strap   tinyint(1)         YES
+               66              loaded_at    timestamp          NO
+ COLUMN_COMMENT
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+
+### Full column list for historic_races
+ ORDINAL_POSITION        COLUMN_NAME  COLUMN_TYPE IS_NULLABLE COLUMN_COMMENT
+                1            race_id          int          NO               
+                2         meeting_id          int          NO               
+                3       meeting_date         date          NO               
+                4             course varchar(255)          NO               
+                5         conditions varchar(255)          NO               
+                6          race_name varchar(255)          NO               
+                7   race_abbrev_name  varchar(80)          NO               
+                8       race_type_id          int          NO               
+                9          race_type  varchar(80)          NO               
+               10           race_num      tinyint          NO               
+               11              going  varchar(80)         YES               
+               12          direction  varchar(80)         YES               
+               13              class      tinyint         YES               
+               14     draw_advantage  varchar(80)         YES               
+               15         num_fences      tinyint         YES               
+               16           handicap   tinyint(1)         YES               
+               17        all_weather   tinyint(1)         YES               
+               18             seller   tinyint(1)         YES               
+               19            claimer   tinyint(1)         YES               
+               20         apprentice   tinyint(1)         YES               
+               21             maiden   tinyint(1)         YES               
+               22            amateur   tinyint(1)         YES               
+               23        num_runners      tinyint         YES               
+               24      num_finishers      tinyint         YES               
+               25             rating          int         YES               
+               26         group_race          int         YES               
+               27            min_age      tinyint         YES               
+               28            max_age      tinyint         YES               
+               29     distance_yards          int         YES               
+               30        added_money   float(8,2)         YES               
+               31    official_rating          int         YES               
+               32       speed_rating          int         YES               
+               33   private_handicap          int         YES               
+               34     scheduled_time     datetime         YES               
+               35           off_time     datetime         YES               
+               36  winning_time_disp  varchar(20)         YES               
+               37  winning_time_secs  float(10,2)         YES               
+               38 standard_time_disp  varchar(20)         YES               
+               39 standard_time_secs  float(10,2)         YES               
+               40          loaded_at    timestamp          NO               
+
+### Table-level comments (may name the feed / source doc)
+[1] TABLE_NAME    TABLE_COMMENT
+<0 rows> (or 0-length row.names)
+
+### Raw value shape of forecast_price_decimal (whole table, no filters)
+                       [,1]
+n_rows        8.488542e-318
+n_null         5.436400e+04
+n_zero         0.000000e+00
+n_negative     0.000000e+00
+n_exactly_one  0.000000e+00
+n_between_0_1  0.000000e+00
+min_nonzero    1.020000e+00
+max_val        1.001000e+03
+
+### 30 most common forecast_price_decimal values (whole table)
+      v      n
+  11.00 142285
+  17.00 138555
+  13.00 133149
+  15.00 130696
+  21.00 125272
+   9.00 124292
+  26.00 111670
+  34.00  88493
+   8.00  81049
+   7.00  77745
+   6.00  66483
+   5.00  53450
+  51.00  44975
+   4.50  39767
+   5.50  38670
+   4.00  32835
+   6.50  28885
+  67.00  26787
+   7.50  22925
+   3.75  20221
+   3.50  19674
+   3.25  16606
+ 101.00  14405
+   3.00  13275
+   2.75   8988
+   8.50   8427
+   2.50   5897
+   4.33   5032
+   2.63   4798
+   2.88   4432
+
+### Same for starting_price_decimal, for comparison
+      v      n
+  21.00 102591
+  17.00 102486
+  34.00  97284
+  26.00  95867
+  15.00  87897
+  13.00  87486
+   9.00  80327
+  11.00  73731
+  51.00  61202
+   8.00  59530
+   7.00  48109
+   6.00  46561
+  67.00  44850
+   5.00  44083
+   5.50  43128
+  10.00  41303
+ 101.00  41020
+   4.50  39295
+  41.00  31627
+   6.50  30481
+   4.00  28927
+  12.00  24934
+   7.50  24925
+   3.75  21123
+   3.50  19623
+   3.25  16714
+   8.50  16268
+   3.00  15310
+  29.00  13853
+   4.33  11902
+Rscript.exe : Warning message:
+At line:1 char:353
++ ... R-4.6.0/bin/Rscript.exe"; & $R scripts/p4_schema_probe.R 2>&1 | Out-F ...
++                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning message::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+call dbDisconnect() when finished working with a connection 

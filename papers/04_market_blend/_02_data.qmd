@@ -1,0 +1,119 @@
+# Data {#sec-data}
+
+```{r}
+#| label: p4-data-setup
+#| include: false
+
+cov_split <- p4_coverage$by_split
+cov_year  <- p4_coverage$by_year
+or_src    <- p4_overround$by_source
+or_field  <- p4_overround$by_field_size
+comp_fit  <- p4_compression$fit_summary
+
+arch_or <- or_src |> dplyr::filter(source == "Archived forecast")
+sp_or   <- or_src |> dplyr::filter(source == "Starting price")
+
+feed_test  <- cov_split$feed_pct[cov_split$split == "test"]
+feed_train <- cov_split$feed_pct[cov_split$split == "train"]
+
+acct <- p4_common$accounting
+
+fs_lo <- min(or_field$field_size)
+fs_hi <- max(or_field$field_size)
+at    <- function(v, fs) v[or_field$field_size == fs]
+grad_span  <- function(v) at(v, fs_hi) - at(v, fs_lo)
+grad_ratio <- grad_span(or_field$median_archive) / grad_span(or_field$median_sp)
+```
+
+The race universe is unchanged from papers 2b and 3: Class 2–5
+All-Weather Flat handicaps at Kempton, Lingfield, Southwell and
+Wolverhampton, 2006-01-01 to 2015-10-14, non-maiden, four to sixteen
+starters, with the same chronological 70/30 train/test split at
+2012-12-30. Paper 1 sets out the scope decisions. Only the price data is
+new, and only that is covered here. Everything distributional below is
+training-split; coverage is reported on both splits.
+
+## Coverage
+
+A price is usable if present and strictly greater than 1. The pre-race
+forecast additionally requires its feed row to have been written before
+the meeting date.
+
+```{r}
+#| label: tbl-coverage-year
+cov_year |>
+  dplyr::transmute(
+    Year = year,
+    Races = comma(races),
+    `Runner rows` = comma(runner_rows),
+    `Archived forecast` = scales::percent(archive_pct, accuracy = 0.1),
+    `Pre-race forecast` = scales::percent(feed_pct, accuracy = 0.1),
+    `Starting price` = scales::percent(sp_pct, accuracy = 0.1)
+  ) |>
+  knitr::kable(caption = "Usable-price coverage by year, over all in-scope runner rows.")
+```
+
+The two forecast prices fail in opposite places. The archived value is
+complete from 2008 and thin only in 2006, at
+`r scales::percent(cov_year$archive_pct[cov_year$year == 2006], accuracy = 0.1)`.
+The pre-race value does not exist before March 2008, when Smartform's
+daily feed begins, so training-split coverage is
+`r scales::percent(feed_train, accuracy = 0.1)`. On the test split, where
+this paper fits, it is `r scales::percent(feed_test, accuracy = 0.1)`.
+The pre-race value is therefore not a drop-in replacement for the
+archived one elsewhere in the series.
+
+Races are dropped whole, so race-level completeness governs the fit.
+
+```{r}
+#| label: tbl-intersection
+acct |>
+  dplyr::transmute(
+    `Price set` = price_set,
+    `Races complete` = comma(races_complete),
+    `Of` = comma(races_offered),
+    `%` = scales::percent(pct_complete, accuracy = 0.01),
+    `Lost` = races_lost
+  ) |>
+  knitr::kable(caption = "Race-level completeness over the test universe, and the intersection every arm is fitted on.")
+```
+
+The intersection costs one race, lost to the pre-race forecast. Every arm
+is fitted on the remaining `r comma(n_common)`.
+
+## Overround and shape
+
+```{r}
+#| label: tbl-overround
+or_src |>
+  dplyr::transmute(
+    Source = source,
+    Races = comma(races),
+    `25th pct` = sprintf("%.3f", p25),
+    Median = sprintf("%.3f", median),
+    `75th pct` = sprintf("%.3f", p75),
+    IQR = sprintf("%.3f", iqr)
+  ) |>
+  knitr::kable(caption = sprintf("Race overround (sum of 1/price over the field) by price source. Training split, and the %s races carrying a complete set of all three prices — the pre-race forecast does not exist before March 2008, so putting the three on their own larger sets would not compare like with like.", comma(or_src$races[1])))
+```
+
+Median margins are similar — `r sprintf("%.3f", arch_or$median)` for the
+archived forecast against `r sprintf("%.3f", sp_or$median)` for the
+starting price — but the forecast prices are more dispersed, with an
+interquartile range of `r sprintf("%.3f", arch_or$iqr)` against
+`r sprintf("%.3f", sp_or$iqr)`. The margin also widens with field size,
+from `r sprintf("%.3f", at(or_field$median_archive, fs_lo))` at
+`r fs_lo` runners to
+`r sprintf("%.3f", at(or_field$median_archive, fs_hi))` at `r fs_hi`, the
+largest field with enough races in this set — a gradient `r scales::percent(grad_ratio - 1, accuracy = 1)` steeper than
+the starting price's.
+
+Regressing the within-race centred log archived-forecast probability on
+the within-race centred log starting-price probability gives a slope of
+`r sprintf("%.3f", comp_fit$slope)`
+(95% CI `r sprintf("[%.3f, %.3f]", comp_fit$conf_low, comp_fit$conf_high)`,
+`r comma(comp_fit$n_runners)` runners in `r comma(comp_fit$n_races)`
+training races). Below 1 means the forecast price separates the field
+less than the starting price does: it spreads runners over a narrower
+range of probabilities, making favourites too long and longshots too
+short.

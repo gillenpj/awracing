@@ -23,7 +23,8 @@ Stop and ask only when one of these is true:
 
 Verification gates are not a reason to stop; they are the reason not to.
 Where a gate exists — `scripts/verify_pl_objective.R`,
-`scripts/verify_going_features.R`, `scripts/verify_rebuild.R` — proceed
+`scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
+`scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R` — proceed
 and let the gate catch you. If a gate fails, fix it and report. Do not
 ask permission to fix it.
 
@@ -39,7 +40,7 @@ Two calibration examples (2026-08-20):
 
 Statistical models of UK All-Weather Flat handicap outcomes on the
 Smartform database. Each paper changes one thing and reports the result
-against the previous paper and against the betting market. All four are
+against the previous paper and against the betting market. All five are
 complete and published.
 
 - **Paper 1 — Replicating Owen (2019) on UK AW Flat handicaps,
@@ -74,12 +75,30 @@ complete and published.
   lever. Tuning-grid provenance:
   `papers/03_gradient_boosted_trees/TUNING_PROVENANCE.md`.
   Live: <https://gillenpj.github.io/awracing/paper3/>.
+- **Paper 4 — The marginal value of a model over the market.** Changes
+  no model. Releases the constraint that market data stays out, and asks
+  whether the model adds anything *given* the price rather than whether
+  it beats it, via a two-stage conditional logit (Benter) with both
+  coefficients free. Reuses papers 2b and 3's stored test predictions;
+  neither refitted. Against the settled starting price the model adds
+  nothing distinguishable — pooled `b_mod` 0.068 (2b) and 0.039 (GBT)
+  over 2,182 races, 95% intervals reaching no higher than 0.204. Against
+  the pre-race racecard forecast price it adds substantially (1.037 and
+  1.026 on the earlier test half, 0.746 and 0.723 on the later). Reading:
+  of the two explanations papers 1–3 could not separate — the market
+  knows strictly more, or the two know overlapping but different things —
+  the settled market knows strictly more, and the model's value sits in
+  the interval between an early price and the off. Own pipeline and
+  store (`_targets_p4.R` / `_targets_p4`). Pre-registration:
+  `papers/04_market_blend/PRE_REGISTRATION.md`.
+  Live: <https://gillenpj.github.io/awracing/paper4/>.
 
 ## Standing conventions
 
 - **Verification gates are the reason not to stop, not a reason to.**
   Where a gate exists (`scripts/verify_pl_objective.R`,
-  `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`),
+  `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
+  `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`),
   proceed and let it catch mistakes; fix and report, don't ask first
   (see "Default to proceeding" above).
 - **Reproducibility checks need two fresh processes, not two calls in
@@ -177,7 +196,7 @@ complete and published.
   objective plus a custom eval metric plus group info together. Same
   kind of exception as the `{mlogit}` route in papers 1/2 (see
   "Modelling notes" below).
-- **Documented exception (paper 4, planned): `{torch}` and `{luz}` used
+- **Documented exception (paper 6, planned): `{torch}` and `{luz}` used
   directly, not via `{tidymodels}`/`{parsnip}`.** `{tidymodels}` has no
   interface for a custom Plackett–Luce objective over variable-length,
   padded sequences — the same class of gap the `{mlogit}` and
@@ -208,6 +227,22 @@ complete and published.
     objective as 2b. Rendered by
     `tar_quarto(paper_3_gradient_boosted_trees)`. Tuning-grid
     provenance in `TUNING_PROVENANCE.md`.
+  - `papers/04_market_blend/` — **paper 4, complete and published.**
+    Two-stage conditional-logit blend of a market price and a model
+    probability. Built by its own pipeline, `_targets_p4.R`, into its own
+    store, `_targets_p4` — NOT by `_targets.R`. Rendered by
+    `tar_quarto(paper_4_market_blend)` inside that pipeline. Run it with
+    `targets::tar_make(script = "_targets_p4.R", store = "_targets_p4")`.
+    Its qmd setup chunk passes `store =` to each `tar_load()` rather than
+    calling `tar_config_set()`, so it never writes the root
+    `_targets.yaml` that papers 1–3 share. Pre-registration in
+    `PRE_REGISTRATION.md`, stage report in `P4_REPORT.md`. The P4-0 audit
+    working files — the evidence base for Appendix A — are in
+    `papers/04_market_blend/audit/` with their own README; they are one-off
+    analysis, not on the `{targets}` graph. The P4-0 gate itself stays at
+    `scripts/p4_audit_forecast_price.R`, because
+    `scripts/verify_p4_data_targets.R` and the paper-4 report target both
+    read the `.rds` it writes.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -216,7 +251,8 @@ complete and published.
 - `docs/` — GitHub Pages publishing root. **Committed.**
   - `docs/index.html` — landing page, one entry per paper; each entry
     links the HTML and a "— PDF" link to `paperN/index.pdf`.
-  - `docs/paper1/`, `docs/paper2a/`, `docs/paper2b/`, `docs/paper3/` —
+  - `docs/paper1/`, `docs/paper2a/`, `docs/paper2b/`, `docs/paper3/`,
+    `docs/paper4/` —
     rendered `index.html` + `index.pdf`, copied from the matching
     `papers/*/_output/` after each render.
   - Pages source is set to `main` branch, `/docs` folder. There is
@@ -267,6 +303,16 @@ complete and published.
     conventions" above). Run after any change to `R/pl_objective.R`.
   - `verify_going_features.R` — standing gate on the going-affinity
     feature builder. Run after any change to `R/build_going_features.R`.
+  - `verify_p4_market_probs.R` — standing gate on paper 4's
+    market-probability helper: asserts `normalise_overround()` reproduces
+    the stored `win_market` of `test_predictions_3` exactly, so paper 4
+    uses the series' existing overround adjustment rather than a second
+    implementation of it. Run after any change to it or to
+    `R/scoring.R::build_test_predictions()`.
+  - `verify_p4_data_targets.R` — standing gate tying paper 4's
+    data-section targets to the frozen P4-0 audit, and asserting the
+    distributional summaries touch no test race. Run after any change to
+    `R/p4_data_summaries.R`.
   - `publish_docs.R` — the publish step. After `tar_make()`, copies
     each paper's `_output/index.{html,pdf}` into `docs/paperN/`
     (mapping table at the top of the file; add a row per new paper).
@@ -485,6 +531,38 @@ interaction; see paper 3's own data section for how it was built
 and what was found. Built in `R/build_extended_features.R` and
 `R/build_going_features.R`.
 
+### Market data — scoped, not excluded
+Post-race columns remain excluded everywhere, without exception.
+
+Settled, and paper 4 depends on it. Market columns
+(`forecast_price_decimal`, starting price) are excluded from the
+**model feature set** in every paper of the series, so the papers stay
+internally comparable. Paper 4 uses them as a second-stage input to the
+*evaluation* — the blend's market term — and not as model features;
+releasing that constraint is the point of the paper, and the model it
+blends is still market-blind.
+
+Neither column is leakage. Both are pre-race.
+`forecast_price_decimal` is published the evening before and is
+the price available at bet time in live deployment. Starting
+price is already used throughout the series to build the
+discounted-Harville market baseline and to price the backtests.
+
+### Which forecast-price column to use
+Smartform holds a forecast price in two places and they are **not**
+interchangeable: they disagree on about a third of in-scope runner rows.
+`daily_runners` carries the forthcoming day's racecards and is written
+the night before racing; `historic_runners` is the results archive,
+written the following day. Where a verifiably pre-race price is needed,
+take it from `daily_runners` and require the row to have been written
+before the meeting date — expect it to be absent before March 2008 and
+patchy for a year after. `historic_runners.forecast_price_decimal` is
+written after the race and does not reproduce the pre-race value; the
+documentation gives no reason for the difference. Evidence and the two
+competing explanations are in paper 4's Appendix A
+(`papers/04_market_blend/_appx_provenance.qmd`) — do not restate them,
+point at it.
+
 ## Pipeline / feature engineering notes
 
 ### `tarchetypes` auto-wiring of Quarto includes
@@ -597,48 +675,25 @@ observations are documented in §4.3 of paper 1.
   positive as plausibly indistinguishable from zero, and ours as a
   confident null on the larger sample.
 
-## On the horizon (paper 4 — placeholder, not a plan)
+## Paper 5 — comment tags (next)
 
-Nothing here is decided. No scaffolding, no targets, and none of this
-affects how paper 3 is written.
+Features parsed from `in_race_comment` on a horse's PRIOR runs, added to
+the existing hand-built feature set and tested in paper 3's GBT
+framework. No neural machinery. It comes before the encoder work so the
+hand-built feature set is finished before the series changes function
+class — otherwise the neural paper would confound new information with a
+new representation of the same information.
 
-Paper 4's lever is the information reaching the model, not the form of
-the score function — but the function class necessarily changes too: an
-end-to-end sequence encoder needs a differentiable scoring head, and
-gradients don't flow back through a boosted tree ensemble, so a GBT
-can't sit downstream of a trained encoder. The scorer becomes a neural
-network, fitted in `{torch}`.
+Full concept, pre-registered stopping rules and priors live in Google
+Tasks, not here.
 
-The paper carries two arms on the same Plackett–Luce objective:
-- **Control** — a shared-weight MLP on paper 3's flat feature set.
-- **Treatment** — the same scorer with a sequence encoder in front,
-  reading the horse's raw run history and learning its own
-  fixed-length representation end to end on the PL objective. Distinct
-  from an autoencoder: the compression is learned to serve the ranking
-  objective, not to reconstruct the input.
+## Paper 6 concept — sequence encoding of run histories
 
-Treatment against control is the comparison that carries the paper: it
-isolates the representation change while holding architecture,
-objective, features and split fixed.
+The neural encoder ladder (previously numbered paper 5). Full concept,
+ladder structure, pre-registered stopping rules and revised priors live
+in Google Tasks, not here. Not yet in scope; do not act on it.
 
-Considered and rejected: a two-stage variant — train an encoder, freeze
-it, feed its output to a GBT. Strictly weaker than the end-to-end
-treatment arm, since a frozen encoder has no reason to summarise the
-history in a way that serves the prediction it was never trained
-against.
-
-Unresolved design question, not a decision: whether the paper also uses
-an encoder over the field (the other runners in today's race) rather
-than only over the horse's own history.
-
-Rationale, worth recording now while it's fresh: papers 1, 2a and 2b
-changed the features and the objective; paper 3 changed the function
-class and found that wasn't the binding constraint. That makes the
-information reaching the model the next lever — and makes paper 3's
-null result the reason paper 4 exists, not an embarrassment to route
-around.
-
-## Longer-term direction (post-paper-3, speculative)
+## Longer-term direction (post-paper-4, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
 and refresh the pipeline with current data. Goal: paper-trade on
 Betfair initially; potentially live betting after that. The angle

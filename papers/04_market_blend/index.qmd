@@ -1,0 +1,190 @@
+---
+title: "The marginal value of a model over the market"
+subtitle: "Paper 4 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-03"
+abstract: |
+  Papers 1 to 3 fitted three models to UK All-Weather Flat handicaps and
+  the market outpredicted all three. This paper asks whether the model
+  adds anything to the price rather than whether it beats it, using a
+  two-stage conditional logit [@benter1994] in which a market probability
+  and a model probability enter with both coefficients free. It reuses
+  the stored test-set predictions of papers 2b and 3; neither model is
+  refitted. Against the industry starting price, pooled over
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); scales::comma(length(targets::tar_read(p4_common, store = S)$race_ids)) })`
+  held-out races, the model coefficient is
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid_pooled, store = S)$coefficients; sprintf("%.3f", g$estimate[g$arm == "B1" & grepl("mod", g$term)]) })`
+  and
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid_pooled, store = S)$coefficients; sprintf("%.3f", g$estimate[g$arm == "B2" & grepl("mod", g$term)]) })`,
+  with 95% intervals reaching no higher than
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid_pooled, store = S)$coefficients; sprintf("%.3f", max(g$conf_high[g$arm %in% c("B1","B2") & grepl("mod", g$term)])) })`.
+  Against the pre-race racecard forecast price it is
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid, store = S)$coefficients; sprintf("%.2f", g$estimate[g$arm == "A1" & grepl("mod", g$term)]) })`
+  and
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid, store = S)$coefficients; sprintf("%.2f", g$estimate[g$arm == "A2" & grepl("mod", g$term)]) })`
+  on the earlier half of the test window and
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid_b, store = S)$coefficients; sprintf("%.2f", g$estimate[g$arm == "A1" & grepl("mod", g$term)]) })`
+  and
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p4"); g <- targets::tar_read(p4_arm_grid_b, store = S)$coefficients; sprintf("%.2f", g$estimate[g$arm == "A2" & grepl("mod", g$term)]) })`
+  on the later half. Against the settled market the model adds nothing
+  distinguishable. Against the morning forecast price it adds a great
+  deal. The two results together locate the model's value in the interval
+  between an early price and the off, rather than in information the
+  settled market lacks.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+# Paper 4 reads the paper-4 store, not the main one. Unlike papers 1-3
+# this does NOT call tar_config_set(): that writes the project-root
+# `_targets.yaml`, which papers 1-3's own setup chunks also write, and
+# pointing it at `_targets_p4` would send their next render at the wrong
+# store. Passing `store =` per call leaves `_targets.yaml` untouched.
+P4_STORE <- file.path(
+  rprojroot::find_root(rprojroot::has_file("awracing.Rproj")),
+  "_targets_p4"
+)
+
+# tar_load() centrally so tarchetypes::tar_quarto() picks these up as
+# render dependencies — files pulled in via {{< include >}} are not
+# auto-scanned.
+tar_load(c(
+  p4_coverage, p4_overround, p4_compression,
+  p4_common, p4_floor_report, p4_split_summary,
+  p4_arm_grid, p4_arm_grid_b, p4_arm_grid_pooled,
+  p4_replication_mod, p4_attenuation,
+  p4_amendment2, p4_market_correlations, p4_provenance_facts
+), store = P4_STORE)
+
+# ---- accessors -----------------------------------------------------------
+# Every number in the prose comes through these, so a mis-typed arm label
+# is an error rather than a silently wrong figure.
+
+#' One coefficient row from an arm grid
+cf <- function(grid, arm_id, role = c("mod", "mkt")) {
+  role <- match.arg(role)
+  out <- grid$coefficients |>
+    dplyr::filter(arm == arm_id, stringr::str_detect(term, role))
+  if (nrow(out) != 1L) {
+    stop("cf(): expected 1 row for arm ", arm_id, "/", role,
+         ", got ", nrow(out), call. = FALSE)
+  }
+  out
+}
+
+#' One market-only reference fit
+mktonly <- function(grid, price_letter) {
+  out <- grid$market_only |>
+    dplyr::filter(arm == paste0(price_letter, "-mktonly"))
+  if (nrow(out) != 1L) stop("mktonly(): bad label", call. = FALSE)
+  out
+}
+
+#' One likelihood-ratio row
+lrow <- function(grid, arm_id) {
+  out <- grid$lr |> dplyr::filter(arm == arm_id)
+  if (nrow(out) != 1L) stop("lrow(): bad label", call. = FALSE)
+  out
+}
+
+# Formatters. Deliberately prefixed: short names like `z` or `b` would be
+# shadowed by same-named columns inside dplyr verbs.
+fmt_b  <- function(x) sprintf("%.3f", x)
+fmt_ci <- function(row) sprintf("[%.3f, %.3f]", row$conf_low, row$conf_high)
+fmt_z  <- function(x) sprintf("%.2f", x)
+fmt_r2 <- function(x) sprintf("%.4f", x)
+comma  <- function(x) format(x, big.mark = ",")
+
+n_common  <- length(p4_common$race_ids)
+n_test_a  <- p4_split_summary$races[p4_split_summary$half == "A"]
+n_test_b  <- p4_split_summary$races[p4_split_summary$half == "B"]
+ab_cutoff <- p4_split_summary$cutoff_date[1]
+
+```
+
+# Introduction {#sec-intro}
+
+Papers 1 to 3 fitted three models to UK All-Weather Flat handicaps — a
+conditional logit on Owen's features [@owen2019], the same model on an extended
+feature set and a ranking objective, and a gradient-boosted tree ensemble
+— and the market outpredicted all three. This paper asks a different
+question of the same predictions: not whether the model beats the price,
+but whether it adds anything to it.
+
+The construction is a two-stage conditional logit [@benter1994]. A market
+probability and a model probability enter a race-conditional logit as
+regressors with free coefficients, and the coefficient on the model term,
+$\beta_{\text{mod}}$, is the output. If the price already carries
+everything the model knows, $\beta_{\text{mod}}$ is zero. If the model
+holds information the price does not, it is positive. Papers 1 to 3
+cannot measure this: a model that is strictly dominated and a model that
+is partly complementary both lose the head-to-head.
+
+The series kept market data out of the feature set so that each change
+could be read against the last. Neither price is leakage: the forecast
+price is published the evening before a race, and the series has used
+starting prices all along to settle its backtests. Here the model still
+uses no market data — it is the evaluation that sees the price.
+
+Papers 2a to 3 changed the feature set, the objective and the function
+class in turn, and none closed the gap to the market. This paper changes
+none of them. It comes before the representation learning paper 3 pointed
+toward because it sets that work's bar: if the settled market already
+prices what these features carry, a learned representation of the same
+run histories has to create information rather than encode it better.
+
+There is no betting-value question here, unlike papers 1 to 3. A blend
+that tracks the starting price bets into the starting price's own margin,
+so the backtest has a foregone conclusion.
+
+{{< include _01_method.qmd >}}
+
+{{< include _02_data.qmd >}}
+
+{{< include _03_results.qmd >}}
+
+{{< include _04_discussion.qmd >}}
+
+{{< include _05_conclusion.qmd >}}
+
+{{< include _appx_provenance.qmd >}}
+
+{{< include _appx_software.qmd >}}
+
+# Acknowledgments {.unnumbered}
+
+I have been interested in modelling horse racing since first
+acquiring the Smartform database more than a decade ago. The project
+has been picked up and put down many times, the obstacle almost
+always being the gap between an idea and a running implementation.
+What is different now is that working alongside Claude Code
+(Anthropic's coding agent), with web-based Claude as a research
+companion, has compressed that gap dramatically. I am grateful to
+my brother, Michael Gillen, for the suggestion to build the model
+on All-Weather races — the foundation of the scope choices set out
+in paper 1. The design choices — dataset, scope, model, comparison,
+editorial line — are mine. The implementation, the bulk of the draft
+prose, and a great deal of the verification were Claude Code's, under
+my direction; every output was reviewed and edited before it reached
+the paper. I do not yet know what general lessons this experiment
+points to about the value of human–AI collaboration in applied
+statistics. That uncertainty is part of why I am doing the work, and
+these papers are partly a record of that experiment.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
