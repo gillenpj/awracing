@@ -1,0 +1,116 @@
+# Method {#sec-method}
+
+```{r}
+#| label: p4-method-setup
+#| include: false
+m_flb_B1 <- cf(p4_arm_grid, "B1", "mkt")
+m_flb_B2 <- cf(p4_arm_grid, "B2", "mkt")
+```
+
+## The two-stage conditional logit
+
+For runner $i$ in race $j$,
+
+$$
+V_{ij} \;=\; \beta_{\text{mkt}} \log P^{\text{mkt}}_{ij}
+           \;+\; \beta_{\text{mod}} \log P^{\text{mod}}_{ij},
+\qquad
+\Pr(\text{$i$ wins race $j$}) \;=\;
+  \frac{e^{V_{ij}}}{\sum_{k \in j} e^{V_{kj}}} ,
+$$ {#eq-blend}
+
+where $P^{\text{mkt}}$ is a market-implied win probability and
+$P^{\text{mod}}$ a model win probability. Benter used this to combine a
+fundamental model with the public odds [@benter1994]. Race is the choice
+set, as in every conditional logit in this series, and the fit is by
+maximum likelihood over the observed winners. There is no intercept: an
+alternative-invariant constant cancels in the softmax, so the three-part
+`{mlogit}` formula `won ~ ... | 0 | 0` used in papers 1 to 2b carries
+over unchanged.
+
+Both probabilities are already normalised within race, so @eq-blend is a
+weighted geometric combination of them, renormalised. A coefficient of 1
+uses a source as stated; above 1 sharpens it toward the favourite, below
+1 flattens it. $\beta_{\text{mod}}$ is the output.
+
+## Why $\beta_{\text{mkt}}$ is not pinned at 1
+
+Fixing $\beta_{\text{mkt}} = 1$ would assert that the market's
+probabilities need no sharpening or flattening before use. If that is
+wrong, the likelihood has only one free parameter left to correct it
+with, and part of $\beta_{\text{mod}}$ becomes a recalibration of the
+market rather than a measure of the model. The bias runs upward, and
+worst where the market is worst calibrated — which is where a large
+$\beta_{\text{mod}}$ would otherwise look most like a finding. Both
+coefficients are therefore free.
+
+In the two starting-price blends, one per model source, the market
+coefficient comes out at `r fmt_b(m_flb_B1$estimate)` and
+`r fmt_b(m_flb_B2$estimate)`, close to 1.
+
+## Three prices
+
+| Arm | Price | What it is |
+|---|---|---|
+| **A** | Pre-race racecard forecast | The forecast price as published ahead of the race, from Smartform's daily feed of forthcoming racecards. Available at bet time. |
+| **B** | Industry starting price | The settled market at the off, and the price the series already uses for its market baseline and its backtests. |
+| **C** | Archived racecard forecast | The forecast price as recorded in Smartform's results archive. Nominally the same quantity as arm A, and not identical to it (@sec-appx-provenance). |
+
+: The three prices. {#tbl-price-columns}
+
+Arms A and B are the contrast the paper is about: an early price against
+the settled one. Arm C exists because the archived value is the obvious
+one to reach for and does not match the pre-race one; it supports the
+attenuation bracket in @sec-discussion. @sec-appx-provenance gives the
+schema detail and the evidence.
+
+All three arms are fitted on one race set — the intersection over the
+three prices — because a comparison of $\beta_{\text{mod}}$ across arms
+is void if the arms sit on different races.
+
+## Market probability construction
+
+Each price becomes a win probability by the proportional overround
+adjustment the series has used since paper 1 §5.1: implied probability
+$1/\text{price}$ per runner, renormalised to sum to one over the field.
+Paper 4 does not restate that arithmetic in code; the function it calls
+is checked against the series' existing implementation by a standing
+gate, which rebuilds the stored `win_market` column of paper 3's test
+predictions from raw starting prices and requires agreement to
+$10^{-12}$. Observed agreement is exact.
+
+Normalisation is over the runners that started, which is the field the
+model scores. The forecast price is struck against the declared field,
+before withdrawals are known, so a race that loses runners shows a lower
+overround here than the one the bookmaker struck. Renormalisation is
+unaffected: it rescales to sum to one either way.
+
+Races are dropped whole where any runner lacks a usable price; dropping
+individual runners would change the normalisation for the rest of the
+field. Both probabilities are floored at $10^{-6}$ before taking logs.
+
+## Two model sources, neither refitted
+
+$P^{\text{mod}}$ comes from paper 2b's exploded conditional logit and
+paper 3's gradient-boosted tree ensemble, read from the stored test-set
+predictions of their own papers. Neither is refitted or retuned. The two
+sit on identical runner sets over identical races, which is what makes
+the comparison between them paired.
+
+## Where the blend is fitted
+
+$\beta_{\text{mod}}$ is only meaningful on out-of-sample model
+probabilities. Papers 2b and 3 were fitted on the training split, so
+their training-split probabilities are optimistic and the blend would
+read that optimism as information the market lacks. The blend therefore
+sits on the held-out races — the one place this paper sets aside the
+series' training-split-only convention, which @sec-data keeps. A
+two-parameter model on roughly a thousand races carries negligible
+overfitting risk; the same could not be said of the models supplying
+$P^{\text{mod}}$.
+
+The test universe is split chronologically in two. Test-A, the earlier
+half, is fitted first; test-B was held back. The boundary is a calendar
+date, so the split is reproducible against an exact date, as the series'
+2012-12-30 train/test cutoff is; races on the cutoff date go to test-A.
+@sec-results reports what test-B was spent on.

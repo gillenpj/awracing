@@ -1,0 +1,131 @@
+# Results {#sec-results}
+
+```{r}
+#| label: p4-results-setup
+#| include: false
+
+pool_B1 <- cf(p4_arm_grid_pooled, "B1", "mod")
+pool_B2 <- cf(p4_arm_grid_pooled, "B2", "mod")
+pool_A1 <- cf(p4_arm_grid_pooled, "A1", "mod")
+pool_A2 <- cf(p4_arm_grid_pooled, "A2", "mod")
+
+a_B1 <- cf(p4_arm_grid, "B1", "mod"); b_B1 <- cf(p4_arm_grid_b, "B1", "mod")
+a_B2 <- cf(p4_arm_grid, "B2", "mod"); b_B2 <- cf(p4_arm_grid_b, "B2", "mod")
+a_A1 <- cf(p4_arm_grid, "A1", "mod"); b_A1 <- cf(p4_arm_grid_b, "A1", "mod")
+a_A2 <- cf(p4_arm_grid, "A2", "mod"); b_A2 <- cf(p4_arm_grid_b, "A2", "mod")
+
+sp_rep <- p4_replication_mod |> dplyr::filter(arm %in% c("B1", "B2"))
+fc_rep <- p4_replication_mod |> dplyr::filter(arm %in% c("A1", "A2"))
+
+sp_ceiling <- max(pool_B1$conf_high, pool_B2$conf_high)
+smallest_a <- min(a_A1$estimate, a_A2$estimate, b_A1$estimate, b_A2$estimate)
+
+att_pool  <- p4_attenuation |> dplyr::filter(sample == "pooled")
+a_C1 <- cf(p4_arm_grid, "C1", "mod")
+n_floored <- sum(p4_floor_report$n_rows_floored)
+
+ci_width <- function(x) x$conf_high - x$conf_low
+fc_over_sp <- smallest_a / max(pool_B1$estimate, pool_B2$estimate)
+```
+
+The blend is fitted on the `r comma(n_common)`-race intersection
+(@sec-data), split chronologically at `r format(ab_cutoff, "%d %B %Y")`
+into test-A (`r comma(n_test_a)` races) and test-B
+(`r comma(n_test_b)` races). The probability floor binds on
+`r n_floored` rows.
+
+Test-A was fitted first, with test-B untouched. The starting-price result
+below then made test-B's reserved purpose — evaluating blend performance
+— moot, and it was spent instead on replicating $\beta_{\text{mod}}$ at
+the identical specification. That leaves no held-out race set in the
+paper-4 universe. One thing touched test-B beforehand: the two-price
+diagnostic in @sec-appx-provenance, which by design runs on the whole
+test universe. It contains no model probability, so it cannot leak model
+performance, and it changed no arm.
+
+## The starting price
+
+```{r}
+#| label: tbl-sp-null
+dplyr::bind_rows(
+  cf(p4_arm_grid,        "B1", "mod"), cf(p4_arm_grid,        "B2", "mod"),
+  cf(p4_arm_grid_b,      "B1", "mod"), cf(p4_arm_grid_b,      "B2", "mod"),
+  cf(p4_arm_grid_pooled, "B1", "mod"), cf(p4_arm_grid_pooled, "B2", "mod")
+) |>
+  dplyr::transmute(
+    Model = dplyr::if_else(arm == "B1", "Paper 2b", "Paper 3 (GBT)"),
+    Races = comma(n_races),
+    Sample = dplyr::recode(sample, `test-A` = "Test-A (earlier)",
+                           `test-B` = "Test-B (later)", pooled = "Pooled"),
+    `$\\beta_{\\text{mod}}$` = fmt_b(estimate),
+    SE = fmt_b(std_error),
+    `95% CI` = sprintf("[%.3f, %.3f]", conf_low, conf_high),
+    `$z$` = fmt_z(z)
+  ) |>
+  dplyr::arrange(Model) |>
+  knitr::kable(caption = "The model coefficient when the market term is the starting price. Test-A and test-B are disjoint halves of the test universe; pooled is both together.")
+```
+
+Pooled, $\beta_{\text{mod}}$ is `r fmt_b(pool_B1$estimate)` for paper 2b
+and `r fmt_b(pool_B2$estimate)` for paper 3, neither distinguishable from
+zero. The intervals reach no higher than `r fmt_b(sp_ceiling)`, which is
+`r scales::percent(sp_ceiling / smallest_a, accuracy = 1)` of the
+smallest coefficient the same models produce against the forecast price.
+
+The halves agree, which licenses the pooling: the difference between them
+is not distinguishable from zero for either model
+($p =$ `r sprintf("%.2f", sp_rep$p_diff[sp_rep$arm == "B1"])` and
+`r sprintf("%.2f", sp_rep$p_diff[sp_rep$arm == "B2"])`). Pooling took
+paper 2b's interval from `r fmt_ci(a_B1)` on test-A to
+`r fmt_ci(pool_B1)`, a width of `r fmt_b(ci_width(pool_B1))` against
+`r fmt_b(ci_width(a_B1))`, with the centre still near zero.
+
+## The forecast price
+
+```{r}
+#| label: tbl-morning
+dplyr::bind_rows(
+  cf(p4_arm_grid,        "A1", "mod"), cf(p4_arm_grid,        "A2", "mod"),
+  cf(p4_arm_grid_b,      "A1", "mod"), cf(p4_arm_grid_b,      "A2", "mod"),
+  cf(p4_arm_grid_pooled, "A1", "mod"), cf(p4_arm_grid_pooled, "A2", "mod")
+) |>
+  dplyr::transmute(
+    Model = dplyr::if_else(arm == "A1", "Paper 2b", "Paper 3 (GBT)"),
+    Sample = dplyr::recode(sample, `test-A` = "Test-A (earlier)",
+                           `test-B` = "Test-B (later)", pooled = "Pooled"),
+    Races = comma(n_races),
+    `$\\beta_{\\text{mod}}$` = fmt_b(estimate),
+    SE = fmt_b(std_error),
+    `95% CI` = sprintf("[%.3f, %.3f]", conf_low, conf_high),
+    `$z$` = fmt_z(z)
+  ) |>
+  dplyr::arrange(Model, Sample) |>
+  knitr::kable(caption = "The model coefficient when the market term is the pre-race racecard forecast price. The pooled row is reported because Section 5 uses it; the halves differ, so it is an average of two different figures rather than a single one.")
+```
+
+Against the forecast price the smallest of these coefficients is more
+than ten times the pooled starting-price figure, and every $z$ exceeds 7. Adding the model term to a market-only
+model gives likelihood-ratio statistics of
+`r sprintf("%.1f", lrow(p4_arm_grid, "A1")$lr_stat)` and
+`r sprintf("%.1f", lrow(p4_arm_grid, "A2")$lr_stat)` on one degree of
+freedom on test-A, `r sprintf("%.1f", lrow(p4_arm_grid_b, "A1")$lr_stat)`
+and `r sprintf("%.1f", lrow(p4_arm_grid_b, "A2")$lr_stat)` on test-B.
+
+The halves differ
+($p =$ `r sprintf("%.3f", fc_rep$p_diff[fc_rep$arm == "A1"])` and
+`r sprintf("%.3f", fc_rep$p_diff[fc_rep$arm == "A2"])`), so there is no
+single figure for the forecast price.
+
+The archived forecast price gives `r fmt_b(a_C1$estimate)` on test-A for
+paper 2b, between the two arms above and much nearer the pre-race
+forecast.^[Arm C's coefficients are `r fmt_b(a_C1$estimate)` and
+`r fmt_b(cf(p4_arm_grid, "C2", "mod")$estimate)` on test-A,
+`r fmt_b(cf(p4_arm_grid_b, "C1", "mod")$estimate)` and
+`r fmt_b(cf(p4_arm_grid_b, "C2", "mod")$estimate)` on test-B, and
+`r fmt_b(att_pool$b_mod_C[1])` and `r fmt_b(att_pool$b_mod_C[2])` pooled.
+The gap between arm A and arm C bounds the errors-in-variables inflation
+in arm A, and is used for that purpose in @sec-discussion.]
+
+Both models return the same answer on both prices, despite disagreeing on
+the top horse in about a third of test races (paper 3, §4.1). Two
+different views of the same features are priced alike.
