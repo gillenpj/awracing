@@ -17,13 +17,27 @@
   <h2>Papers</h2>
   <ul>
     <li><a href="paper1/">Paper 1: Replicating Owen (2019) on UK All-Weather Flat handicaps, 2006&ndash;2015</a>
-    &mdash; <a href="paper1/index.pdf">PDF</a></li>
+    &mdash; <a href="paper1/index.pdf">PDF</a>
+    &mdash; replicates Owen's conditional-logit win model on a different
+    dataset, All-Weather rather than Turf: coefficient signs largely agree
+    with his, and the fitted model trails the market on both scoring rules</li>
     <li><a href="paper2a/">Paper 2a: Extended feature set and race-level interactions on UK All-Weather Flat handicaps</a>
-    &mdash; <a href="paper2a/index.pdf">PDF</a></li>
+    &mdash; <a href="paper2a/index.pdf">PDF</a>
+    &mdash; adds an extended feature set and race-level interactions to the
+    win model: the official rating is the strongest new predictor, a
+    course-specific draw bias appears at Kempton and Southwell, and the
+    narrowed loss is not distinguishable from paper 1's</li>
     <li><a href="paper2b/">Paper 2b: Ranking models for UK All-Weather Flat handicaps &mdash; the exploded conditional logit and the place market</a>
-    &mdash; <a href="paper2b/index.pdf">PDF</a></li>
+    &mdash; <a href="paper2b/index.pdf">PDF</a>
+    &mdash; holds the feature set fixed and changes the objective from
+    predicting the winner to predicting the finishing order: a better
+    winner-picker than paper 2a, still behind the market on ranking, and
+    single-bet place returns about half the drag of backing every qualifier</li>
     <li><a href="paper3/">Paper 3: Gradient boosted trees for UK All-Weather Flat handicaps</a>
     &mdash; <a href="paper3/index.pdf">PDF</a>
+    &mdash; holds the features and the objective fixed and changes the
+    function class to a gradient-boosted tree ensemble: ties paper 2b on
+    every measure tested, with the market ahead of both on ranking
     <ul>
       <li><a href="paper3/notes-on-tree-based-methods.pdf">Supplementary: Notes on tree-based methods</a>
       &mdash; background theory the paper's derivation follows, from regression
