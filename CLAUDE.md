@@ -146,6 +146,10 @@ below has five entries for four numbered papers.
   `{xgboost}`, the Smartform `{RMariaDB}` connection, or
   `targets::tar_exist_objects()`.** All three crash under the Bash
   tool's Git Bash environment on this machine.
+- **`git commit -m` with a PowerShell here-string (`@'...'@`) does not
+  bind reliably when chained after another command with `;`** — git
+  treats the message as pathspecs and the commit fails. Use
+  `git commit -F` with a message file instead.
 
 ## Tech stack
 - R 4.6 — use the full path
