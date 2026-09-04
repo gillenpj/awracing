@@ -40,8 +40,9 @@ Two calibration examples (2026-08-20):
 
 Statistical models of UK All-Weather Flat handicap outcomes on the
 Smartform database. Each paper changes one thing and reports the result
-against the previous paper and against the betting market. All five are
-complete and published.
+against the previous paper and against the betting market. Papers 1 to 4
+are complete and published; paper 2 is split into 2a and 2b, so the list
+below has five entries for four numbered papers.
 
 - **Paper 1 — Replicating Owen (2019) on UK AW Flat handicaps,
   2006–2015.** Coefficient picture broadly consistent with Owen; the
@@ -113,6 +114,20 @@ complete and published.
   say) silently shadows the base function for everything sourced
   afterward, with no warning. Name such helpers `log_msg`, `note`, etc.
   — never a base R name.
+- **A specific "report and stop" instruction overrides the standing
+  proceed-by-default rule.** Where a prompt gates a stage on reporting
+  back, computing the gated result, judging it yourself and launching
+  the next stage in the same turn is a failure of that instruction —
+  even when the judgement turns out to be correct. The point of the gate
+  is the chance to intervene, and that is lost whether or not the call
+  was right. Report, then wait.
+- **Making all features NA-tolerant rather than complete-case is a
+  database-refresh candidate, not a mid-series change.** It alters which
+  races qualify, so papers 1-3 would no longer share a race universe
+  with anything that followed, and every paired race-level bootstrap
+  against them would be computed on a different set of races. Comment-
+  and going-style features are exempt from the complete-case rule
+  individually; changing the rule itself is a different act.
 - **Every reported number is a live target, not a transcription.**
   Papers reference results via `tar_read()`/`tar_load()` inline in the
   `.qmd`, never as a hard-coded figure — a number with nothing behind it
@@ -196,7 +211,7 @@ complete and published.
   objective plus a custom eval metric plus group info together. Same
   kind of exception as the `{mlogit}` route in papers 1/2 (see
   "Modelling notes" below).
-- **Documented exception (paper 6, planned): `{torch}` and `{luz}` used
+- **Documented exception (paper 5, planned): `{torch}` and `{luz}` used
   directly, not via `{tidymodels}`/`{parsnip}`.** `{tidymodels}` has no
   interface for a custom Plackett–Luce objective over variable-length,
   padded sequences — the same class of gap the `{mlogit}` and
@@ -384,6 +399,24 @@ complete and published.
   `_quarto.yml`, so an edit to any of them triggers a re-render.
 - `quiet = FALSE` on `tar_quarto()` — surface quarto's error
   output instead of "System command 'quarto.exe' failed".
+
+## Writing style
+
+Observed whenever any paper in this series is drafted or revised.
+
+Terse. Lead with the result. Plain English over jargon. No filler, no
+rhetorical questions, no sentences set up to knock down an objection
+nobody raised. Neutral framing of results. Limitations stated honestly
+without pessimism. Cut rather than patch when material is not working.
+
+No mannered prose. Do not substitute metaphor or flourish for direct
+statement. Write "a parameter worth varying", not "a dial worth tuning".
+Write "this matters", not "this earns its keep". Phrases that display
+the writer rather than convey the idea are to be cut. If a sentence has
+a figurative construction where a plain one would do, use the plain one.
+
+Give material space in proportion to what it found, not in proportion to
+the effort it took.
 
 ## Render environment bootstrap (load-bearing)
 `tar_quarto()` launches `quarto.exe` as a child process, which in
@@ -675,23 +708,21 @@ observations are documented in §4.3 of paper 1.
   positive as plausibly indistinguishable from zero, and ours as a
   confident null on the larger sample.
 
-## Paper 5 — comment tags (next)
+## Paper 5 concept — sequence encoding of run histories
 
-Features parsed from `in_race_comment` on a horse's PRIOR runs, added to
-the existing hand-built feature set and tested in paper 3's GBT
-framework. No neural machinery. It comes before the encoder work so the
-hand-built feature set is finished before the series changes function
-class — otherwise the neural paper would confound new information with a
-new representation of the same information.
+The neural encoder ladder. Full concept, ladder structure,
+pre-registered stopping rules and revised priors live in Google Tasks,
+not here. Not yet in scope; do not act on it.
 
-Full concept, pre-registered stopping rules and priors live in Google
-Tasks, not here.
-
-## Paper 6 concept — sequence encoding of run histories
-
-The neural encoder ladder (previously numbered paper 5). Full concept,
-ladder structure, pre-registered stopping rules and revised priors live
-in Google Tasks, not here. Not yet in scope; do not act on it.
+**Abandoned unpublished: comment tags.** Features parsed from
+`in_race_comment` on a horse's prior runs were tried against paper 3's
+GBT and abandoned without publication. The block improved ranking
+slightly on both the validation slice and the test split, with a
+shuffled control at zero; it gave no ROI improvement; and attribution
+within the block failed to replicate twice — a career-length
+decomposition and a tag-family group-drop each produced a clear story on
+validation and neither held on test. **Not a baseline and not citable.**
+Recorded so the idea is not picked up again as new.
 
 ## Longer-term direction (post-paper-4, speculative)
 If the modelling holds up, subscribe to the live Smartform feed
