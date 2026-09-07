@@ -61,6 +61,35 @@ p5_rung3_term_list <- function(control_terms = P5_CONTROL_TERMS) {
   c(setdiff(control_terms, P5_RUNG3_DROPPED), P5_RUNG3_SEQ_SCALAR)
 }
 
+#' The term rung 3b restores
+#'
+#' `days_LTO_log` — the gap from the most recent prior run to today's race —
+#' left with the other history summaries in rung 3, and **the sequences do
+#' not carry it**. The `days_since_prev` channel is the gap between a
+#' historical run and the one before it, so the sequence carries the rhythm
+#' of a career but not its distance from today. Rung 3 therefore dropped
+#' something nothing replaced, which is one change too many.
+#'
+#' Rung 3b restores it as a scalar term alongside `career_runs_prior`. The
+#' two are the same kind of thing: facts about the horse's history that the
+#' capped, gap-relative sequence cannot express.
+#'
+#' @format Character scalar.
+P5_RUNG3B_RESTORED <- "days_LTO_log"
+
+#' Rung 3b's dense feature set
+#'
+#' Rung 3's, plus `days_LTO_log`. Eight terms leave rung 1's 26 rather than
+#' nine, and the encoder block's scalar joins them: 19 terms.
+#'
+#' @param control_terms Rung 1's term vector.
+#' @return Character vector of length 19.
+p5_rung3b_term_list <- function(control_terms = P5_CONTROL_TERMS) {
+  c(setdiff(control_terms,
+            setdiff(P5_RUNG3_DROPPED, P5_RUNG3B_RESTORED)),
+    P5_RUNG3_SEQ_SCALAR)
+}
+
 #' Align the built sequences to an arm's scoring row order
 #'
 #' `build_p5_sequences()` returns rows sorted by `(race_id, runner_id)`;

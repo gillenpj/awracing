@@ -1,0 +1,75 @@
+﻿=== P5-3b rung 3b run started 2026-09-07 18:33:38 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_gru_mask_check dispatched
+
+✔ p5_gru_mask_check completed [2s, 279 B]
+
++ p5_rung3b_runs dispatched
+
+✔ p5_rung3b_runs completed [1h 15m 55.9s, 950.41 kB]
+
++ p5_rung3_runs dispatched
+
+✔ p5_rung3_runs completed [1h 17m 26.8s, 949.76 kB]
+
++ p5_rung3b_scores_60 dispatched
+
+✔ p5_rung3b_scores_60 completed [50ms, 552 B]
+
++ p5_rung3b_selected_60 dispatched
+
+✔ p5_rung3b_selected_60 completed [0ms, 105.80 kB]
+
++ p5_rung3b_refit_200 dispatched
+
+✔ p5_rung3b_refit_200 completed [24m 30.7s, 106.92 kB]
+
++ p5_rung3_refit_200 dispatched
+
+✔ p5_rung3_refit_200 completed [22m 17.4s, 106.83 kB]
+
++ p5_rung3b_selected dispatched
+
+✔ p5_rung3b_selected completed [0ms, 106.92 kB]
+
++ p5_rung3b_backend_check dispatched
+
+✔ p5_rung3b_backend_check completed [40ms, 266 B]
+
++ p5_rung3b_budget_check dispatched
+
+✔ p5_rung3b_budget_check completed [20ms, 262 B]
+
++ p5_scored_v7 dispatched
+
+✔ p5_scored_v7 completed [160ms, 267.76 kB]
+
++ p5_test_arm_choice dispatched
+
+✔ p5_test_arm_choice completed [0ms, 261 B]
+
++ p5_rung3b_decomposition dispatched
+
+✔ p5_rung3b_decomposition completed [20ms, 387 B]
+
++ p5_per_race_v7 dispatched
+
+✔ p5_per_race_v7 completed [2.1s, 29.14 kB]
+
++ p5_rung3b_vs_rung3 dispatched
+
+✔ p5_rung3b_vs_rung3 completed [750ms, 386 B]
+
++ p5_rung3b_reading dispatched
+
+✔ p5_rung3b_reading completed [10ms, 473 B]
+
+✔ ended pipeline [3h 20m 25.5s, 16 completed, 93 skipped]
+
+Warning messages:
+
+1: package 'torch' was built under R version 4.6.1 
+
+2: 1 targets produced warnings. Run targets::tar_meta(fields = warnings, complete_only = TRUE) for the messages. 
+
+=== exit code: 0 at 2026-09-07 21:54:14 ===
