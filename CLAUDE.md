@@ -102,16 +102,48 @@ below has five entries for four numbered papers.
   it does can touch papers 1-4. Fitting is `{torch}` directly, not
   `{tidymodels}`. Model selection runs on a validation slice carved out
   of the training split at 2010-12-15 (70% of training races before,
-  3,517 fitting / 1,505 validation); the test split is untouched.
-  **Rung 1 is closed** (`papers/05_encoder/P5_1d_REPORT.md`): on
-  identical 26 terms and an equal selection budget — 9 configurations x
-  200 epochs per arm — the MLP beats a linear scorer on both P1_rank
-  (+3.829e-05, 90% CI [+1.042e-05, +6.579e-05]) and Brier_place
-  (−5.430e-04, [−1.001e-03, −6.284e-05]), both intervals excluding zero.
-  **The control claim does not hold**, so later rungs are judged against
-  the rung-1 MLP (validation PL loss 5.798597), not against paper 2b
-  (5.814307). This sits in tension with paper 3's "the function class was
-  not the binding constraint" and the write-up has to say so.
+  3,517 fitting / 1,505 validation). **Rungs 1, 2 and 3 are all closed on
+  validation**; every number below is validation, and each rung's stage
+  report is in `papers/05_encoder/`.
+  - **Rung 1 — the MLP control, closed** (`P5_1d_REPORT.md`, 3bf41be). On
+    identical 26 terms and an equal selection budget — 9 configurations x
+    200 epochs per arm — the MLP beats a linear scorer on both P1_rank
+    (+3.829e-05, 90% CI [+1.042e-05, +6.579e-05]) and Brier_place
+    (−5.430e-04, [−1.001e-03, −6.284e-05]), both intervals excluding
+    zero. **The control claim does not hold**, so later rungs are judged
+    against the rung-1 MLP (val PL loss 5.798597), not paper 2b
+    (5.814307). This sits in tension with paper 3's "the function class
+    was not the binding constraint" and the write-up has to say so.
+  - **Rung 2 — entity embeddings, closed as a LOSS** (`P5_2_REPORT.md`,
+    48f0927). `trainerSR`/`jockeySR`/`sireSR` out, learned embeddings on
+    `trainer_id`/`jockey_id`/`sire_id` in, 26 terms to 23. The
+    embeddings lose on both metrics — P1_rank −1.262e-04 [−1.728e-04,
+    −7.981e-05], Brier_place +1.936e-03 [+1.143e-03, +2.722e-03], both
+    intervals excluding zero — and val PL loss 5.841117 against
+    5.798597, so the swap costs 0.042520 per race, 3.3x what the
+    nonlinearity bought. **Complete grid separation:** the best of nine
+    embedding fits is worse than the worst of nine strike-rate fits. The
+    pre-registered reading fired as "worse — report and stop, do not
+    remediate" and **no remediation was attempted**. Two structural
+    reasons, both in the report: a strike rate is time-varying and
+    computed over the whole archive where an embedding is static and
+    partition-local, and under a chronological split 49.5% of validation
+    rows have an entity in the shared rare bucket. **The strike rates
+    stay in every later rung.**
+  - **Rung 3 — the sequence encoder, closed as a WIN** (`P5_3_REPORT.md`,
+    bc7252d). Nine hand-summarised history terms out (the two position
+    lags and their indicators, `days_LTO_log`, the three going-affinity
+    terms, `has_wins`), a GRU over the 20 most recent prior runs in, 26
+    terms to 18. The encoder beats rung 1 on both metrics — P1_rank
+    +1.774e-04 [+1.160e-04, +2.399e-04], Brier_place −2.656e-03
+    [−3.662e-03, −1.706e-03], both intervals excluding zero — at **val PL
+    loss 5.741720 against 5.798597**, a gain of 0.056878 per race on
+    **nine fewer hand-built features**. Largest effect in the paper: 4.5x
+    the nonlinearity, 19x the nine extra features. Complete grid
+    separation the other way — all nine encoder configurations at 60
+    epochs beat rung 1's best of nine at 200. Selection budget 9 x 60
+    with the winner refitted at 200, which reproduced the 60-epoch trace
+    exactly and did not improve on it.
 
 ## Standing conventions
 
@@ -804,6 +836,12 @@ in Google Tasks, not here. **In scope and under way** — see the Papers
 list above for the summary and `papers/05_encoder/` for the stage
 reports.
 
+**Rungs 1, 2 and 3 are closed on validation** — see the Papers list above
+for each rung's numbers, and `papers/05_encoder/` for the stage reports.
+Rung 1 established the comparator, rung 2 lost, rung 3 won. What follows
+is what each rung left behind for later work, not a restatement of the
+results.
+
 **Rung 1 (the MLP control) is closed, at 3bf41be.** It took four
 attempts, and three of them were wasted on the same mistake: an arm that
 differed from its comparator in two respects at once, so the contrast
@@ -831,6 +869,29 @@ value; padding stays 0 and is masked by `seq_len`. `class` and
 `finish_pos` sentinels read as unavailable; `field_size` (40),
 `days_since_prev` (1000) and `beaten_dist` (100) are winsorised, which
 keeps the ordering where the magnitude stops being informative.
+
+**What rung 3 consumes them with, and the one thing it does not get
+back.** Sequences are right-padded — real runs in the leading slots,
+padding after — and the encoder output is the GRU hidden state at slot
+`seq_len`, so the recurrence never consumes padding. Left-padding would
+not do: a GRU fed zero vectors from a zero state does not stay at zero,
+because the gates carry biases. Runs are reversed into chronological
+order first, so the last thing the encoder reads is the most recent run.
+Gate: `scripts/verify_p5_gru_mask.R`, also on the graph as
+`p5_gru_mask_check`. Its third check — output must match feeding a row's
+real runs with no padding at all — is the one that matters: an
+off-by-one in the gather index passes both padding-invariance checks
+while summarising the wrong run. **`days_LTO_log` leaves in rung 3 and
+the sequences do not restore it**: `days_since_prev` is the gap between
+a historical run and the one before it, not the gap to today's race. The
+encoder wins having lost that, which is the obvious first thing to try
+if it is developed further.
+
+**The CPU backend is frozen and recorded.** `p5_capture_backend()` runs
+both as the `p5_backend` target and inside every fitting function, and
+`p5_backend_check` asserts all fitted runs agree with it, so no report
+can claim a backend it was not fitted on. See the `{torch}` entry under
+"Tech stack" for why CPU, and do not revisit it mid-ladder.
 
 **Abandoned unpublished: comment tags.** Features parsed from
 `in_race_comment` on a horse's prior runs were tried against paper 3's
