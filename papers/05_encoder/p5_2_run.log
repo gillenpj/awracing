@@ -1,0 +1,77 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p5_configs_v5 dispatched
+
+✔ p5_configs_v5 completed [2.9s, 373 B]
+
++ p5_rung2_terms dispatched
+
+✔ p5_rung2_terms completed [20ms, 282 B]
+
++ p5_arm_difference dispatched
+
+✔ p5_arm_difference completed [0ms, 398 B]
+
++ p5_entity_rows dispatched
+
+✔ p5_entity_rows completed [50ms, 351.86 kB]
+
++ p5_rung2_dense dispatched
+
+✔ p5_rung2_dense completed [200ms, 1.21 MB]
+
++ p5_entity_indices dispatched
+
+✔ p5_entity_indices completed [110ms, 191.59 kB]
+
++ p5_rung2_runs dispatched
+
+
+=== RESUMED 2026-09-07 13:06:38 (after reboot killed p5_rung2_runs) ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_rung2_terms dispatched
+
+✔ p5_rung2_terms completed [0ms, 282 B]
+
++ p5_arm_difference dispatched
+
+✔ p5_arm_difference completed [20ms, 398 B]
+
++ p5_rung2_runs dispatched
+
+✔ p5_rung2_runs completed [48m 49.7s, 957.00 kB]
+
++ p5_rung2_selected dispatched
+
+✔ p5_rung2_selected completed [0ms, 106.43 kB]
+
++ p5_rung2_scores dispatched
+
+✔ p5_rung2_scores completed [50ms, 547 B]
+
++ p5_scored_v5 dispatched
+
+✔ p5_scored_v5 completed [140ms, 267.61 kB]
+
++ p5_rung2_decomposition dispatched
+
+✔ p5_rung2_decomposition completed [0ms, 259 B]
+
++ p5_per_race_v5 dispatched
+
+✔ p5_per_race_v5 completed [2.8s, 29.12 kB]
+
++ p5_rung2_vs_rung1 dispatched
+
+✔ p5_rung2_vs_rung1 completed [860ms, 388 B]
+
++ p5_rung2_reading dispatched
+
+✔ p5_rung2_reading completed [0ms, 500 B]
+
+✔ ended pipeline [49m 4.1s, 10 completed, 63 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+=== exit code: 0 at 2026-09-07 13:55:54 ===

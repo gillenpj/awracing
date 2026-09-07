@@ -17,10 +17,10 @@
 # hashes recorded in `p5_upstream_fingerprint` so that an upstream change
 # invalidates everything downstream rather than going stale silently.
 #
-# THIS TASK IS THE PIPELINE AND RUNG 1 ONLY. The sequences are built and
-# verified here because rungs 2 and 3 need them, but rung 1 does not consume
-# them: the MLP control scores paper 3's 24 tabular features. The encoder
-# and the entity embeddings are not built.
+# RUNGS 1 AND 2. Rung 1 (the MLP control) is closed; rung 2 replaces the
+# three strike rates with learned entity embeddings. The sequences are built
+# and verified here because rung 3 needs them, but neither rung 1 nor rung 2
+# consumes them — both score tabular features. The encoder is not built.
 #
 # THE TEST SPLIT IS NOT SCORED ANYWHERE IN THIS FILE.
 
@@ -49,6 +49,7 @@ tar_source("R/db.R")
 tar_source("R/p5_sequences.R")
 tar_source("R/p5_torch.R")
 tar_source("R/p5_mlp.R")
+tar_source("R/p5_embed.R")
 tar_source("R/p5_baseline_2b.R")
 
 # Paper 3's and paper 2b's own code, sourced READ-ONLY and reused unchanged:
@@ -956,5 +957,203 @@ list(
         bound = P5_MAX_BEATEN
       )
     }
+  ),
+  # =======================================================================
+  # P5-2: RUNG 2 — entity embeddings.
+  #
+  # ONE CHANGE FROM RUNG 1. `trainerSR`, `jockeySR` and `sireSR` leave the
+  # feature set; learned embeddings on `trainer_id`, `jockey_id` and
+  # `sire_id` arrive. The 23 remaining terms, the MLP scorer, the PL
+  # objective, the validation slice, the seed and the nine-configuration
+  # grid are all rung 1's, unchanged.
+  #
+  # The comparator is rung 1's EQUAL-BUDGET arm (`p5_per_race_v4$mlp`), the
+  # one rung 1 closed on.
+  #
+  # THE TEST SPLIT IS NOT SCORED. Rung 3 is not started.
+  # =======================================================================
+
+  # Derived from rung 1's own term target at build time, not from a
+  # source-time constant: nothing under `R/` may depend on the alphabetical
+  # order `tar_source()` reads it in.
+  tar_target(p5_rung2_terms, p5_rung2_term_list(p5_control_terms)),
+
+  # The arms must differ in exactly ONE respect. Asserted, not left to
+  # prose: rung 1 took four attempts because three of them compared arms
+  # differing in two ways at once.
+  tar_target(
+    p5_arm_difference,
+    {
+      dropped <- setdiff(p5_control_terms, p5_rung2_terms)
+      added <- setdiff(p5_rung2_terms, p5_control_terms)
+      stopifnot(
+        length(p5_control_terms) == 26L,
+        length(p5_rung2_terms) == 23L,
+        setequal(dropped, P5_RUNG2_DROPPED),
+        length(added) == 0L,
+        # the hyperparameter grid is rung 1's, unchanged
+        identical(p5_configs_v5, p5_configs_v4_mlp)
+      )
+      tibble::tibble(
+        respect = c("dense terms dropped", "dense terms added",
+                    "entity embeddings added", "scorer", "objective",
+                    "validation slice", "seed", "configuration grid",
+                    "epochs per configuration"),
+        rung_1 = c("-", "-", "none", "p5_mlp_module", "PL k = 3",
+                   "2010-12-16 to 2012-12-30", "42",
+                   "3 widths x 3 lr, batch 64", "200"),
+        rung_2 = c(paste(sort(dropped), collapse = ", "), "-",
+                   paste(P5_ENTITY_COLS, collapse = ", "),
+                   "p5_mlp_module", "PL k = 3",
+                   "2010-12-16 to 2012-12-30", "42",
+                   "3 widths x 3 lr, batch 64", "200"),
+        differs = c(TRUE, FALSE, TRUE, rep(FALSE, 6))
+      )
+    }
+  ),
+
+  # Entity ids joined onto the scoring row order. `runners_interactions`
+  # does not carry them; `qualifying_runners` does.
+  tar_target(
+    p5_entity_rows,
+    {
+      ids <- p5_qualifying_runners |>
+        dplyr::select(race_id, runner_id, dplyr::all_of(P5_ENTITY_COLS))
+      attach_ids <- function(key) {
+        out <- key |> dplyr::left_join(ids, by = c("race_id", "runner_id"))
+        stopifnot(nrow(out) == nrow(key))
+        out
+      }
+      list(fit = attach_ids(p5_arm_data$fit$key),
+           val = attach_ids(p5_arm_data$val$key))
+    }
+  ),
+
+  # Vocabularies frozen on the FITTING partition. Deriving them from the
+  # training split would let the validation slice decide model structure.
+  tar_target(
+    p5_entity_indices,
+    {
+      out <- p5_build_entity_indices(p5_entity_rows$fit, p5_entity_rows$val,
+                                     P5_ENTITY_COLS, P5_EMBED_MIN_RUNS)
+      stopifnot(
+        nrow(out$fit) == nrow(p5_arm_data$fit$key),
+        nrow(out$val) == nrow(p5_arm_data$val$key),
+        all(out$fit >= 1L), all(out$val >= 1L),
+        all(purrr::map_lgl(P5_ENTITY_COLS, function(e) {
+          max(c(out$fit[, e], out$val[, e])) <= out$vocabs[[e]]$size
+        }))
+      )
+      out
+    }
+  ),
+
+  # The 23 dense terms, standardised on the fitting partition exactly as
+  # rung 1's 26 are.
+  tar_target(
+    p5_rung2_dense,
+    {
+      stopifnot(length(p5_rung2_terms) == 23L)
+      add_course <- function(d) {
+        d |>
+          dplyr::mutate(
+            course_Kempton = as.numeric(course == "Kempton"),
+            course_Lingfield = as.numeric(course == "Lingfield"),
+            course_Southwell = as.numeric(course == "Southwell"),
+            course_Wolverhampton = as.numeric(course == "Wolverhampton")
+          )
+      }
+      x_fit <- add_course(p5_arm_data$fit$rows) |>
+        dplyr::select(dplyr::all_of(p5_rung2_terms)) |> as.matrix()
+      x_val <- add_course(p5_arm_data$val$rows) |>
+        dplyr::select(dplyr::all_of(p5_rung2_terms)) |> as.matrix()
+      st <- p5_standardise(rbind(x_fit, x_val), seq_len(nrow(x_fit)))
+      list(
+        fit = st$x[seq_len(nrow(x_fit)), , drop = FALSE],
+        val = st$x[-seq_len(nrow(x_fit)), , drop = FALSE],
+        na_share = st$na_share
+      )
+    }
+  ),
+
+  # Rung 1's grid, unchanged. Budget matched: 9 configurations x 200 epochs.
+  tar_target(p5_configs_v5, p5_mlp_configs_equal_budget()),
+
+  tar_target(
+    p5_rung2_runs,
+    purrr::map(seq_len(nrow(p5_configs_v5)), function(i) {
+      p5_fit_embed_mlp(
+        p5_rung2_dense$fit, p5_rung2_dense$val,
+        p5_entity_indices$fit, p5_entity_indices$val,
+        purrr::map_int(p5_entity_indices$vocabs, "size"),
+        p5_arm_data$fit$group_sizes, p5_arm_data$val$group_sizes,
+        p5_configs_v5[i, ], embed_dim = P5_EMBED_DIM, seed = 42L, k = 3L
+      )
+    })
+  ),
+
+  tar_target(p5_rung2_scores,
+             p5_run_table(p5_rung2_runs, p5_configs_v5$batch_races)),
+
+  tar_target(
+    p5_rung2_selected,
+    p5_rung2_runs[[
+      which.min(purrr::map_dbl(p5_rung2_runs, "best_val_loss"))]]
+  ),
+
+  tar_target(
+    p5_scored_v5,
+    p5_attach_scores(p5_val_base(p5_arm_data$val$key, p5_qualifying_runners),
+                     p5_rung2_selected$val_scores, p5_arm_data$val$key)
+  ),
+
+  tar_target(p5_per_race_v5, p5_per_race_metrics(p5_scored_v5, p5_scorable)),
+
+  # THE COMPARISON: rung 2 against rung 1's closed equal-budget arm.
+  tar_target(
+    p5_rung2_vs_rung1,
+    bootstrap_ranking_metrics(p5_per_race_v5, p5_per_race_v4$mlp,
+                              "rung 2 (embeddings) - rung 1 (strike rates)")
+  ),
+
+  # The reading, fixed before the fit.
+  tar_target(
+    p5_rung2_reading,
+    {
+      b <- p5_rung2_vs_rung1 |>
+        dplyr::filter(metric %in% c("P1_rank", "Brier_place")) |>
+        dplyr::mutate(
+          excludes_zero = (ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0),
+          favours = dplyr::case_when(
+            !excludes_zero ~ "neither",
+            metric == "P1_rank" & diff_point > 0 ~ "rung 2",
+            metric == "P1_rank" & diff_point < 0 ~ "rung 1",
+            metric == "Brier_place" & diff_point < 0 ~ "rung 2",
+            TRUE ~ "rung 1"
+          )
+        )
+      reading <- if (any(b$favours == "rung 1")) {
+        paste("embeddings are WORSE than the strike rates they replaced -",
+              "report and stop, do not remediate")
+      } else if (any(b$favours == "rung 2")) {
+        "embeddings HELP - rung 3's comparator becomes rung 2"
+      } else {
+        paste("NULL - embeddings add nothing over strike rates; proceed to",
+              "rung 3 with the rung 1 MLP as comparator and record the null")
+      }
+      list(table = b, reading = reading)
+    }
+  ),
+
+  # Validation PL loss on the one scale the arms are directly comparable on.
+  tar_target(
+    p5_rung2_decomposition,
+    tibble::tibble(
+      arm = c("rung 1 MLP, 26 terms", "rung 2 MLP, 23 terms + 3 embeddings"),
+      budget = "9 x 200",
+      val_pl_loss = c(p5_mlp_selected_v4$best_val_loss,
+                      p5_rung2_selected$best_val_loss)
+    ) |>
+      dplyr::mutate(gain = dplyr::lag(val_pl_loss) - val_pl_loss)
   )
 )
