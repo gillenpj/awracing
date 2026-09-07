@@ -50,6 +50,8 @@ tar_source("R/p5_sequences.R")
 tar_source("R/p5_torch.R")
 tar_source("R/p5_mlp.R")
 tar_source("R/p5_embed.R")
+tar_source("R/p5_backend.R")
+tar_source("R/p5_gru.R")
 tar_source("R/p5_baseline_2b.R")
 
 # Paper 3's and paper 2b's own code, sourced READ-ONLY and reused unchanged:
@@ -1155,5 +1157,283 @@ list(
                       p5_rung2_selected$best_val_loss)
     ) |>
       dplyr::mutate(gain = dplyr::lag(val_pl_loss) - val_pl_loss)
+  ),
+
+  # =======================================================================
+  # P5-3: RUNG 3 — the sequence encoder.
+  #
+  # ONE CHANGE FROM RUNG 1. Nine hand-summarised history terms leave the
+  # feature set; a GRU over the horse's prior-run sequences arrives, its
+  # output concatenated with the remaining terms before rung 1's MLP
+  # scorer. The strike rates stay — rung 2 closed as a loss.
+  #
+  # The comparator is rung 1's equal-budget MLP arm (`p5_per_race_v4$mlp`),
+  # validation PL loss 5.798597.
+  #
+  # THE TEST SPLIT IS NOT SCORED. Rung 4 is not started.
+  # =======================================================================
+
+  # -- The backend, recorded ------------------------------------------------
+  # The CPU libtorch build is a frozen parameter of this paper and
+  # `renv.lock` cannot capture it. Captured here AND inside every fitted
+  # run, so a report cannot claim a backend the fit did not use.
+  tar_target(p5_backend, p5_capture_backend()),
+
+  # -- The masking gate, on the graph --------------------------------------
+  tar_target(p5_gru_mask_check, p5_check_gru_masking(seed = 42L)),
+
+  tar_target(p5_rung3_terms, p5_rung3_term_list(p5_control_terms)),
+
+  # The arms must differ in exactly ONE respect. Asserted, not left to
+  # prose: rung 1 took four attempts because three of them compared arms
+  # differing in two ways at once.
+  tar_target(
+    p5_rung3_arm_difference,
+    {
+      dropped <- setdiff(p5_control_terms, p5_rung3_terms)
+      added <- setdiff(p5_rung3_terms, p5_control_terms)
+      stopifnot(
+        length(p5_control_terms) == 26L,
+        length(p5_rung3_terms) == 18L,
+        setequal(dropped, P5_RUNG3_DROPPED),
+        # `career_runs_prior` is the encoder block's own scalar, not a new
+        # feature: it carries the career length the 20-run cap truncates.
+        identical(added, P5_RUNG3_SEQ_SCALAR),
+        # the strike rates survive the swap
+        all(c("trainerSR", "jockeySR", "sireSR") %in% p5_rung3_terms),
+        # the downstream scorer is rung 1's SELECTED architecture
+        all(p5_configs_v6$width_label == p5_mlp_selected_v4$width_label),
+        all(p5_configs_v6$batch_races == 64L),
+        all(p5_configs_v6$weight_decay == 1e-5),
+        nrow(p5_configs_v6) == 9L
+      )
+      tibble::tibble(
+        respect = c("dense terms dropped", "dense terms added",
+                    "sequence encoder added", "downstream scorer",
+                    "objective", "validation slice", "race universe",
+                    "seed", "configurations", "epochs per configuration"),
+        rung_1 = c("-", "-", "none",
+                   paste0("p5_mlp_module ", p5_mlp_selected_v4$width_label),
+                   "PL k = 3", "2010-12-16 to 2012-12-30",
+                   paste(nrow(p5_arm_data$fit$key), "fit /",
+                         nrow(p5_arm_data$val$key), "val rows"),
+                   "42", "9", "200"),
+        rung_3 = c(paste(sort(dropped), collapse = ", "),
+                   paste0(added, " (encoder block scalar)"),
+                   paste0("GRU over ", P5_SEQ_MAX_LEN, " prior runs x ",
+                          length(P5_SEQ_FEATURES), " channels"),
+                   paste0("p5_mlp_module ", p5_configs_v6$width_label[[1]]),
+                   "PL k = 3", "2010-12-16 to 2012-12-30",
+                   paste(nrow(p5_arm_data$fit$key), "fit /",
+                         nrow(p5_arm_data$val$key), "val rows"),
+                   "42", "9", "60, then the selected one refitted at 200"),
+        differs = c(TRUE, TRUE, TRUE, rep(FALSE, 5), FALSE, TRUE)
+      )
+    }
+  ),
+
+  # -- The sequences, aligned to the arm row order -------------------------
+  tar_target(
+    p5_rung3_seq,
+    {
+      fit <- p5_align_sequences(p5_sequences, p5_arm_data$fit$key)
+      val <- p5_align_sequences(p5_sequences, p5_arm_data$val$key)
+      st <- p5_standardise_sequences(fit$x, fit$seq_len, val$x, val$seq_len)
+      stopifnot(
+        dim(st$fit)[1] == nrow(p5_arm_data$fit$key),
+        dim(st$val)[1] == nrow(p5_arm_data$val$key),
+        dim(st$fit)[2] == P5_SEQ_MAX_LEN,
+        dim(st$fit)[3] == length(P5_SEQ_FEATURES),
+        !anyNA(st$fit), !anyNA(st$val),
+        all(fit$seq_len <= fit$career_runs_prior),
+        all(val$seq_len <= val$career_runs_prior),
+        # padding is exactly zero, so nothing about it is channel-dependent
+        all(st$fit[, , 1][!outer(fit$seq_len, seq_len(P5_SEQ_MAX_LEN),
+                                 ">=")] == 0)
+      )
+      list(
+        fit = st$fit, val = st$val,
+        len_fit = fit$seq_len, len_val = val$seq_len,
+        career_fit = fit$career_runs_prior,
+        career_val = val$career_runs_prior,
+        centre = st$centre, scale = st$scale,
+        summary = tibble::tibble(
+          channel = P5_SEQ_FEATURES,
+          centre = round(st$centre, 4), scale = round(st$scale, 4)
+        )
+      )
+    }
+  ),
+
+  # -- The 18 dense terms, standardised as rung 1's 26 are -----------------
+  tar_target(
+    p5_rung3_dense,
+    {
+      stopifnot(length(p5_rung3_terms) == 18L)
+      add_cols <- function(d, career) {
+        d |>
+          dplyr::mutate(
+            course_Kempton = as.numeric(course == "Kempton"),
+            course_Lingfield = as.numeric(course == "Lingfield"),
+            course_Southwell = as.numeric(course == "Southwell"),
+            course_Wolverhampton = as.numeric(course == "Wolverhampton"),
+            career_runs_prior = as.numeric(career)
+          )
+      }
+      x_fit <- add_cols(p5_arm_data$fit$rows, p5_rung3_seq$career_fit) |>
+        dplyr::select(dplyr::all_of(p5_rung3_terms)) |> as.matrix()
+      x_val <- add_cols(p5_arm_data$val$rows, p5_rung3_seq$career_val) |>
+        dplyr::select(dplyr::all_of(p5_rung3_terms)) |> as.matrix()
+      st <- p5_standardise(rbind(x_fit, x_val), seq_len(nrow(x_fit)))
+      list(
+        fit = st$x[seq_len(nrow(x_fit)), , drop = FALSE],
+        val = st$x[-seq_len(nrow(x_fit)), , drop = FALSE],
+        na_share = st$na_share
+      )
+    }
+  ),
+
+  # Nine configurations, declared in full before any is scored.
+  tar_target(p5_configs_v6, p5_gru_configs()),
+
+  tar_target(
+    p5_rung3_runs,
+    purrr::map(seq_len(nrow(p5_configs_v6)), function(i) {
+      p5_fit_gru(
+        p5_rung3_dense$fit, p5_rung3_dense$val,
+        p5_rung3_seq$fit, p5_rung3_seq$val,
+        p5_rung3_seq$len_fit, p5_rung3_seq$len_val,
+        p5_arm_data$fit$group_sizes, p5_arm_data$val$group_sizes,
+        p5_configs_v6[i, ], seed = 42L, k = 3L
+      )
+    })
+  ),
+
+  tar_target(p5_rung3_scores_60, p5_gru_run_table(p5_rung3_runs)),
+
+  tar_target(
+    p5_rung3_selected_60,
+    p5_rung3_runs[[which.min(purrr::map_dbl(p5_rung3_runs, "best_val_loss"))]]
+  ),
+
+  # -- The selected configuration alone, refitted at 200 epochs ------------
+  # Rung 1 selected over 9 x 200. Selecting rung 3 over 9 x 60 and then
+  # taking the winner to 200 gives the arm the same epoch allowance without
+  # spending 1,800 evaluations to prove divergence nine times over.
+  tar_target(
+    p5_rung3_refit_200,
+    {
+      cfg <- p5_configs_v6[p5_rung3_selected_60$config, ] |>
+        dplyr::mutate(max_epochs = 200L)
+      p5_fit_gru(
+        p5_rung3_dense$fit, p5_rung3_dense$val,
+        p5_rung3_seq$fit, p5_rung3_seq$val,
+        p5_rung3_seq$len_fit, p5_rung3_seq$len_val,
+        p5_arm_data$fit$group_sizes, p5_arm_data$val$group_sizes,
+        cfg, seed = 42L, k = 3L
+      )
+    }
+  ),
+
+  # The 200-epoch refit is the same seeded run continued, so its first 60
+  # epochs must reproduce the 60-epoch run exactly. That is the
+  # two-fresh-processes reproducibility check, and it is also what makes
+  # "did the extra 140 epochs help?" a well-posed question.
+  tar_target(
+    p5_rung3_budget_check,
+    {
+      d <- max(abs(p5_rung3_refit_200$trace[1:60] -
+                     p5_rung3_selected_60$trace))
+      stopifnot(d < 1e-12)
+      tibble::tibble(
+        config = p5_rung3_selected_60$config,
+        label = p5_rung3_selected_60$label,
+        max_abs_trace_diff_first_60 = d,
+        best_at_60 = p5_rung3_selected_60$best_val_loss,
+        best_epoch_at_60 = p5_rung3_selected_60$best_epoch,
+        best_at_200 = p5_rung3_refit_200$best_val_loss,
+        best_epoch_at_200 = p5_rung3_refit_200$best_epoch,
+        improvement = p5_rung3_selected_60$best_val_loss -
+          p5_rung3_refit_200$best_val_loss,
+        improved = p5_rung3_refit_200$best_val_loss <
+          p5_rung3_selected_60$best_val_loss
+      )
+    }
+  ),
+
+  # The arm: the selected configuration at rung 1's epoch allowance.
+  tar_target(p5_rung3_selected, p5_rung3_refit_200),
+
+  tar_target(
+    p5_scored_v6,
+    p5_attach_scores(p5_val_base(p5_arm_data$val$key, p5_qualifying_runners),
+                     p5_rung3_selected$val_scores, p5_arm_data$val$key)
+  ),
+
+  tar_target(p5_per_race_v6, p5_per_race_metrics(p5_scored_v6, p5_scorable)),
+
+  # THE COMPARISON: rung 3 against rung 1's closed equal-budget arm.
+  tar_target(
+    p5_rung3_vs_rung1,
+    bootstrap_ranking_metrics(p5_per_race_v6, p5_per_race_v4$mlp,
+                              "rung 3 (encoder) - rung 1 (summaries)")
+  ),
+
+  # The reading, fixed before the fit.
+  tar_target(
+    p5_rung3_reading,
+    {
+      b <- p5_rung3_vs_rung1 |>
+        dplyr::filter(metric %in% c("P1_rank", "Brier_place")) |>
+        dplyr::mutate(
+          excludes_zero = (ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0),
+          favours = dplyr::case_when(
+            !excludes_zero ~ "neither",
+            metric == "P1_rank" & diff_point > 0 ~ "rung 3",
+            metric == "P1_rank" & diff_point < 0 ~ "rung 1",
+            metric == "Brier_place" & diff_point < 0 ~ "rung 3",
+            TRUE ~ "rung 1"
+          )
+        )
+      reading <- if (any(b$favours == "rung 1")) {
+        paste("the sequences do not expose what the summaries capture -",
+              "report and stop, do not remediate")
+      } else if (any(b$favours == "rung 3")) {
+        paste("the encoder finds something the summaries miss - report and",
+              "proceed to the test split")
+      } else {
+        paste("TIE - the encoder matches hand-built history features;",
+              "report the tie, which is itself a result given the features",
+              "it replaces")
+      }
+      list(table = b, reading = reading)
+    }
+  ),
+
+  # Validation PL loss on the one scale the arms are directly comparable on.
+  tar_target(
+    p5_rung3_decomposition,
+    tibble::tibble(
+      arm = c("paper 2b, mlogit", "linear in torch, 26 terms",
+              "rung 1 MLP, 26 terms",
+              "rung 2 MLP, 23 terms + 3 embeddings",
+              "rung 3 GRU, 18 terms + sequence encoder"),
+      budget = c("closed form", "9 x 200", "9 x 200", "9 x 200",
+                 "9 x 60, selected refit at 200"),
+      val_pl_loss = c(p5_pl_loss_value(p5_baseline_scores,
+                                       p5_arm_data$val$group_sizes, 3L),
+                      p5_linear_selected_v4$best_val_loss,
+                      p5_mlp_selected_v4$best_val_loss,
+                      p5_rung2_selected$best_val_loss,
+                      p5_rung3_selected$best_val_loss)
+    ) |>
+      dplyr::mutate(gain_over_rung1 = p5_mlp_selected_v4$best_val_loss -
+                      val_pl_loss)
+  ),
+
+  # No report can claim a backend the fit did not run on.
+  tar_target(
+    p5_backend_check,
+    p5_assert_backend(c(p5_rung3_runs, list(p5_rung3_refit_200)), p5_backend)
   )
 )

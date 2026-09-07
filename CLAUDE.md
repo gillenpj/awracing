@@ -180,17 +180,38 @@ below has five entries for four numbered papers.
 - `{targets}` + `{tarchetypes}` pipeline; entry point `_targets.R`.
 - `{DBI}` + `{RMariaDB}` for the Smartform MySQL database.
 - `{tidyverse}`, `{tidymodels}`, `{mlogit}` for modelling.
-- **`{torch}` 0.17.0 + `{luz}` 0.5.2 (and `coro` 1.1.0) for paper 5.**
-  Pinned with `renv::record()`. The backend is the **CPU** libtorch
-  build, and **`renv.lock` cannot capture that** — it pins R packages,
-  not the C++ runtime. Reproducing this environment therefore needs
-  `Sys.setenv(CUDA = "cpu")` before `torch::install_torch()`; without it
-  the installer detects this machine's CUDA 12.0, which torch 0.17.0
-  does not support (it wants 12.6, 12.8 or 12.9) and the install fails.
-  CPU is the right target for rungs 1 and 2 — a 9-configuration,
-  200-epoch MLP grid is about 35 minutes. Rung 3 is the first point at
-  which a GPU could matter, and that should be decided on a measured
-  runtime.
+- **`{torch}` 0.17.0 (libtorch 2.8.0) + `{luz}` 0.5.2 (and `coro` 1.1.0)
+  for paper 5.** Pinned with `renv::record()`. The backend is the **CPU**
+  libtorch build, and **`renv.lock` cannot capture that** — it pins R
+  packages, not the C++ runtime. Reproducing this environment therefore
+  needs `Sys.setenv(CUDA = "cpu")` before `torch::install_torch()`.
+  **The CPU backend is a frozen parameter of paper 5. Decided
+  2026-09-07; do not revisit mid-ladder.** Every rung is fitted on it,
+  and results do not reproduce across backends, so switching would
+  invalidate the frozen comparator and force refitting every closed
+  rung. The pipeline records the backend at fit time in `p5_backend`
+  and inside each fitted run, so no report can claim a backend it was
+  not fitted on.
+  - **Why CPU, correctly stated.** It is *not* the driver: driver
+    560.94 supports a CUDA 12.6 runtime, as `nvidia-smi` reports. What
+    failed at P5-1b was the installer's **toolkit** probe —
+    `torch:::cuda_version_from_system_windows()` reads `CUDA_PATH`,
+    then `version.txt`, then `nvcc`, and this machine's toolkit is
+    v12.0. torch 0.17.0 ships **no CUDA build below 12.6** on Windows or
+    Linux (`supported_cuda_versions_windows` is `12.6, 12.8, 12.9`), so
+    `check_supported_version()` aborts. The probe is bypassable without
+    installing a toolkit — `torch:::cuda_version()` honours
+    `Sys.setenv(CUDA = "12.6")` first, and libtorch ships its own CUDA
+    runtime — so a GPU build was available and was declined on the
+    merits, not blocked.
+  - **The merits.** The GPU is a GeForce GT 1030 (Pascal GP108, compute
+    6.1, 2 GB, ~1.1 GB free with the desktop on it). Consumer Pascal
+    runs FP64 at 1/32 rate — about 35 GFLOPS — against roughly 50-70
+    GFLOPS achievable on this i5-3470. **The paper-5 fitting path is
+    `float64` throughout**, so the GPU would likely be slower, and
+    float32 is a larger change than the backend: it would break
+    `verify_p5_pl_torch.R`'s 1e-4 gradient assertions and force a
+    refit of every rung anyway.
 - `{quarto}` for the papers under `papers/`. Quarto CLI is bundled
   with RStudio at
   `C:/Program Files/RStudio/resources/app/bin/quarto/bin/quarto.exe`.

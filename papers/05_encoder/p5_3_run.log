@@ -1,0 +1,57 @@
+﻿=== P5-3 rung 3 run started 2026-09-07 15:09:32 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_rung3_runs dispatched
+
+✔ p5_rung3_runs completed [1h 22m 12.5s, 949.76 kB]
+
++ p5_rung3_selected_60 dispatched
+
+✔ p5_rung3_selected_60 completed [0ms, 105.72 kB]
+
++ p5_rung3_scores_60 dispatched
+
+✔ p5_rung3_scores_60 completed [50ms, 555 B]
+
++ p5_rung3_refit_200 dispatched
+
+✔ p5_rung3_refit_200 completed [22m 49.3s, 106.83 kB]
+
++ p5_backend_check dispatched
+
+✔ p5_backend_check completed [30ms, 266 B]
+
++ p5_rung3_budget_check dispatched
+
+✔ p5_rung3_budget_check completed [0ms, 257 B]
+
++ p5_rung3_selected dispatched
+
+✔ p5_rung3_selected completed [0ms, 106.83 kB]
+
++ p5_rung3_decomposition dispatched
+
+✔ p5_rung3_decomposition completed [20ms, 417 B]
+
++ p5_scored_v6 dispatched
+
+✔ p5_scored_v6 completed [120ms, 267.69 kB]
+
++ p5_per_race_v6 dispatched
+
+✔ p5_per_race_v6 completed [2.4s, 29.16 kB]
+
++ p5_rung3_vs_rung1 dispatched
+
+✔ p5_rung3_vs_rung1 completed [750ms, 381 B]
+
++ p5_rung3_reading dispatched
+
+✔ p5_rung3_reading completed [20ms, 489 B]
+
+✔ ended pipeline [1h 45m 14.9s, 12 completed, 80 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+=== exit code: 0 at 2026-09-07 16:54:58 ===
