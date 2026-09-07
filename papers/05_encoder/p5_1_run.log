@@ -1,0 +1,111 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p5_upstream_fingerprint dispatched
+
+✔ p5_upstream_fingerprint completed [5.8s, 323 B]
+
++ p5_configs dispatched
+
+✔ p5_configs completed [30ms, 373 B]
+
++ p5_frame dispatched
+
+✔ p5_frame completed [480ms, 185.54 kB]
+
++ p5_model_p2_reduced dispatched
+
+✔ p5_model_p2_reduced completed [400ms, 24.67 MB]
+
++ p5_qualifying_runners dispatched
+
+✔ p5_qualifying_runners completed [280ms, 1.76 MB]
+
++ p5_runners_interactions dispatched
+
+✔ p5_runners_interactions completed [120ms, 4.80 MB]
+
++ p5_full_history dispatched
+
+✔ p5_full_history completed [1.1s, 9.36 MB]
+
++ p5_slice dispatched
+
+✔ p5_slice completed [180ms, 12.81 kB]
+
++ p5_field_sizes dispatched
+
+Disconnected from Smartform database.
+
+✔ p5_field_sizes completed [2.6s, 340.90 kB]
+
++ p5_baseline dispatched
+
+✔ p5_baseline completed [8.9s, 41.01 MB]
+
++ p5_arm_data dispatched
+
+✔ p5_arm_data completed [440ms, 5.42 MB]
+
++ p5_run_vectors dispatched
+
+✔ p5_run_vectors completed [1s, 5.23 MB]
+
++ p5_baseline_scores dispatched
+
+✔ p5_baseline_scores completed [0ms, 104.46 kB]
+
++ p5_standardised dispatched
+
+✔ p5_standardised completed [150ms, 2.03 MB]
+
++ p5_sequences dispatched
+
+✔ p5_sequences completed [4.8s, 8.18 MB]
+
++ p5_mlp_runs dispatched
+
+✔ p5_mlp_runs completed [10m 38.8s, 945.06 kB]
+
++ p5_sequence_identity dispatched
+
+✔ p5_sequence_identity completed [240ms, 269 B]
+
++ p5_sequence_summary dispatched
+
+✔ p5_sequence_summary completed [640ms, 777 B]
+
++ p5_mlp_selected dispatched
+
+✔ p5_mlp_selected completed [0ms, 104.99 kB]
+
++ p5_config_scores dispatched
+
+✔ p5_config_scores completed [10ms, 448 B]
+
++ p5_scored dispatched
+
+✔ p5_scored completed [210ms, 535.10 kB]
+
++ p5_scorable dispatched
+
+✔ p5_scorable completed [680ms, 3.74 kB]
+
++ p5_per_race dispatched
+
+✔ p5_per_race completed [3.5s, 58.03 kB]
+
++ p5_rung1_comparison dispatched
+
+✔ p5_rung1_comparison completed [690ms, 373 B]
+
++ p5_rung1_reading dispatched
+
+✔ p5_rung1_reading completed [0ms, 480 B]
+
+✔ ended pipeline [11m 36.2s, 25 completed, 0 skipped]
+
+Warning messages:
+
+1: package 'torch' was built under R version 4.6.1 
+
+2: 1 targets produced warnings. Run targets::tar_meta(fields = warnings, complete_only = TRUE) for the messages. 
+
