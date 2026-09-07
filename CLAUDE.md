@@ -159,6 +159,25 @@ below has five entries for four numbered papers.
   internal RNG, or anything else cached at the process level — can make
   a broken setting look verified when re-checked within the same R
   session. Always verify across two separate `Rscript` invocations.
+- **Editing `R/p5_gru.R` costs about 3h20m of recompute, even for an
+  unrelated constant.** `p5_gru_module` is built at **source time** by
+  `torch::nn_module()`, and the R6 generator it returns captures the
+  enclosing environment. Adding anything to that environment changes the
+  generator's hash, so every target depending on it — `p5_rung3_runs`,
+  `p5_rung3_refit_200`, `p5_rung3b_runs`, `p5_rung3b_refit_200`,
+  `p5_gru_mask_check` — is invalidated and rungs 3 and 3b refit from
+  scratch. Confirmed empirically at P5-3b: adding two term-list helpers
+  to that file re-ran rung 3's whole grid (1h40m wasted), while
+  `p5_rung2_runs` — the same pattern via `p5_embed_module`, in a file
+  that was not touched — skipped, along with all of rungs 1 and 2. The
+  recompute is deterministic, so it costs time and nothing else; rung 3
+  reproduced to every printed digit. **Not being fixed**, because the fix
+  — putting the generator behind a lazily-called function — is itself an
+  edit to that file and would trigger the same recompute. Practical rule:
+  put new paper-5 helpers in a NEW file, never in `R/p5_gru.R`, and
+  before any long run check `tar_outdated()` to see whether the GRU
+  targets have been invalidated. The same trap applies in principle to
+  `p5_embed_module` in `R/p5_embed.R` (rung 2, about 49m).
 - **Never give a driver script's own helper the same name as a base R
   function.** Files under `R/` are `source()`d into the caller's global
   environment, not loaded as a namespaced package, so a same-named
