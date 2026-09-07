@@ -1,0 +1,91 @@
+﻿=== P5-TEST run started 2026-09-07 22:41:38 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_gbt_test_data dispatched
+
+✔ p5_gbt_test_data completed [30ms, 845.84 kB]
+
++ p5_gbt_train_data dispatched
+
+✔ p5_gbt_train_data completed [60ms, 2.02 MB]
+
++ p5_backtest_p3 dispatched
+
+✔ p5_backtest_p3 completed [40ms, 379 B]
+
++ p5_test_pred_2b dispatched
+
+✔ p5_test_pred_2b completed [20ms, 329.43 kB]
+
++ p5_per_race_p3 dispatched
+
+✔ p5_per_race_p3 completed [10ms, 60.63 kB]
+
++ p5_test_data dispatched
+
+✔ p5_test_data completed [4.1s, 14.11 MB]
+
++ p5_test_fit_rung1 dispatched
+
+✔ p5_test_fit_rung1 completed [6.5s, 141.49 kB]
+
++ p5_test_fit_rung3b dispatched
+
+✔ p5_test_fit_rung3b completed [25.7s, 141.60 kB]
+
++ p5_test_arm_difference dispatched
+
+✔ p5_test_arm_difference completed [0ms, 434 B]
+
++ p5_test_predictions dispatched
+
+✔ p5_test_predictions completed [190ms, 962.13 kB]
+
++ p5_test_backend_check dispatched
+
+✔ p5_test_backend_check completed [10ms, 266 B]
+
++ p5_test_backtests dispatched
+
+✖ p5_test_backtests errored
+
+✖ errored pipeline [50.3s, 11 completed, 105 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+Error:
+! Error in tar_make():
+  could not find function "build_value_bet_runners"
+  See https://books.ropensci.org/targets/debugging.html
+Execution halted
+=== exit code: 1 at 2026-09-07 22:42:40 ===
+=== resumed (missing tar_source for value_bets_p2b.R) 2026-09-07 22:43:27 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_test_backtests dispatched
+
+✔ p5_test_backtests completed [22.5s, 606 B]
+
++ p5_test_per_race dispatched
+
+✔ p5_test_per_race completed [4.8s, 121.31 kB]
+
++ p5_test_contrasts dispatched
+
+✔ p5_test_contrasts completed [3.1s, 625 B]
+
++ p5_test_race_universe dispatched
+
+✔ p5_test_race_universe completed [0ms, 183 B]
+
++ p5_test_reading dispatched
+
+✔ p5_test_reading completed [20ms, 558 B]
+
+✔ ended pipeline [38.8s, 5 completed, 120 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+=== exit code: 0 at 2026-09-07 22:44:17 ===

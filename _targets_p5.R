@@ -52,6 +52,7 @@ tar_source("R/p5_mlp.R")
 tar_source("R/p5_embed.R")
 tar_source("R/p5_backend.R")
 tar_source("R/p5_gru.R")
+tar_source("R/p5_final.R")
 tar_source("R/p5_baseline_2b.R")
 
 # Paper 3's and paper 2b's own code, sourced READ-ONLY and reused unchanged:
@@ -65,6 +66,7 @@ tar_source("R/scoring.R")
 tar_source("R/build_going_features.R")
 tar_source("R/model_fitting_p2.R")
 tar_source("R/ranking_eval_p2b.R")
+tar_source("R/value_bets_p2b.R")
 
 MAIN_STORE <- "_targets"
 P5_TRAIN_CUTOFF <- as.Date("2012-12-30")
@@ -1680,5 +1682,346 @@ list(
     p5_assert_backend(c(p5_rung3b_runs, list(p5_rung3b_refit_200)),
                       p5_backend)
   )
+,
+
+  # =======================================================================
+  # P5-TEST: THE TEST SPLIT, SCORED ONCE.
+  #
+  # Two arms, each refitted on the FULL training split at the configuration
+  # selected on the validation slice, then scored on the test split:
+  #   rung 1   the MLP on 26 hand-built terms
+  #   rung 3b  the GRU encoder on 19 terms plus the prior-run sequences
+  #
+  # Rung 3b, not rung 3: `p5_test_arm_choice` picked it on validation PL
+  # loss (5.718496 against 5.741720) and rung 2 is not a candidate at all,
+  # having lost.
+  #
+  # Three contrasts, paired race-level bootstrap, B = 2000, seed 42:
+  #   rung 3b vs rung 1   the paper's headline
+  #   rung 3b vs paper 3  the series comparison
+  #   rung 1 vs paper 3   so the ladder reads end to end
+  #
+  # SELECTION IS OVER. Nothing below chooses anything: the two
+  # configurations, their epoch counts and the three contrasts were all
+  # fixed on validation before this block ran. The arms are scored through
+  # paper 3's OWN evaluation path — build_test_predictions_3(),
+  # build_ranking_eval_runners(), build_ranking_per_race() and the series'
+  # single-bet backtest — with nothing differing but the z vector. ROI is an
+  # outcome and selects nothing.
+  # =======================================================================
+
+  tar_target(p5_gbt_train_data, {
+    p5_upstream_fingerprint
+    targets::tar_read(gbt_train_data, store = MAIN_STORE)
+  }),
+  tar_target(p5_gbt_test_data, {
+    p5_upstream_fingerprint
+    targets::tar_read(gbt_test_data, store = MAIN_STORE)
+  }),
+  tar_target(p5_test_pred_2b, {
+    p5_upstream_fingerprint
+    targets::tar_read(test_predictions_2b, store = MAIN_STORE)
+  }),
+  # Paper 3's own per-race test metrics and single-bet backtests, read as
+  # published. Paper 5 recomputes none of them.
+  tar_target(p5_per_race_p3, {
+    p5_upstream_fingerprint
+    targets::tar_read(ranking_per_race_3, store = MAIN_STORE)
+  }),
+  tar_target(p5_backtest_p3, {
+    p5_upstream_fingerprint
+    list(
+      win = targets::tar_read(backtest_single_win_3, store = MAIN_STORE),
+      place = targets::tar_read(backtest_single_place_3, store = MAIN_STORE),
+      eachway = targets::tar_read(backtest_single_eachway_3,
+                                  store = MAIN_STORE)
+    )
+  }),
+
+  # -- The two arms' matrices, on paper 3's stored key order ---------------
+  # Paper 3's own key order is reused rather than re-derived, so a paper-5
+  # score vector lines up with `gbt_test_data$group_sizes` by construction.
+  # Standardisation statistics come from the FULL training split, which is
+  # what these models are fitted on. No test row influences any scale.
+  tar_target(
+    p5_test_data,
+    {
+      add_course <- function(d) {
+        dplyr::mutate(
+          d,
+          course_Kempton = as.numeric(course == "Kempton"),
+          course_Lingfield = as.numeric(course == "Lingfield"),
+          course_Southwell = as.numeric(course == "Southwell"),
+          course_Wolverhampton = as.numeric(course == "Wolverhampton")
+        )
+      }
+      tr_key <- p5_gbt_train_data$key
+      te_key <- p5_gbt_test_data$key
+      tr <- p5_rows_in_key_order(tr_key, p5_runners_interactions,
+                                 p5_gbt_train_data$group_sizes)
+      te <- p5_rows_in_key_order(te_key, p5_runners_interactions,
+                                 p5_gbt_test_data$group_sizes)
+
+      # The PL ordering contract, re-asserted on both splits: within each
+      # race the first S = min(3, J-1) rows are the top finishers in order.
+      fp <- p5_qualifying_runners |>
+        dplyr::select(race_id, runner_id, finish_position, amended_position)
+      check_order <- function(key, gs) {
+        key |>
+          dplyr::left_join(fp, by = c("race_id", "runner_id")) |>
+          dplyr::mutate(
+            finish_pos = dplyr::coalesce(amended_position, finish_position),
+            J = rep.int(gs, gs)
+          ) |>
+          dplyr::group_by(race_id) |>
+          dplyr::mutate(pos = dplyr::row_number(), S = pmin(3L, J - 1L)) |>
+          dplyr::ungroup() |>
+          dplyr::filter(pos <= S) |>
+          dplyr::summarise(ok = all(finish_pos == pos)) |>
+          dplyr::pull(ok)
+      }
+      stopifnot(check_order(tr_key, p5_gbt_train_data$group_sizes),
+                check_order(te_key, p5_gbt_test_data$group_sizes))
+
+      # Sequences, aligned to the same key order.
+      sq_tr <- p5_align_sequences(p5_sequences, tr_key)
+      sq_te <- p5_align_sequences(p5_sequences, te_key)
+      sq <- p5_standardise_sequences(sq_tr$x, sq_tr$seq_len,
+                                     sq_te$x, sq_te$seq_len)
+
+      # Rung 1's 26 terms.
+      x1_tr <- add_course(tr) |>
+        dplyr::select(dplyr::all_of(p5_control_terms)) |> as.matrix()
+      x1_te <- add_course(te) |>
+        dplyr::select(dplyr::all_of(p5_control_terms)) |> as.matrix()
+      st1 <- p5_standardise(rbind(x1_tr, x1_te), seq_len(nrow(x1_tr)))
+
+      # Rung 3b's 19 terms, including the encoder block's own scalar.
+      x3_tr <- add_course(tr) |>
+        dplyr::mutate(career_runs_prior =
+                        as.numeric(sq_tr$career_runs_prior)) |>
+        dplyr::select(dplyr::all_of(p5_rung3b_terms)) |> as.matrix()
+      x3_te <- add_course(te) |>
+        dplyr::mutate(career_runs_prior =
+                        as.numeric(sq_te$career_runs_prior)) |>
+        dplyr::select(dplyr::all_of(p5_rung3b_terms)) |> as.matrix()
+      st3 <- p5_standardise(rbind(x3_tr, x3_te), seq_len(nrow(x3_tr)))
+
+      n_tr <- nrow(x1_tr)
+      list(
+        train_key = tr_key, test_key = te_key,
+        gs_train = p5_gbt_train_data$group_sizes,
+        gs_test = p5_gbt_test_data$group_sizes,
+        rung1 = list(train = st1$x[seq_len(n_tr), , drop = FALSE],
+                     test = st1$x[-seq_len(n_tr), , drop = FALSE]),
+        rung3b = list(train = st3$x[seq_len(n_tr), , drop = FALSE],
+                      test = st3$x[-seq_len(n_tr), , drop = FALSE]),
+        seq_train = sq$fit, seq_test = sq$val,
+        len_train = sq_tr$seq_len, len_test = sq_te$seq_len,
+        n_train_races = length(p5_gbt_train_data$group_sizes),
+        n_test_races = length(p5_gbt_test_data$group_sizes)
+      )
+    }
+  ),
+
+  # -- The arm difference, restated for the test arms ----------------------
+  tar_target(
+    p5_test_arm_difference,
+    {
+      dropped <- setdiff(p5_control_terms, p5_rung3b_terms)
+      added <- setdiff(p5_rung3b_terms, p5_control_terms)
+      stopifnot(
+        # eight summaries out, the encoder block's scalar in
+        setequal(dropped, setdiff(P5_RUNG3_DROPPED, P5_RUNG3B_RESTORED)),
+        identical(added, P5_RUNG3_SEQ_SCALAR),
+        length(dropped) == 8L,
+        ncol(p5_test_data$rung1$train) == 26L,
+        ncol(p5_test_data$rung3b$train) == 19L,
+        # the strike rates are in both arms; rung 2 lost and is not here
+        all(c("trainerSR", "jockeySR", "sireSR") %in% p5_control_terms),
+        all(c("trainerSR", "jockeySR", "sireSR") %in% p5_rung3b_terms),
+        # both arms see the same rows in the same order
+        identical(p5_test_data$train_key, p5_gbt_train_data$key),
+        identical(p5_test_data$test_key, p5_gbt_test_data$key),
+        # both trained for the same number of epochs, fixed on validation
+        p5_mlp_selected_v4$best_epoch == p5_rung3b_selected$best_epoch
+      )
+      tibble::tibble(
+        respect = c("dense terms", "sequence encoder", "downstream scorer",
+                    "objective", "fitted on", "scored on",
+                    "epochs (validation-selected)", "seed", "selection"),
+        rung_1 = c("26 hand-built", "none", "p5_mlp_module 256-128",
+                   "PL k = 3",
+                   paste(nrow(p5_test_data$rung1$train), "rows /",
+                         p5_test_data$n_train_races, "races"),
+                   paste(nrow(p5_test_data$rung1$test), "rows /",
+                         p5_test_data$n_test_races, "races"),
+                   as.character(p5_mlp_selected_v4$best_epoch),
+                   "42", "validation slice only"),
+        rung_3b = c(paste0("19 (", length(dropped),
+                           " summaries out, + block scalar)"),
+                    paste0("GRU over ", P5_SEQ_MAX_LEN, " prior runs x ",
+                           length(P5_SEQ_FEATURES), " channels"),
+                    "p5_mlp_module 256-128", "PL k = 3",
+                    paste(nrow(p5_test_data$rung3b$train), "rows /",
+                          p5_test_data$n_train_races, "races"),
+                    paste(nrow(p5_test_data$rung3b$test), "rows /",
+                          p5_test_data$n_test_races, "races"),
+                    as.character(p5_rung3b_selected$best_epoch),
+                    "42", "validation slice only"),
+        differs = c(TRUE, TRUE, rep(FALSE, 7))
+      )
+    }
+  ),
+
+  # -- The final refits ----------------------------------------------------
+  # Epoch counts are the validation-selected best epochs, carried over
+  # unchanged. There is no per-epoch validation here and no held-out set
+  # left: evaluating the test split per epoch, even only to record it,
+  # would put it inside the selection loop.
+  tar_target(
+    p5_test_fit_rung1,
+    p5_fit_final_mlp(
+      p5_test_data$rung1$train, p5_test_data$gs_train,
+      p5_test_data$rung1$test,
+      p5_configs_v4_mlp[p5_mlp_selected_v4$config, ],
+      epochs = p5_mlp_selected_v4$best_epoch, seed = 42L, k = 3L
+    )
+  ),
+
+  tar_target(
+    p5_test_fit_rung3b,
+    p5_fit_final_gru(
+      p5_test_data$rung3b$train, p5_test_data$seq_train,
+      p5_test_data$len_train, p5_test_data$gs_train,
+      p5_test_data$rung3b$test, p5_test_data$seq_test,
+      p5_test_data$len_test,
+      p5_configs_v7[p5_rung3b_selected$config, ],
+      epochs = p5_rung3b_selected$best_epoch, seed = 42L, k = 3L
+    )
+  ),
+
+  tar_target(
+    p5_test_backend_check,
+    p5_assert_backend(list(p5_test_fit_rung1, p5_test_fit_rung3b),
+                      p5_backend)
+  ),
+
+  # -- Scored through paper 3's own evaluation path ------------------------
+  tar_target(
+    p5_test_predictions,
+    list(
+      rung1 = build_test_predictions_3(p5_test_fit_rung1$scores,
+                                       p5_gbt_test_data, p5_test_pred_2b),
+      rung3b = build_test_predictions_3(p5_test_fit_rung3b$scores,
+                                        p5_gbt_test_data, p5_test_pred_2b)
+    )
+  ),
+
+  tar_target(
+    p5_test_per_race,
+    {
+      race_ids <- as.integer(
+        rle(as.character(p5_gbt_test_data$key$race_id))$values
+      )
+      one <- function(pred, z) {
+        build_ranking_per_race(
+          build_ranking_eval_runners(pred, p5_qualifying_runners),
+          "win_model", alpha_2nd = 1, alpha_3rd = 1,
+          z = z, group_sizes = p5_gbt_test_data$group_sizes,
+          race_ids_ordered = race_ids
+        )
+      }
+      list(rung1 = one(p5_test_predictions$rung1, p5_test_fit_rung1$scores),
+           rung3b = one(p5_test_predictions$rung3b,
+                        p5_test_fit_rung3b$scores))
+    }
+  ),
+
+  # The three arms are compared on the same races. Paper 3's per-race table
+  # is the reference; all three are restricted to the common set.
+  tar_target(
+    p5_test_race_universe,
+    {
+      ids <- Reduce(intersect, list(p5_test_per_race$rung1$race_id,
+                                    p5_test_per_race$rung3b$race_id,
+                                    p5_per_race_p3$race_id))
+      stopifnot(length(ids) > 0)
+      tibble::tibble(
+        source = c("rung 1", "rung 3b", "paper 3", "common"),
+        n_races = c(nrow(p5_test_per_race$rung1),
+                    nrow(p5_test_per_race$rung3b),
+                    nrow(p5_per_race_p3), length(ids))
+      )
+    }
+  ),
+
+  # -- The three contrasts -------------------------------------------------
+  tar_target(
+    p5_test_contrasts,
+    {
+      ids <- Reduce(intersect, list(p5_test_per_race$rung1$race_id,
+                                    p5_test_per_race$rung3b$race_id,
+                                    p5_per_race_p3$race_id))
+      keep <- function(d) dplyr::filter(d, race_id %in% ids)
+      r1 <- keep(p5_test_per_race$rung1)
+      r3 <- keep(p5_test_per_race$rung3b)
+      p3 <- keep(p5_per_race_p3)
+      dplyr::bind_rows(
+        bootstrap_ranking_metrics(
+          r3, r1, "rung 3b (encoder) - rung 1 (summaries)"),
+        bootstrap_ranking_metrics(
+          r3, p3, "rung 3b (encoder) - paper 3 (GBT)"),
+        bootstrap_ranking_metrics(r1, p3, "rung 1 (MLP) - paper 3 (GBT)")
+      )
+    }
+  ),
+
+  tar_target(
+    p5_test_reading,
+    p5_test_contrasts |>
+      dplyr::filter(metric %in% c("P1_rank", "Brier_place")) |>
+      dplyr::mutate(
+        excludes_zero = (ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0),
+        favours = dplyr::case_when(
+          !excludes_zero ~ "neither",
+          metric == "P1_rank" & diff_point > 0 ~ "first",
+          metric == "P1_rank" & diff_point < 0 ~ "second",
+          metric == "Brier_place" & diff_point < 0 ~ "first",
+          TRUE ~ "second"
+        )
+      )
+  ),
+
+  # -- The single-bet backtest, as the series runs it ----------------------
+  # ROI is an outcome. Nothing selects on it.
+  tar_target(
+    p5_test_backtests,
+    {
+      one <- function(pred) {
+        ratio <- compute_model_market_ratio_p2(
+          pred |> dplyr::rename(predicted_prob = win_model,
+                                market_prob = win_market)
+        )
+        vbr <- build_value_bet_runners(pred, p5_qualifying_runners)
+        list(
+          win = run_single_win_backtest(ratio),
+          place = run_single_settled_backtest(ratio,
+                                              build_place_value_bets(vbr)),
+          eachway = run_single_settled_backtest(
+            ratio, build_eachway_value_bets(vbr))
+        )
+      }
+      arms <- list(rung1 = one(p5_test_predictions$rung1),
+                   rung3b = one(p5_test_predictions$rung3b),
+                   paper3 = p5_backtest_p3)
+      purrr::imap(arms, function(a, nm) {
+        purrr::imap(a, function(res, bet) {
+          dplyr::mutate(res, arm = nm, bet = bet, .before = 1)
+        }) |> purrr::list_rbind()
+      }) |> purrr::list_rbind()
+    }
+  )
 )
+
 
