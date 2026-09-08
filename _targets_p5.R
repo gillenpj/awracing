@@ -2236,5 +2236,33 @@ list(
     p5_diag_backend_check,
     p5_assert_backend(
       list(list(backend = p5_capture_backend())), p5_backend)
+  ),
+
+  # =======================================================================
+  # THE PAPER.
+  #
+  # One `tar_quarto()` target renders both HTML and PDF from index.qmd.
+  # Section partials and helpers are listed under `extra_files` because
+  # files pulled in via `{{< include >}}` are not auto-scanned; the target
+  # dependencies come from the `tar_load()` call in index.qmd's setup chunk.
+  # =======================================================================
+  tar_quarto(
+    paper_5_encoder,
+    path = "papers/05_encoder",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/05_encoder/_01_result.qmd",
+      "papers/05_encoder/_02_data.qmd",
+      "papers/05_encoder/_03_method.qmd",
+      "papers/05_encoder/_04_ladder.qmd",
+      "papers/05_encoder/_05_results.qmd",
+      "papers/05_encoder/_06_discussion.qmd",
+      "papers/05_encoder/_appx_a_objective.qmd",
+      "papers/05_encoder/_appx_b_sequences.qmd",
+      "papers/05_encoder/_appx_c_software.qmd",
+      "papers/05_encoder/_helpers.R",
+      "papers/05_encoder/references.bib",
+      "papers/05_encoder/_quarto.yml"
+    )
   )
 )

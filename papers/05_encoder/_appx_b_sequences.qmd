@@ -1,0 +1,137 @@
+# Appendix B — Sequence construction {#sec-appx-b}
+
+## Schema
+
+For each runner-race the builder produces a fixed-shape array plus two
+scalars:
+
+| object | shape | what it is |
+|---|---|---|
+| `x` | `r p5_comma(dim(p5_sequences$x)[1])` × `r dim(p5_sequences$x)[2]` × `r dim(p5_sequences$x)[3]` | prior runs × channels, most recent first, right-padded |
+| `seq_len` | `r p5_comma(dim(p5_sequences$x)[1])` | real runs in that row, capped |
+| `career_runs_prior` | `r p5_comma(dim(p5_sequences$x)[1])` | untruncated career length |
+
+Prior runs come from the series' cached cross-surface career history —
+every race code and every surface, not All-Weather alone — under the
+series' temporal rule: strictly before the meeting date of the race being
+predicted. Declared non-runners are dropped, matching the treatment the
+going features already give them: a declared non-runner did not run, so it
+is not a prior run.
+
+## The cap, and why nothing is lost at it
+
+The array is capped at `r p5_sequences$max_len` runs. Career length is
+counted **before** the cap and carried separately as `career_runs_prior`, so
+a horse with fifty prior runs is not presented as one with twenty. On the
+training split
+`r sprintf("%.1f%%", p5_sequence_summary$truncated$share_pct)` of
+observations exceed the cap.
+
+The cap was set wide deliberately, so that its value would not become a
+parameter requiring selection. @tbl-seqlen-sens confirms it never did: the
+encoder's advantage is essentially complete by five runs.
+
+## Channel cleaning
+
+Two treatments, and the distinction between them is the whole of the
+reasoning.
+
+**Read as unavailable (−1)** when the value is not on the channel's own
+scale, so its magnitude would be meaningless:
+
+- `class` outside 1–7. The 2006 restructuring replaced multi-digit codes
+  whose meaning is not comparable with the current scheme, and those values
+  are entirely pre-2006. A class of 42 is not "class 42".
+- `finish_pos` beyond 40. Values of 98 and 99 are sentinels, not placings.
+
+**Winsorised** when the value *is* on the channel's scale but its exact
+magnitude stops being informative, so the ordering is worth keeping:
+
+- `field_size` at 40, the largest legitimate British field.
+- `days_since_prev` at 1,000. Past about three years the exact gap carries
+  nothing an encoder can use, and the maximum observed is 37,918 days, which
+  is not a real layoff.
+- `beaten_dist` at `r p5_beaten_audit$bound` lengths.
+
+The unavailable fill is **−1 rather than 0** because zero is a legitimate
+reading for several channels — a winner is zero lengths behind the winner,
+which is definitional rather than imputed — and because zero is the padding
+value. The two must not collide.
+
+### The beaten-distance bound
+
+`beaten_dist` is the only bound that touches an appreciable share of rows,
+so it is documented rather than asserted. Over
+`r p5_comma(p5_beaten_audit$n_rows)` career-run rows,
+`r p5_comma(p5_beaten_audit$n_missing)`
+(`r sprintf("%.3f%%", p5_beaten_audit$pct_missing)`) have no reading at all.
+
+```{r}
+#| label: tbl-beaten-thresholds
+#| tbl-cap: "Rows above each beaten-distance threshold, whole career-run universe."
+p5_beaten_audit$thresholds |>
+  kable(align = "rrr")
+```
+
+The tail is real data, not a sentinel: the column is cumulative lengths
+behind the winner, and the long tail is jumps racing.
+
+```{r}
+#| label: tbl-beaten-racetype
+#| tbl-cap: "Beaten distance by race type."
+p5_beaten_audit$by_race_type |>
+  kable(align = "lrrrrr")
+```
+
+A tailed-off horse in a hurdle race genuinely finishes hundreds of lengths
+adrift, so the reading is winsorised rather than discarded — the ordering
+still means "beaten a very long way", and −1 would misreport a real result
+as absent. Beyond `r p5_beaten_audit$bound` lengths the exact figure adds
+nothing: the horse was comprehensively beaten either way. The bound also
+does the most for the scale the encoder sees. Before it, the channel maximum
+sits about 23 standard deviations above the channel mean; after it, about 6.
+
+## Padding and masking
+
+Sequences are **right-padded**: real runs occupy the leading slots and
+padding follows. The encoder's output is the recurrent state at slot
+`seq_len`, so the recurrence never consumes a padded slot.
+
+Left-padding would not do, and the reason is not obvious enough to leave
+unstated. A gated recurrent unit fed $k$ zero vectors from a zero initial
+state does not remain at zero, because the update and reset gates carry
+biases. The state entering the first real run would then depend on how much
+padding preceded it, and two horses with identical records but different
+career lengths would receive different summaries.
+
+Runs are reversed into chronological order before the encoder reads them, so
+the last thing it sees is the most recent run.
+
+A row with no prior run at all has no last real slot; it receives the zero
+vector, which is what a zero-length sequence should give and is the fact the
+discarded "no prior run" indicator carried.
+
+### The masking gate
+
+`scripts/verify_p5_gru_mask.R` asserts the property directly rather than
+relying on the argument above, on a randomly initialised encoder in
+evaluation mode, across three seeds. It is also on the pipeline graph, so
+it runs whenever the encoder code changes.
+
+```{r}
+#| label: tbl-mask-gate
+#| tbl-cap: "The masking gate. Differences are between encoder outputs that must be identical."
+p5_gru_mask_check |>
+  dplyr::transmute(Check = check,
+                   `Max abs difference` = formatC(max_abs_diff,
+                                                  format = "e", digits = 2),
+                   Tolerance = formatC(tol, format = "e", digits = 0),
+                   Passed = dplyr::if_else(passed, "yes", "NO")) |>
+  kable(align = "lrrl")
+```
+
+The third check is the one that earns its place. An off-by-one in the index
+that selects the last real slot would summarise the wrong run while leaving
+both padding-invariance checks intact — the encoder would be perfectly
+consistent about reading the wrong thing. Feeding each row's real runs with
+no padding at all is what pins the index.

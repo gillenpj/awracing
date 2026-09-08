@@ -1,0 +1,110 @@
+# Appendix C — Software and reproducibility {#sec-appx-c}
+
+## The series pattern
+
+The analysis is a `{targets}` pipeline [@targetsr] in R, with `{renv}`
+pinning package versions and one function per target. Paper 5 has its own
+pipeline script and its own store, `_targets_p5.R` and `_targets_p5`,
+following paper 4's arrangement, so nothing it does can invalidate or
+overwrite the published work of papers 1 to 4.
+
+Upstream objects — the career history, the runner table, paper 3's own
+fitting and test matrices, paper 2b's fitted model — are read from the main
+store **read-only**, with their content hashes recorded in a fingerprint
+target. An upstream change therefore invalidates this paper's downstream
+work rather than leaving it silently stale.
+
+Every number in this document is read from a target at render time via
+`tar_read()` or `tar_load()`. None is transcribed. A figure with nothing
+behind it is a figure that can go stale without anyone noticing.
+
+## Fitting
+
+Fitting uses `{torch}` [@torchr] directly rather than through
+`{tidymodels}`. This is a documented exception of the same kind papers 1 and
+2 make for `{mlogit}` and paper 3 makes for `{xgboost}`: there is no
+`{parsnip}` interface for a custom Plackett–Luce objective over
+variable-length padded sequences with race-grouped reduction. `{luz}` is
+installed and pinned, but the training loop is written against `{torch}`
+directly — the loss is race-grouped, a batch is a set of whole races padded
+to that batch's widest field, and an explicit loop is easier to audit than
+the same thing routed through a callback API.
+
+Package versions are pinned in the lockfile:
+
+```{r}
+#| label: tbl-versions
+#| tbl-cap: "Fitting environment, captured at fit time from inside the model-fitting functions."
+p5_backend |>
+  dplyr::transmute(
+    torch = torch_version, libtorch = libtorch_version,
+    R = r_version, Platform = platform,
+    Device = device, `CUDA available` = cuda_is_available,
+    `CPU threads` = torch_threads
+  ) |>
+  kable(align = "llllllr")
+```
+
+## The caveat the lockfile cannot capture
+
+`renv.lock` pins R packages. It does not pin the C++ runtime underneath
+`{torch}`, and there is more than one: the same R package version can sit on
+a CPU `libtorch` build or on any of several CUDA builds, which do not
+produce identical results.
+
+Everything in this paper is fitted on the **CPU** build in double precision.
+Reproducing the environment therefore requires setting `CUDA = "cpu"` before
+installing the backend; without it the installer probes for a CUDA toolkit
+and selects a different build.
+
+That choice was made deliberately rather than by default. The GPU available
+is a consumer Pascal card, which runs double-precision arithmetic at
+one-thirty-second of its single-precision rate — slower, on this hardware,
+than the CPU it would replace. Moving to single precision would be a larger
+change than the backend: it would break the gradient assertions in
+@sec-appx-a and require every rung to be refitted. The CPU backend was
+therefore fixed before the ladder was built and treated as a parameter of
+the paper.
+
+Because none of this appears in the lockfile, the backend is captured
+**inside every fitting function** and returned with the fitted model, then
+asserted against the pipeline's own record. A report cannot claim a backend
+that a fit did not run on, and a mixed-backend comparison fails loudly
+rather than being published.
+
+## Determinism
+
+All fitting is seeded, for both R and torch, at the top of each fit. Within
+a backend the results are exactly reproducible, and this was checked rather
+than assumed at three points:
+
+- Rung 1's 200-epoch grid reproduced its 60-epoch grid to every printed
+  digit across separate `Rscript` invocations days apart.
+- The encoder's 200-epoch refit reproduced its 60-epoch trace with maximum
+  absolute difference `r p5_rung3b_budget_check$max_abs_trace_diff_first_60`.
+- Rung 3's whole grid and refit were recomputed in a later session and
+  reproduced to every printed digit; the pipeline confirmed it independently
+  by leaving every downstream target untouched.
+- The refit used for the diagnostics in @sec-discussion reproduced the
+  stored model's validation scores with maximum absolute difference
+  `r p5_encoder_diag$verify$max_abs_diff` across
+  `r p5_comma(p5_encoder_diag$verify$n)` rows.
+
+Cross-backend reproduction is not achievable and is not claimed.
+
+## Verification gates
+
+Four standing gates guard the parts of this paper where a silent error would
+be hardest to notice, each run after any change to the code it covers:
+
+| gate | what it asserts |
+|---|---|
+| `verify_p5_pl_torch.R` | the torch loss matches paper 3's analytic objective, and its gradient is finite under masking (@sec-appx-a) |
+| `verify_p5_gru_mask.R` | the encoder never reads padding, and reads the correct slot (@sec-appx-b) |
+| `verify_pl_objective.R` | paper 3's own objective, unchanged and inherited |
+| `verify_rebuild.R` | the race universe, unchanged and inherited |
+
+In addition, the term-by-term difference between the two arms of every rung
+is asserted in the pipeline before either arm is fitted, and the backtest's
+re-derived per-race bet units are asserted to reproduce the published
+returns exactly before any interval is attached to them.

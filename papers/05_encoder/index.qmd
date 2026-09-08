@@ -1,0 +1,139 @@
+---
+title: "Sequence encoding of run histories"
+subtitle: "Paper 5 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-08"
+abstract: |
+  Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
+  recent form as a handful of hand-built numbers: last time out's finishing
+  position if it was in the first four, the position two runs back on the
+  same rule, whether the horse had ever won, and a small going-affinity
+  block. This paper changes how that history reaches the model. The
+  summaries are removed and a gated recurrent encoder reads the horse's
+  twenty most recent prior runs directly, eight channels a run, with the
+  raw finishing position rather than a top-four code. Everything else is
+  held fixed: the same races, the same depth-three Plackett–Luce
+  likelihood, the same downstream scorer, the same seed. On
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+  held-out test races the encoder beats the hand-built summaries on every
+  ranking measure — P1_rank
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+  Brier_place
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
+  pseudo-$R^2$
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+  every interval excluding zero — and beats paper 3's gradient-boosted
+  trees by more. Three models now separate cleanly on a test split where
+  papers 1 to 3 could not be told apart. Two further findings come from the
+  ladder that got there: a multi-layer perceptron on identical features
+  beat a linear scorer, which paper 3's function-class conclusion did not
+  anticipate; and learned entity embeddings for trainer, jockey and sire
+  lost to the strike rates they replaced, both intervals excluding zero.
+  The market still ranks better than any of it, and no betting return is
+  distinguishable from no improvement at all.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+# Paper 5 reads the paper-5 store, not the main one. Like paper 4 and unlike
+# papers 1-3 this does NOT call tar_config_set(): that writes the
+# project-root `_targets.yaml`, which papers 1-3's own setup chunks also
+# write, and pointing it at `_targets_p5` would send their next render at
+# the wrong store. Passing `store =` per call leaves `_targets.yaml`
+# untouched.
+P5_ROOT <- rprojroot::find_root(rprojroot::has_file("awracing.Rproj"))
+P5_STORE <- file.path(P5_ROOT, "_targets_p5")
+
+# Sourced robustly across the cwd tar_quarto() sets (project root) and the
+# one a direct render would set (this folder).
+source(file.path(P5_ROOT, "papers", "05_encoder", "_helpers.R"))
+
+# tar_load() centrally so tarchetypes::tar_quarto() picks these up as render
+# dependencies — files pulled in via {{< include >}} are not auto-scanned.
+tar_load(c(
+  # scope, slice, sequences (_02)
+  p5_slice, p5_frame, p5_sequences, p5_sequence_summary,
+  p5_sequence_identity, p5_beaten_audit, p5_runners_interactions,
+  p5_qualifying_runners, p5_arm_data, p5_scorable,
+  # method (_03)
+  p5_control_terms, p5_rung3b_terms, p5_configs_v4_mlp, p5_configs_v7,
+  p5_diag_linear, p5_gru_mask_check, p5_backend,
+  # the ladder on validation (_04)
+  p5_budget_decomposition, p5_mlp_vs_linear_v4, p5_mlp_scores_v4,
+  p5_linear_scores_v4, p5_mlp_selected_v4, p5_linear_selected_v4,
+  p5_rung2_vs_rung1, p5_rung2_scores, p5_rung2_selected, p5_entity_indices,
+  p5_rung3_vs_rung1, p5_rung3_selected, p5_rung3b_scores_60,
+  p5_rung3b_vs_rung3, p5_rung3b_selected, p5_rung3b_budget_check,
+  p5_rung3b_decomposition, p5_test_arm_choice,
+  # the test split (_05)
+  p5_test_arm_difference, p5_test_race_universe, p5_test_contrasts,
+  p5_test_backtests, p5_roi_contrasts, p5_roi_units_check,
+  p5_test_fit_rung1, p5_test_fit_rung3b, p5_test_backend_check,
+  p5_gbt_train_data, p5_gbt_test_data,
+  # diagnostics (_06)
+  p5_encoder_diag, p5_seq_length_table
+), store = P5_STORE)
+
+# ---- quantities used in more than one section -----------------------------
+
+n_test_races  <- p5_test_race_universe$n_races[
+  p5_test_race_universe$source == "common"]
+n_val_races   <- p5_slice$n_races_val
+n_fit_races   <- p5_slice$n_races_fit
+n_train_races <- p5_test_fit_rung1$n_train_races
+n_train_rows  <- p5_test_fit_rung1$n_train_rows
+n_test_rows   <- nrow(p5_gbt_test_data$key)
+
+loss_2b     <- p5_arm_loss(p5_rung3b_decomposition, "paper 2b")
+loss_linear <- p5_arm_loss(p5_rung3b_decomposition, "linear in torch")
+loss_rung1  <- p5_arm_loss(p5_rung3b_decomposition, "rung 1 MLP")
+loss_rung2  <- p5_arm_loss(p5_rung3b_decomposition, "rung 2 MLP")
+loss_rung3  <- p5_arm_loss(p5_rung3b_decomposition, "rung 3 GRU")
+loss_rung3b <- p5_arm_loss(p5_rung3b_decomposition, "rung 3b GRU")
+
+gain_encoder     <- loss_rung1 - loss_rung3b
+gain_nonlinear   <- loss_linear - loss_rung1
+gain_ninefeature <- loss_2b - loss_linear
+cost_embeddings  <- loss_rung2 - loss_rung1
+
+# The market baseline as papers 2b and 3 published it. Not recomputed here
+# and not contrasted here; quoted for context only.
+market_p1    <- 0.00543
+market_brier <- 0.1875
+```
+
+{{< include _01_result.qmd >}}
+
+{{< include _02_data.qmd >}}
+
+{{< include _03_method.qmd >}}
+
+{{< include _04_ladder.qmd >}}
+
+{{< include _05_results.qmd >}}
+
+{{< include _06_discussion.qmd >}}
+
+{{< include _appx_a_objective.qmd >}}
+
+{{< include _appx_b_sequences.qmd >}}
+
+{{< include _appx_c_software.qmd >}}
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

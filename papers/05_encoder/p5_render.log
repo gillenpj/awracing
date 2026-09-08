@@ -1,0 +1,1300 @@
+﻿=== render started 2026-09-08 02:59:02 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ paper_5_encoder dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                        
+
+
+Error in p5_comma(p5_test_race_universe$n_races[p5_test_race_universe$source ==  : 
+
+
+  could not find function "p5_comma"
+
+
+Calls: .main ... inline_exec -> hook_eval -> withVisible -> eval -> eval
+
+
+
+
+
+Quitting from index.qmd:17-17
+
+
+Execution halted
+
+
+WARN: Error encountered when rendering files
+
+✖ paper_5_encoder errored
+
+✖ errored pipeline [16.1s, 0 completed, 134 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+Error:
+! Error in tar_make():
+  ! Error running quarto CLI from R.
+Caused by error:
+✖ Error returned by quarto CLI.
+  -----------------------------
+  
+  
+  processing file: index.qmd
+  1/53
+  Error in p5_comma(p5_test_race_universe$n_races[p5_test_race_universe$source
+  == :
+  could not find function "p5_comma"
+  Calls: .main ... inline_exec -> hook_eval -> withVisible -> eval -> eval
+  
+  Quitting from index.qmd:17-17
+  Execution halted
+  WARN: Error encountered when rendering files
+  
+Caused by error in `processx::run()`:
+! System command 'quarto.exe' failed
+  See https://books.ropensci.org/targets/debugging.html
+Execution halted
+=== exit code: 1 ===
+=== render attempt 2 02:59:55 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ paper_5_encoder dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                        
+
+
+2/53 [setup]                
+
+
+3/53                        
+
+
+4/53 [example-setup]        
+
+
+5/53                        
+
+
+6/53 [tbl-example-form]     
+
+
+7/53                        
+
+
+8/53 [tbl-headline]         
+
+
+9/53                        
+
+
+10/53 [tbl-identity]         
+
+
+11/53                        
+
+
+12/53 [tbl-seqlen]           
+
+
+13/53                        
+
+
+14/53 [tbl-channels]         
+
+
+15/53                        
+
+
+16/53 [tbl-arm-difference]   
+
+
+17/53                        
+
+
+18/53 [tbl-backend]          
+
+
+19/53                        
+
+
+20/53 [tbl-rung1]            
+
+
+21/53                        
+
+
+22/53 [tbl-budget-decomp]    
+
+
+23/53                        
+
+
+24/53 [tbl-rung2]            
+
+
+25/53                        
+
+
+26/53 [tbl-vocab]            
+
+
+27/53                        
+
+
+28/53 [tbl-rung3b]           
+
+
+29/53                        
+
+
+30/53 [tbl-rung3b-grid]      
+
+
+31/53                        
+
+
+32/53 [tbl-ladder]           
+
+
+33/53                        
+
+
+34/53 [tbl-test-all]         
+
+
+35/53                        
+
+
+36/53 [tbl-backtest]         
+
+
+37/53                        
+
+
+38/53 [tbl-roi-ci]           
+
+
+39/53                        
+
+
+40/53 [tbl-seqlen-sens]      
+
+
+41/53                        
+
+
+42/53 [tbl-recovery]         
+
+
+43/53                        
+
+
+44/53 [tbl-two-optim]        
+
+
+45/53                        
+
+
+46/53 [tbl-beaten-thresholds]
+
+
+47/53                        
+
+
+48/53 [tbl-beaten-racetype]  
+
+
+49/53                        
+
+
+50/53 [tbl-mask-gate]        
+
+
+51/53                        
+
+
+52/53 [tbl-versions]         
+
+
+53/53                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
+
+    recent form as a handful of hand-built numbers: last time out's finishing
+
+    position if it was in the first four, the position two runs back on the
+
+    same rule, whether the horse had ever won, and a small going-affinity
+
+    block. This paper changes how that history reaches the model. The
+
+    summaries are removed and a gated recurrent encoder reads the horse's
+
+    twenty most recent prior runs directly, eight channels a run, with the
+
+    raw finishing position rather than a top-four code. Everything else is
+
+    held fixed: the same races, the same depth-three Plackett–Luce
+
+    likelihood, the same downstream scorer, the same seed. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built summaries on every
+
+    ranking measure — P1_rank
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    Brier_place
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
+
+    pseudo-$R^2$
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    every interval excluding zero — and beats paper 3's gradient-boosted
+
+    trees by more. Three models now separate cleanly on a test split where
+
+    papers 1 to 3 could not be told apart. Two further findings come from the
+
+    ladder that got there: a multi-layer perceptron on identical features
+
+    beat a linear scorer, which paper 3's function-class conclusion did not
+
+    anticipate; and learned entity embeddings for trainer, jockey and sire
+
+    lost to the strike rates they replaced, both intervals excluding zero.
+
+    The market still ranks better than any of it, and no betting return is
+
+    distinguishable from no improvement at all.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                        
+
+
+2/53 [setup]                
+
+
+3/53                        
+
+
+4/53 [example-setup]        
+
+
+5/53                        
+
+
+6/53 [tbl-example-form]     
+
+
+7/53                        
+
+
+8/53 [tbl-headline]         
+
+
+9/53                        
+
+
+10/53 [tbl-identity]         
+
+
+11/53                        
+
+
+12/53 [tbl-seqlen]           
+
+
+13/53                        
+
+
+14/53 [tbl-channels]         
+
+
+15/53                        
+
+
+16/53 [tbl-arm-difference]   
+
+
+17/53                        
+
+
+18/53 [tbl-backend]          
+
+
+19/53                        
+
+
+20/53 [tbl-rung1]            
+
+
+21/53                        
+
+
+22/53 [tbl-budget-decomp]    
+
+
+23/53                        
+
+
+24/53 [tbl-rung2]            
+
+
+25/53                        
+
+
+26/53 [tbl-vocab]            
+
+
+27/53                        
+
+
+28/53 [tbl-rung3b]           
+
+
+29/53                        
+
+
+30/53 [tbl-rung3b-grid]      
+
+
+31/53                        
+
+
+32/53 [tbl-ladder]           
+
+
+33/53                        
+
+
+34/53 [tbl-test-all]         
+
+
+35/53                        
+
+
+36/53 [tbl-backtest]         
+
+
+37/53                        
+
+
+38/53 [tbl-roi-ci]           
+
+
+39/53                        
+
+
+40/53 [tbl-seqlen-sens]      
+
+
+41/53                        
+
+
+42/53 [tbl-recovery]         
+
+
+43/53                        
+
+
+44/53 [tbl-two-optim]        
+
+
+45/53                        
+
+
+46/53 [tbl-beaten-thresholds]
+
+
+47/53                        
+
+
+48/53 [tbl-beaten-racetype]  
+
+
+49/53                        
+
+
+50/53 [tbl-mask-gate]        
+
+
+51/53                        
+
+
+52/53 [tbl-versions]         
+
+
+53/53                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
+
+    recent form as a handful of hand-built numbers: last time out's finishing
+
+    position if it was in the first four, the position two runs back on the
+
+    same rule, whether the horse had ever won, and a small going-affinity
+
+    block. This paper changes how that history reaches the model. The
+
+    summaries are removed and a gated recurrent encoder reads the horse's
+
+    twenty most recent prior runs directly, eight channels a run, with the
+
+    raw finishing position rather than a top-four code. Everything else is
+
+    held fixed: the same races, the same depth-three Plackett–Luce
+
+    likelihood, the same downstream scorer, the same seed. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built summaries on every
+
+    ranking measure — P1_rank
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    Brier_place
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
+
+    pseudo-$R^2$
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    every interval excluding zero — and beats paper 3's gradient-boosted
+
+    trees by more. Three models now separate cleanly on a test split where
+
+    papers 1 to 3 could not be told apart. Two further findings come from the
+
+    ladder that got there: a multi-layer perceptron on identical features
+
+    beat a linear scorer, which paper 3's function-class conclusion did not
+
+    anticipate; and learned entity embeddings for trainer, jockey and sire
+
+    lost to the strike rates they replaced, both intervals excluding zero.
+
+    The market still ranks better than any of it, and no betting return is
+
+    distinguishable from no improvement at all.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_5_encoder completed [52.5s, 2.36 MB]
+
+✔ ended pipeline [1m 2.6s, 1 completed, 134 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+
+=== render attempt 3 03:02:08 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ paper_5_encoder dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                        
+
+
+2/53 [setup]                
+
+
+3/53                        
+
+
+4/53 [example-setup]        
+
+
+5/53                        
+
+
+6/53 [tbl-example-form]     
+
+
+7/53                        
+
+
+8/53 [tbl-headline]         
+
+
+9/53                        
+
+
+10/53 [tbl-identity]         
+
+
+11/53                        
+
+
+12/53 [tbl-seqlen]           
+
+
+13/53                        
+
+
+14/53 [tbl-channels]         
+
+
+15/53                        
+
+
+16/53 [tbl-arm-difference]   
+
+
+17/53                        
+
+
+18/53 [tbl-backend]          
+
+
+19/53                        
+
+
+20/53 [tbl-rung1]            
+
+
+21/53                        
+
+
+22/53 [tbl-budget-decomp]    
+
+
+23/53                        
+
+
+24/53 [tbl-rung2]            
+
+
+25/53                        
+
+
+26/53 [tbl-vocab]            
+
+
+27/53                        
+
+
+28/53 [tbl-rung3b]           
+
+
+29/53                        
+
+
+30/53 [tbl-rung3b-grid]      
+
+
+31/53                        
+
+
+32/53 [tbl-ladder]           
+
+
+33/53                        
+
+
+34/53 [tbl-test-all]         
+
+
+35/53                        
+
+
+36/53 [tbl-backtest]         
+
+
+37/53                        
+
+
+38/53 [tbl-roi-ci]           
+
+
+39/53                        
+
+
+40/53 [tbl-seqlen-sens]      
+
+
+41/53                        
+
+
+42/53 [tbl-recovery]         
+
+
+43/53                        
+
+
+44/53 [tbl-two-optim]        
+
+
+45/53                        
+
+
+46/53 [tbl-beaten-thresholds]
+
+
+47/53                        
+
+
+48/53 [tbl-beaten-racetype]  
+
+
+49/53                        
+
+
+50/53 [tbl-mask-gate]        
+
+
+51/53                        
+
+
+52/53 [tbl-versions]         
+
+
+53/53                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
+
+    recent form as a handful of hand-built numbers: last time out's finishing
+
+    position if it was in the first four, the position two runs back on the
+
+    same rule, whether the horse had ever won, and a small going-affinity
+
+    block. This paper changes how that history reaches the model. The
+
+    summaries are removed and a gated recurrent encoder reads the horse's
+
+    twenty most recent prior runs directly, eight channels a run, with the
+
+    raw finishing position rather than a top-four code. Everything else is
+
+    held fixed: the same races, the same depth-three Plackett–Luce
+
+    likelihood, the same downstream scorer, the same seed. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built summaries on every
+
+    ranking measure — P1_rank
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    Brier_place
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
+
+    pseudo-$R^2$
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    every interval excluding zero — and beats paper 3's gradient-boosted
+
+    trees by more. Three models now separate cleanly on a test split where
+
+    papers 1 to 3 could not be told apart. Two further findings come from the
+
+    ladder that got there: a multi-layer perceptron on identical features
+
+    beat a linear scorer, which paper 3's function-class conclusion did not
+
+    anticipate; and learned entity embeddings for trainer, jockey and sire
+
+    lost to the strike rates they replaced, both intervals excluding zero.
+
+    The market still ranks better than any of it, and no betting return is
+
+    distinguishable from no improvement at all.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                        
+
+
+2/53 [setup]                
+
+
+3/53                        
+
+
+4/53 [example-setup]        
+
+
+5/53                        
+
+
+6/53 [tbl-example-form]     
+
+
+7/53                        
+
+
+8/53 [tbl-headline]         
+
+
+9/53                        
+
+
+10/53 [tbl-identity]         
+
+
+11/53                        
+
+
+12/53 [tbl-seqlen]           
+
+
+13/53                        
+
+
+14/53 [tbl-channels]         
+
+
+15/53                        
+
+
+16/53 [tbl-arm-difference]   
+
+
+17/53                        
+
+
+18/53 [tbl-backend]          
+
+
+19/53                        
+
+
+20/53 [tbl-rung1]            
+
+
+21/53                        
+
+
+22/53 [tbl-budget-decomp]    
+
+
+23/53                        
+
+
+24/53 [tbl-rung2]            
+
+
+25/53                        
+
+
+26/53 [tbl-vocab]            
+
+
+27/53                        
+
+
+28/53 [tbl-rung3b]           
+
+
+29/53                        
+
+
+30/53 [tbl-rung3b-grid]      
+
+
+31/53                        
+
+
+32/53 [tbl-ladder]           
+
+
+33/53                        
+
+
+34/53 [tbl-test-all]         
+
+
+35/53                        
+
+
+36/53 [tbl-backtest]         
+
+
+37/53                        
+
+
+38/53 [tbl-roi-ci]           
+
+
+39/53                        
+
+
+40/53 [tbl-seqlen-sens]      
+
+
+41/53                        
+
+
+42/53 [tbl-recovery]         
+
+
+43/53                        
+
+
+44/53 [tbl-two-optim]        
+
+
+45/53                        
+
+
+46/53 [tbl-beaten-thresholds]
+
+
+47/53                        
+
+
+48/53 [tbl-beaten-racetype]  
+
+
+49/53                        
+
+
+50/53 [tbl-mask-gate]        
+
+
+51/53                        
+
+
+52/53 [tbl-versions]         
+
+
+53/53                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
+
+    recent form as a handful of hand-built numbers: last time out's finishing
+
+    position if it was in the first four, the position two runs back on the
+
+    same rule, whether the horse had ever won, and a small going-affinity
+
+    block. This paper changes how that history reaches the model. The
+
+    summaries are removed and a gated recurrent encoder reads the horse's
+
+    twenty most recent prior runs directly, eight channels a run, with the
+
+    raw finishing position rather than a top-four code. Everything else is
+
+    held fixed: the same races, the same depth-three Plackett–Luce
+
+    likelihood, the same downstream scorer, the same seed. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built summaries on every
+
+    ranking measure — P1_rank
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    Brier_place
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
+
+    pseudo-$R^2$
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
+
+    every interval excluding zero — and beats paper 3's gradient-boosted
+
+    trees by more. Three models now separate cleanly on a test split where
+
+    papers 1 to 3 could not be told apart. Two further findings come from the
+
+    ladder that got there: a multi-layer perceptron on identical features
+
+    beat a linear scorer, which paper 3's function-class conclusion did not
+
+    anticipate; and learned entity embeddings for trainer, jockey and sire
+
+    lost to the strike rates they replaced, both intervals excluding zero.
+
+    The market still ranks better than any of it, and no betting return is
+
+    distinguishable from no improvement at all.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_5_encoder completed [40.8s, 2.36 MB]
+
+✔ ended pipeline [50.9s, 1 completed, 134 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+

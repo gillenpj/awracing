@@ -1,0 +1,150 @@
+# Data and scope {#sec-data}
+
+## The race universe is paper 3's, unchanged
+
+Nothing about which races are modelled changes in this paper. The scope is
+the series' own: UK All-Weather Flat handicaps in classes 2 to 5 at Kempton,
+Lingfield, Southwell and Wolverhampton, from 1 January 2006 to 14 October
+2015, non-maiden, four to sixteen declared runners, complete cases on the
+model's features.
+
+The rows are taken from the matrices paper 3 was fitted and scored on rather
+than re-derived from the filter rules, and row identity is asserted as a
+sorted set on `(race_id, runner_id)` rather than checked by counting races:
+
+```{r}
+#| label: tbl-identity
+#| tbl-cap: "Row identity against paper 3's frame."
+p5_sequence_identity |>
+  dplyr::rename(Check = check, Value = value) |>
+  kable(align = "lr")
+```
+
+The train/test split is the series' frozen chronological 70/30 at
+2012-12-30, giving `r p5_comma(n_train_races)` training races
+(`r p5_comma(n_train_rows)` runner-rows) and `r p5_comma(n_test_races)` test
+races (`r p5_comma(n_test_rows)` runner-rows). No within-race information
+crosses the boundary.
+
+## A validation slice, so the test split is scored once
+
+The models in this paper have hyperparameters — layer widths, learning
+rates, a hidden size, a dropout rate, an epoch count — and every one of them
+had to be chosen. Papers 2a and 2b had no such choices; paper 3 made them by
+cross-validation on the training split.
+
+This paper carves a **validation slice** out of the training split by the
+same rule the series uses one level up: the date at which 70% of the
+training period's races have been run, taken as a calendar date so it stays
+reproducible if the race universe changes. That date is
+`r format(p5_slice$boundary, "%d %B %Y")`, giving
+`r p5_comma(n_fit_races)` fitting races
+(`r format(p5_slice$fit_date_range[1], "%b %Y")` to
+`r format(p5_slice$fit_date_range[2], "%b %Y")`) and
+`r p5_comma(n_val_races)` validation races
+(`r format(p5_slice$val_date_range[1], "%b %Y")` to
+`r format(p5_slice$val_date_range[2], "%b %Y")`).
+
+Every choice in this paper — features, architecture, hyperparameters, epoch
+count, which arm goes forward — was made on that slice. The test split was
+scored once, at the end, after all of them were fixed.
+
+## The sequences
+
+For each runner-race, the encoder receives the horse's most recent prior
+runs, ordered most recent first, taken from the full cross-surface career
+history the series already extracts. The temporal boundary is the series'
+own: strictly before the meeting date of the race being predicted.
+
+Eight channels a run:
+
+| channel | what it carries |
+|---|---|
+| `finish_pos` | finishing position, **raw**, not capped at four |
+| `beaten_dist` | cumulative lengths behind the winner |
+| `beaten_missing` | indicator, distinguishing a real zero from an absent reading |
+| `going_ordinal` | the going that day, on the series' ordinal scale |
+| `class` | race class on the 2006 scheme |
+| `field_size` | runners in that race |
+| `distance_furlongs` | race distance |
+| `days_since_prev` | days from the run before it to that run |
+
+Two conventions are load-bearing. **Unavailable readings take −1, not
+zero**, because zero is a legitimate value for several channels — a winner
+is zero lengths behind the winner — and is also the padding value. And
+**padding is masked by an explicit length** rather than being relied upon to
+be inert; @sec-appx-b gives the gate that asserts this.
+
+### How much history there is
+
+Training split only, `r p5_comma(p5_sequence_summary$n_obs)` runner-rows:
+
+```{r}
+#| label: tbl-seqlen
+#| tbl-cap: "Prior-run counts on the training split. The capped row is what the encoder reads; the uncapped row is the horse's true career length, which enters the model separately as a scalar."
+dplyr::bind_rows(p5_sequence_summary$seq_len,
+                 p5_sequence_summary$career) |>
+  dplyr::rename(Measure = measure, Min = min, Q1 = q1, Median = median,
+                Q3 = q3, P90 = p90, Max = max, Mean = mean) |>
+  kable(align = "lrrrrrrr")
+```
+
+`r sprintf("%.1f%%", p5_sequence_summary$truncated$share_pct)` of training
+observations have careers longer than the twenty-run cap, and
+`r p5_comma(p5_sequence_summary$empty$n)`
+(`r sprintf("%.1f%%", p5_sequence_summary$empty$share_pct)`) have no prior
+run at all. Because truncation discards a horse's oldest runs, the
+**untruncated** career length is carried alongside the sequence as a scalar,
+`career_runs_prior`, so nothing about career length is lost at the cap. A
+sequence of length zero is exactly "no prior run", which is the fact the
+discarded indicators encoded.
+
+### The channels as the model reads them
+
+Every channel is bounded, and the bounds were set by inspecting the
+career-run universe rather than assumed. Training split, real slots only:
+
+```{r}
+#| label: tbl-channels
+#| tbl-cap: "Sequence channels on the training split, over real (unpadded) slots."
+p5_sequence_summary$channels |>
+  dplyr::transmute(
+    Channel = channel,
+    `Real slots` = p5_comma(n_real_slots),
+    Min = min, Median = median, Mean = mean, Max = max,
+    `% zero` = pct_zero
+  ) |>
+  kable(align = "lrrrrrr")
+```
+
+Two kinds of cleaning are applied, and the distinction is the point.
+Readings that are **not on the channel's own scale** — a pre-2006 class code
+of 42, a finishing position of 99 — are read as unavailable, because a class
+of 42 is not "class 42". Readings that **are** on the channel's scale but
+whose exact magnitude stops being informative are winsorised, which keeps
+the ordering: field size at 40, days since previous at 1,000, beaten
+distance at `r p5_beaten_audit$bound` lengths. @sec-appx-b gives the counts
+behind each.
+
+## One feature the sequences do not carry
+
+Eight hand-built features are removed in this paper. A ninth, `days_LTO_log`
+— the gap from the horse's most recent run to today's race — is **kept**,
+and the reason is a property of what a sequence representation carries
+rather than a correction to it.
+
+The `days_since_prev` channel is the gap between a historical run and the
+one before it. Read across the sequence it gives the rhythm of a career:
+whether the horse has been running every fortnight or once a season. It does
+not give the distance from the most recent run to the race being predicted,
+because that interval ends at a race the sequence does not contain. A
+sequence of prior runs is a record of what happened; the layoff a horse
+carries into today is a fact about today.
+
+So the encoder arm keeps `days_LTO_log` as a scalar term, in the same way it
+keeps `career_runs_prior`. Both are facts about the horse's history that the
+sequence, as constructed, cannot express. @sec-ladder reports what the term
+is worth: on the validation slice, restoring it moved the encoder from
+`r fmt_loss(loss_rung3)` to `r fmt_loss(loss_rung3b)` per race, about
+`r sprintf("%.0f%%", 100 * (loss_rung3 - loss_rung3b) / gain_encoder)` of
+the encoder's whole advantage over the hand-built arm.
