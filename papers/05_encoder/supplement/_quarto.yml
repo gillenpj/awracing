@@ -1,0 +1,19 @@
+project:
+  type: default
+  output-dir: _output
+  render:
+    - notes_on_neural_scorers.qmd
+
+format:
+  pdf:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    documentclass: scrartcl
+    geometry:
+      - margin=1in
+    colorlinks: true
+
+execute:
+  echo: false
+  enabled: false

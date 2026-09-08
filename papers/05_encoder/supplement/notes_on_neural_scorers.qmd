@@ -1,0 +1,589 @@
+---
+title: "Notes on Neural Scorers and Sequence Encoders"
+subtitle: "Supplementary material to Paper 5, *Sequence encoding of run histories*"
+author: "Patrick Gillen"
+date: "2026-09-08"
+---
+
+# Purpose {.unnumbered}
+
+These notes cover the machinery paper 5 uses. They are a tutorial, not a
+report: there are no results here, and nothing is claimed as new. The aim is
+that a reader with undergraduate mathematics can follow what paper 5 fitted
+and why the pieces are arranged as they are, or fill in the details
+independently from here.
+
+The order is cumulative. Each section uses only what precedes it. Sections 1
+and 2 are standard and kept short; sections 3 and 4 are where general
+machinery meets this particular likelihood, and are the point of the note.
+
+Notation: $x \in \mathbb{R}^p$ is a feature vector for one runner in one
+race, $\theta$ is the collection of all model parameters, and $\sigma(u) =
+(1+e^{-u})^{-1}$.
+
+# Neural networks
+
+## A unit
+
+A single unit takes an input vector $x \in \mathbb{R}^p$, forms a weighted
+sum, and applies a fixed nonlinear function:
+
+$$
+a \;=\; \varphi\!\left(w^\top x + b\right), \qquad w \in \mathbb{R}^p,\;
+b \in \mathbb{R}.
+$$
+
+The weights $w$ and the bias $b$ are learned; $\varphi$ is chosen in advance.
+The common choice, and the one paper 5 uses, is the rectified linear unit
+$\varphi(u) = \max(0, u)$.
+
+## Layers, width, depth
+
+A layer applies $m$ units to the same input, which is a matrix multiply
+followed by an elementwise nonlinearity:
+
+$$
+h \;=\; \varphi\!\left(W x + b\right), \qquad W \in \mathbb{R}^{m \times p},
+\; b \in \mathbb{R}^m .
+$$
+
+$m$ is the width. Layers compose: $h^{(1)} = \varphi(W_1 x + b_1)$,
+$h^{(2)} = \varphi(W_2 h^{(1)} + b_2)$, and so on. The number of layers is
+the depth. A network of this shape, ending in a linear map to a single
+number, is a multi-layer perceptron. Paper 5's scorer has two hidden layers
+of widths 256 and 128.
+
+## Why the nonlinearity is the point
+
+Without $\varphi$, depth buys nothing. Two stacked affine maps are one
+affine map:
+
+$$
+W_2\!\left(W_1 x + b_1\right) + b_2 \;=\; \left(W_2 W_1\right) x +
+\left(W_2 b_1 + b_2\right),
+$$
+
+and the same collapse holds for any number of layers. A deep linear network
+has more parameters than a single linear map but represents exactly the same
+set of functions. Everything a network can do beyond linear regression comes
+from $\varphi$.
+
+With $\varphi = \max(0, \cdot)$, each unit is an affine function of its input
+switched on or off by a half-space test $w^\top x + b > 0$. A composition of
+such units is a piecewise-linear function of $x$, and the regions on which it
+is linear are determined by the weights — they are learned, not specified.
+This is the concrete sense in which such a network expresses thresholds and
+region-dependent behaviour, and it is what section 4 draws on.
+
+## Universal approximation, stated honestly
+
+A network with one hidden layer of sufficient width can approximate any
+continuous function on a compact set to arbitrary accuracy. This is a
+statement about existence: for a given target function and tolerance, such
+weights exist.
+
+It does not say how wide the layer must be, and the width required can grow
+very quickly with the dimension of $x$. It does not say that gradient descent
+will find those weights; the optimisation problem is non-convex and nothing
+guarantees the global optimum is reached. And it says nothing at all about
+generalisation — the theorem concerns approximating a known function, not
+recovering one from a finite, noisy sample. It is a reason not to worry that
+the model class is too small. It is not a reason to expect a good fit.
+
+# Training
+
+## The loss and gradient descent
+
+Fitting means choosing $\theta$ to minimise a scalar loss $L(\theta)$
+computed from the data. The basic method is gradient descent: repeatedly
+step against the gradient,
+
+$$
+\theta \;\leftarrow\; \theta - \eta \, \nabla_\theta L(\theta),
+$$
+
+with step size $\eta$, the learning rate. Too large and the iterates
+oscillate or diverge; too small and progress is slow.
+
+## Backpropagation
+
+The gradient is obtained by the chain rule. Write the network as a
+composition $L = \ell \circ f_n \circ \cdots \circ f_1$. The chain rule gives
+the derivative of $L$ with respect to the parameters of layer $i$ as a
+product of Jacobians of the layers above it. Evaluating that product from the
+loss end downward — reverse mode — lets every layer reuse the partial product
+already computed by the layers above, so the whole gradient costs a small
+constant multiple of one forward evaluation. That is backpropagation: not a
+separate idea from the chain rule, but the efficient order in which to apply
+it.
+
+## Automatic differentiation, and what an unbroken chain means
+
+The framework does not differentiate symbolically. It records each operation
+as it executes, building a graph from the parameters to the scalar loss, and
+then walks that graph backwards applying each operation's known derivative.
+
+"An unbroken differentiable chain from the loss" is a concrete requirement on
+that graph, and it fails in ordinary ways:
+
+- **Leaving the graph.** Converting a tensor to a plain number, or to an
+  array outside the framework, and continuing the computation there. The
+  recorded graph ends at that point and everything upstream receives no
+  gradient.
+- **Operations with no derivative.** Rounding, comparison, sorting to
+  produce an index, casting to an integer type. These have zero or undefined
+  derivative almost everywhere; a parameter reached only through one of them
+  cannot be trained.
+- **Selection that still differentiates both sides.** An elementwise
+  conditional such as `where(condition, a, b)` returns the value of one
+  branch, but its backward pass computes derivatives for both. If the
+  discarded branch contains a non-finite value — $\log 0$, a division by zero
+  — the forward result is correct and the gradient is `NaN`. This is worth
+  knowing because a check on the loss value alone will not detect it. The
+  remedy is to make the discarded branch finite before the selection rather
+  than relying on the selection to remove it.
+
+## Optimisers, epochs, minibatches
+
+Plain gradient descent uses the whole dataset for each step. Stochastic
+gradient descent uses a random subset — a minibatch — giving a noisier
+gradient at a fraction of the cost. One pass over the training data is an
+epoch.
+
+Adam is the optimiser paper 5 uses. It keeps running averages of the gradient
+and of its elementwise square, and scales each parameter's step by the ratio
+of the two, so parameters with consistently small gradients take relatively
+larger steps. It has its own learning rate, which remains the most important
+setting.
+
+Weight decay adds $\lambda \lVert \theta \rVert^2$ to the loss, shrinking
+parameters toward zero. Dropout, used during training only, sets a random
+fraction of a layer's activations to zero at each step, which discourages the
+network from relying on any single unit.
+
+## Overfitting, and why a validation slice exists
+
+A network with many parameters can fit the training data closely and still
+predict badly. The symptom is a training loss that keeps falling while the
+loss on data not used for fitting rises.
+
+This creates a problem for every choice not made by gradient descent — width,
+depth, learning rate, dropout rate, how many epochs to train. Those cannot be
+selected on the training loss, which prefers more capacity and more epochs
+without limit. They also cannot be selected on the data reserved for the
+final estimate of performance: a quantity chosen to look good on a particular
+set is no longer an unbiased estimate of performance on that set.
+
+The resolution is a third partition. The data is split into a fitting set, a
+validation set used to make those choices and to decide when to stop, and a
+test set that is scored once at the end and is otherwise not consulted. Paper
+5 carves its validation slice out of the training period by date, so that no
+information from later races reaches an earlier fit.
+
+# The Plackett–Luce likelihood under a neural scorer
+
+## The likelihood
+
+Papers 2b and 3 derive this likelihood; it is unchanged here, and the only
+difference is what computes the score.
+
+Consider race $r$ with $J_r$ runners. Each runner $j$ has features $x_{rj}$
+and receives a score
+
+$$
+z_{rj} \;=\; f_\theta\!\left(x_{rj}\right) \in \mathbb{R},
+$$
+
+where $f_\theta$ is any function with parameters $\theta$ — a linear map, a
+tree ensemble, or a network. The Plackett–Luce model says that the horse
+finishing first is drawn from the field with probability proportional to
+$\exp(z)$; that the second is drawn from the remainder by the same rule; and
+so on. Truncating at depth $k$, and writing $(s)$ for the horse that finished
+$s$-th and $R_{r,s}$ for the set still unplaced at stage $s$,
+
+$$
+\Pr\!\left(\text{observed top-}k\text{ order in race } r\right)
+\;=\;
+\prod_{s=1}^{S_r} \frac{\exp\!\left(z_{r,(s)}\right)}
+{\sum_{j \in R_{r,s}} \exp\!\left(z_{rj}\right)},
+\qquad S_r = \min\!\left(k, J_r - 1\right).
+$$
+
+The loss is the negative log-likelihood, summed over races:
+
+$$
+L(\theta) \;=\; \sum_r \ell_r, \qquad
+\ell_r \;=\; -\sum_{s=1}^{S_r}\left[\, z_{r,(s)} \;-\;
+\log \!\!\sum_{j \in R_{r,s}} \!\! \exp\!\left(z_{rj}\right) \right].
+$$
+
+At $k = 1$ this is the conditional logit: only the winner enters, and each
+race contributes one softmax term. Paper 5 uses $k = 3$, as papers 2b and 3
+do.
+
+## What the gradient hands to the network
+
+Differentiating $\ell_r$ with respect to a single score gives, for runner $j$,
+
+$$
+\frac{\partial \ell_r}{\partial z_{rj}}
+\;=\; \sum_{s=1}^{S_r} \left( p_{rj}^{(s)} - \mathbb{1}\!\left\{j = (s)\right\}
+\right),
+\qquad
+p_{rj}^{(s)} \;=\;
+\frac{\exp(z_{rj})}{\sum_{i \in R_{r,s}} \exp(z_{ri})}
+$$
+
+for $j \in R_{r,s}$, and $p_{rj}^{(s)} = 0$ once $j$ has been placed and
+removed. The quantity is "predicted probability minus what happened",
+accumulated over the stages the runner survives to.
+
+This is the entire interface between the likelihood and the model. The
+likelihood produces one number per runner-row; backpropagation carries that
+number into $f_\theta$ by the chain rule. Nothing in the derivation depends
+on $f_\theta$ being linear, which is why the same objective serves paper 2b's
+linear predictor, paper 3's tree ensemble and paper 5's network without
+modification.
+
+## Race as the grouping unit
+
+Two structural facts follow from the form of the likelihood.
+
+**Only within-race differences matter.** Adding a constant $c_r$ to every
+score in race $r$ leaves every ratio unchanged:
+$\exp(z + c_r) / \sum \exp(z + c_r) = \exp(z)/\sum \exp(z)$. The scorer is
+therefore identified only up to a per-race constant. Numerically this is also
+useful: subtracting $\max_j z_{rj}$ before exponentiating prevents overflow
+without changing the result.
+
+**Runners are coupled only through the denominator.** The score $z_{rj}$
+depends on $x_{rj}$ alone. Runners in the same race interact only through the
+normalising sum. Runners in different races do not interact at all.
+
+## Shared weights and variable field sizes
+
+The same $f_\theta$ is applied to every runner. The model has no parameter
+attached to "the second runner" or "the favourite"; it is a function of one
+runner's features, evaluated once per row. Two consequences:
+
+- The model is equivariant to permuting the runners within a race. Reordering
+  the rows reorders the scores and leaves the likelihood unchanged.
+- Field size requires no architectural provision. A function
+  $\mathbb{R}^p \to \mathbb{R}$ is indifferent to how many rows it is applied
+  to.
+
+The complication is arithmetic, not architectural. Evaluating many races at
+once is efficient if the scores are held in a rectangular array, but races
+have different field sizes. The usual solution is to pad each race to the
+width of the widest race in the batch and carry masks that record what is
+real:
+
+- a **validity** mask marking real runners against padded entries, so padding
+  contributes nothing to any sum; and
+- a **stage** mask recording, for each stage $s$, which runners are still in
+  $R_{r,s}$.
+
+Both masks must be applied so that padded entries contribute neither a value
+nor a gradient — which is the concrete case of the conditional-selection
+hazard described in section 2.3.
+
+# What an MLP can represent that a linear score cannot
+
+This section is specific to the likelihood above. The interesting differences
+are not the textbook ones about function classes in general; they follow from
+scoring being race-conditional.
+
+## The linear case
+
+With $f_\theta(x) = \beta^\top x$, the comparison between two runners in the
+same race is
+
+$$
+z_j - z_i \;=\; \beta^\top\!\left(x_j - x_i\right).
+$$
+
+The model's opinion about any pair is a fixed linear functional of their
+feature difference. It is the same functional everywhere in feature space and
+for every race.
+
+## Interactions must be named
+
+Suppose the value of a low draw depends on the course and the distance —
+worth a great deal over five furlongs at one track, worth nothing over twelve
+at another. A linear score can express this only if the product of draw and
+course, or draw and distance, is supplied as its own column. Papers 1 and 2
+did exactly that, with an explicit course-by-draw interaction.
+
+The requirement is that every interaction be anticipated, constructed and
+named in advance. There are $\binom{p}{2}$ pairwise products and far more
+higher-order ones, so in practice a small number are chosen on prior belief.
+
+A network needs none of them. Each hidden unit tests a half-space
+$w^\top x + b > 0$; the composition produces functions that are linear on
+regions and different from one region to the next. The effective slope on any
+feature can therefore depend on the values of the others. This is not a
+guarantee that the network finds the right interaction, only that the model
+class contains it without it having been named.
+
+## Thresholds and saturation
+
+In a linear score the marginal effect of a feature is constant: one more day
+since the last run changes $z$ by $\beta$ regardless of whether the horse ran
+a week or three years ago. If the true relationship saturates — the layoff
+matters up to a point, after which more makes no difference — a linear term
+cannot express it, and the standard remedy is to transform the feature
+(a logarithm) or to bin it, both of which impose the shape in advance.
+
+Piecewise-linear units express saturation directly: one unit switching off
+above a threshold gives a slope that changes at a learned point.
+
+## The race-conditional part, which is the sharpest difference
+
+Consider a feature that is constant within a race — the going that day, the
+class, the course, the field size. Call it $u_r$, the same for every runner
+in race $r$.
+
+In a linear score, such a feature contributes $\beta_u u_r$ to every runner's
+score in that race. From the previous section, a per-race constant cancels
+from every ratio in the likelihood. **A race-constant feature therefore
+contributes nothing to a linear score.** Its coefficient is not identified,
+and including the column adds no capacity at all.
+
+The only way a linear model can use race-level information is through an
+explicit interaction with a runner-level feature: a column such as
+$u_r \times \text{draw}_{rj}$ does vary within the race and does survive the
+cancellation. Again the interaction must be constructed by hand.
+
+A network is not restricted in this way. Because $u_r$ enters the hidden
+layers alongside the runner-level features, it can change the slope the
+network applies to those features without contributing any additive constant
+of its own. Race-level information becomes usable as a modifier of
+runner-level effects, without an interaction column being specified.
+
+This matters for reading paper 5's rung 1, where a network and a linear score
+were given an identical feature set including a going term and four course
+indicators — five columns that are constant within a race. On the linear side
+those five columns can do nothing whatever; on the network side they can
+modulate the remaining terms. Identical inputs, in this likelihood, do not
+mean identical usable inputs.
+
+## What the network does not buy
+
+Two boundaries, since the section above could be read as claiming more than
+it does.
+
+The network does not obtain any dependence on the rest of the field. Weights
+are shared and $f_\theta$ sees one runner's features, so $z_{rj}$ is still a
+function of $x_{rj}$ alone, exactly as in the linear case. Making a runner's
+score depend on the composition of the field requires a different
+architecture — a permutation-invariant function of the whole race — which is
+a change to the model class, not a consequence of adding hidden layers.
+
+Nor does it buy anything on features that are genuinely uninformative. Extra
+capacity applied to noise produces overfitting, which is what the validation
+slice of section 2.5 exists to detect.
+
+# Embeddings
+
+## The construction
+
+A categorical variable with $V$ levels — a trainer identifier, say — cannot
+be fed to a network as an integer, since the arithmetic would imply an
+ordering that does not exist. The standard treatments are one-hot encoding,
+which represents level $v$ by a basis vector $e_v \in \mathbb{R}^V$, and an
+embedding, which represents it by a learned vector.
+
+An embedding is a matrix $E \in \mathbb{R}^{V \times d}$ whose $v$-th row is
+the representation of level $v$. The lookup is exactly the product $e_v^\top
+E$, so an embedding is a linear layer applied to a one-hot vector, with the
+multiplication implemented as an array index. Its rows are parameters and are
+learned by the same gradient descent as every other weight: only the row for
+level $v$ receives gradient from a row of data carrying that level.
+
+## Why an embedding can carry more than a rate
+
+A hand-built alternative is a summary statistic — for a trainer, the
+proportion of prior runners that won. That is one number per level, fixed by
+a formula chosen in advance.
+
+An embedding is $d$ numbers per level, and their meaning is determined by the
+objective. It can in principle encode that a trainer does well with
+first-time-out sprinters and badly over longer distances, because the
+embedding vector is concatenated with the other features before the
+nonlinearity, and the network can therefore make its use of the other
+features depend on which trainer this is. A single rate cannot express
+anything conditional; it enters as one more additive term.
+
+## The sample-size problem
+
+The cost is parameters. The table holds $V \times d$ of them, and the row for
+level $v$ is estimated only from rows carrying level $v$. Entity counts in
+this kind of data are heavily skewed: a few trainers with thousands of
+runners, a long tail with a handful each. A level appearing three times has a
+$d$-vector fitted from three observations.
+
+The standard remedy is a frequency threshold: levels with at least $n_{\min}$
+rows in the fitting data get their own row, and everything below is pooled
+into one shared bucket. This bounds the parameter count and prevents the
+rarest levels from carrying essentially untrained vectors, at the cost that
+all of them share one representation.
+
+The vocabulary — which levels get their own row — must be fixed on the
+fitting data alone. Deriving it from the data the model is evaluated on would
+let that data determine the model's structure.
+
+## The information-set point
+
+There is a second difference between the two constructions, separate from
+representational capacity, and it is the one paper 5's rung 2 examines.
+
+An embedding row can only be learned from rows in the fitting sample. A
+statistic computed by formula can be evaluated anywhere the underlying
+records reach — including for levels that never appear in the fitting sample
+at all, and using history from outside the modelled scope entirely.
+
+Under a chronological split this asymmetry is not incidental. The evaluation
+period is later than the fitting period and contains people and animals the
+earlier period did not, and every one of them falls into the shared bucket.
+The comparison between a learned embedding and a formula-based rate is
+therefore a comparison between two information sets as much as between two
+representations, and any reading of such a comparison has to account for
+both.
+
+# Sequence encoders
+
+## The problem
+
+The input is now a variable-length sequence $x_1, \ldots, x_T$ with each
+$x_t \in \mathbb{R}^c$ — for paper 5, one vector per prior run of a horse,
+with $c$ channels describing that run. The output must be a fixed-length
+vector, because the scorer of section 3 takes a fixed-length input.
+
+Averaging or summing the sequence produces a fixed-length vector but discards
+order: it gives the same answer for a horse improving through its last five
+runs and one declining through them.
+
+## Recurrence
+
+A recurrent network maintains a running state and updates it once per
+element:
+
+$$
+h_t \;=\; \varphi\!\left(W x_t + U h_{t-1} + b\right), \qquad h_0 = 0 .
+$$
+
+The final state $h_T$ is the summary. Order matters because $h_{t-1}$ enters
+the update for $h_t$.
+
+The difficulty is training. The gradient of the loss with respect to early
+elements passes through $T$ successive multiplications by $U$ and by
+derivatives of $\varphi$, so it tends to shrink or grow geometrically in $T$.
+Long-range dependence is then hard to learn.
+
+## The gated recurrent unit
+
+The GRU addresses this with two gates. All quantities are vectors of the
+hidden width $H$, $\odot$ is elementwise multiplication, and $\sigma$ is the
+logistic function, so each gate is a vector of numbers in $(0,1)$:
+
+$$
+\begin{aligned}
+z_t &= \sigma\!\left(W_z x_t + U_z h_{t-1} + b_z\right)
+&&\text{update gate} \\
+r_t &= \sigma\!\left(W_r x_t + U_r h_{t-1} + b_r\right)
+&&\text{reset gate} \\
+\tilde{h}_t &= \tanh\!\left(W_h x_t + U_h \left(r_t \odot h_{t-1}\right)
++ b_h\right) &&\text{candidate state} \\
+h_t &= \left(1 - z_t\right) \odot h_{t-1} \;+\; z_t \odot \tilde{h}_t
+&&\text{new state}
+\end{aligned}
+$$
+
+The last line is the substance. The new state is an interpolation between the
+previous state and the candidate, controlled elementwise by $z_t$. Where
+$z_t$ is near zero the corresponding coordinate of the state is carried
+forward almost unchanged, which gives the gradient a near-identity path
+across that step; where $z_t$ is near one the coordinate is replaced. The
+network learns when to hold and when to overwrite, per coordinate, so
+different hidden dimensions can operate over different spans of the sequence.
+
+The reset gate controls how much of the previous state is visible when the
+candidate is formed. With $r_t$ near zero the candidate depends on $x_t$
+alone, which lets a coordinate discard accumulated history when the current
+element is what matters.
+
+Order changes the output, and not only in principle: $h_T$ is a function of
+the sequence, and exchanging two elements changes it in general. This is the
+property that distinguishes a recurrent summary from an average.
+
+## Padding and masking
+
+Batching requires a rectangular array, so sequences of different lengths must
+be padded to a common width. Where the padding goes is not a free choice.
+
+Suppose sequences are **left**-padded, with the real elements at the end, and
+the summary is taken as the state after the final step. Feeding a zero vector
+does not leave the state unchanged: with $x_t = 0$ the gates reduce to
+$\sigma(U_z h_{t-1} + b_z)$ and so on, and the biases alone move the state
+away from zero. The state entering the first real element then depends on how
+many padded steps preceded it, so two horses with identical records but
+different sequence lengths receive different summaries.
+
+Two correct alternatives. Either mask the recurrence itself, copying
+$h_{t-1}$ forward unchanged wherever the step is padding; or **right**-pad,
+with the real elements first, and read the state at index $\text{len}$ rather
+than at the end. Paper 5 takes the second. It is exact by construction: the
+state at index $\text{len}$ is a function of the first $\text{len}$ inputs
+and of nothing else, whatever the padded slots contain.
+
+Two practical points follow. A row with no elements at all has no state to
+read and should receive the zero vector explicitly. And the code used for an
+unavailable reading must differ from the padding value: if $0$ is a
+legitimate reading for a channel, padding with $0$ makes the two
+indistinguishable to any check.
+
+An index error here is quiet. Reading the state at $\text{len} \pm 1$ still
+produces a summary that is invariant to padding width and content, and still
+trains; it simply summarises the wrong element. Invariance tests alone do not
+catch it. Comparing against the same encoder run on the unpadded sequence
+does.
+
+## Why a frozen encoder feeding a tree is weaker
+
+A tempting arrangement is to obtain a sequence encoder some other way — train
+it against a different objective, or leave it at its random initialisation —
+freeze its parameters, and use its outputs as extra columns for a model that
+is easier to fit, such as a gradient-boosted tree.
+
+The representational comparison is exact. With the encoder frozen at
+$E_{\text{fixed}}$, the composite model ranges over
+$\{\, g \circ E_{\text{fixed}} : g \in \mathcal{G} \,\}$. With the encoder
+trained jointly it ranges over
+$\{\, g \circ E_\psi : g \in \mathcal{G}, \, \psi \in \Psi \,\}$, which
+contains the first as the slice $\psi = \psi_{\text{fixed}}$. The joint model
+can represent everything the frozen one can, and more.
+
+The reason is the chain rule of section 2.2. When the encoder is trained
+against the same loss, the gradient that reaches the scorer continues into
+the encoder, and the encoder's parameters are adjusted to make its output
+useful for that loss. Its coordinates come to mean something with respect to
+the prediction. Freezing severs that path: the coordinates then mean whatever
+the other procedure made them mean.
+
+At the extreme of a random initialisation, the encoder is an arbitrary
+nonlinear projection of the sequence. It will usually retain the information
+— an arbitrary projection rarely destroys much — but its coordinates bear no
+particular relation to the target, so the downstream model must recover the
+relevant structure from an arbitrary basis, using the same finite data. An
+encoder trained against a different objective is a milder version of the same
+problem: an autoencoder, for instance, optimises reconstruction, and the
+directions that reconstruct a run history well need not be the directions
+that order horses well.
+
+Two honest qualifications. "Weaker" here is a statement about the set of
+representable functions, not a prediction about held-out performance: the
+joint model has more parameters fitted on the same data and can generalise
+worse. And the argument assumes the joint model is actually trainable, which
+requires the differentiable chain of section 2.3 to be unbroken from the loss
+through the scorer and into the encoder — which is exactly what the masking
+arrangements above are there to preserve.
