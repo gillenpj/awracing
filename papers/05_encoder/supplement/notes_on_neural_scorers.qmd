@@ -37,7 +37,7 @@ The weights $w$ and the bias $b$ are learned; $\varphi$ is chosen in advance.
 The common choice, and the one paper 5 uses, is the rectified linear unit
 $\varphi(u) = \max(0, u)$.
 
-## Layers and width
+## Layers
 
 A layer applies $m$ units to the same input. Each unit has its own weights
 and bias, so the $m$ weighted sums are the rows of a matrix product:
@@ -292,12 +292,14 @@ combination as a column yourself — draw multiplied by course, say. Papers 1
 and 2 did exactly that, with an explicit course-by-draw interaction. A
 network does not need you to.
 
-The reason is what a unit computes. With $\varphi(u) = \max(0,u)$, a unit is
-zero on one side of the hyperplane $w^\top x + b = 0$ and linear on the
-other. Composing such units gives a function that is linear on regions of
-feature space and behaves differently on each, and the regions are set by the
-weights rather than specified in advance. The effective slope on one feature
-can therefore depend on the values of the others.
+The reason is what a single unit computes. With $\varphi(u) = \max(0,u)$, the
+unit is switched off wherever $w^\top x + b$ is negative and linear wherever
+it is positive. The boundary between the two is a line — a plane if there are
+three features, and its equivalent in more — and where that boundary falls is
+set by the weights, so the fitting chooses it rather than the analyst. Stack
+such units and the result is a function built from flat pieces, a different
+piece on each side of every boundary, so how much weight the network puts on
+one feature can depend on the values of the others.
 
 This is not a guarantee that the network finds the right interaction, only
 that the model class contains it without it having been named.
@@ -314,7 +316,7 @@ A network works the shape out. A unit that switches off above a threshold
 gives a slope that changes at a point chosen by the fitting rather than by
 the analyst.
 
-## The race-conditional part, which is the sharpest difference
+## Race-level features
 
 The going, the class, the course and the field size are the same for every
 horse in a race. A linear model adds the same amount to every score in that
@@ -421,12 +423,12 @@ information as much as two ways of representing the same information.
 
 ## The problem
 
-The input is now a variable-length sequence $x_1, \ldots, x_T$ with each
-$x_t \in \mathbb{R}^c$ — for paper 5, one vector per prior run of a horse,
-holding the eight values that describe that run: where the horse finished,
-how far back it was beaten, the going, and so on. The output must be a
-fixed-length vector, because the scorer of section 3 takes a fixed-length
-input.
+The input is now a variable-length sequence $x_1, \ldots, x_T$, one vector
+per prior run of a horse. Each $x_t \in \mathbb{R}^c$, where $c$ is the
+number of values describing a single run — eight in paper 5: where the horse
+finished, how far back it was beaten, the going, and so on. The output must
+be a fixed-length vector, because the scorer of section 3 takes a
+fixed-length input.
 
 Averaging or summing the sequence produces a fixed-length vector but discards
 order: it gives the same answer for a horse improving through its last five
