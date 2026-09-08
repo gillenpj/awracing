@@ -67,6 +67,7 @@ tar_source("R/build_going_features.R")
 tar_source("R/model_fitting_p2.R")
 tar_source("R/ranking_eval_p2b.R")
 tar_source("R/value_bets_p2b.R")
+tar_source("R/p5_diagnostics.R")
 
 MAIN_STORE <- "_targets"
 P5_TRAIN_CUTOFF <- as.Date("2012-12-30")
@@ -2022,6 +2023,218 @@ list(
       }) |> purrr::list_rbind()
     }
   )
+,
+
+  # =======================================================================
+  # P5-DIAG: ROI intervals, and validation-only encoder diagnostics.
+  #
+  # NOTHING HERE REFITS OR RESCORES THE TEST SPLIT. The ROI work reads the
+  # stored test predictions and paper 3's stored bet inputs and re-derives
+  # per-race bet units from them — a deterministic function of scores that
+  # already exist. The encoder diagnostics run entirely on the validation
+  # slice and never see a test row.
+  # =======================================================================
+
+  # -- ROI intervals -------------------------------------------------------
+  # The per-race bet units were NOT stored by `p5_test_backtests`, which
+  # kept only the one-row summaries. They are re-derived here from the
+  # stored predictions rather than obtained by refitting anything.
+  tar_target(p5_p3_bet_inputs, {
+    p5_upstream_fingerprint
+    list(
+      ratio = targets::tar_read(model_market_ratio_3_win, store = MAIN_STORE),
+      place = targets::tar_read(value_bets_place_3, store = MAIN_STORE),
+      eachway = targets::tar_read(value_bets_eachway_3, store = MAIN_STORE)
+    )
+  }),
+
+  tar_target(
+    p5_roi_units,
+    list(
+      rung1 = p5_bet_units_for(p5_test_predictions$rung1,
+                               p5_qualifying_runners),
+      rung3b = p5_bet_units_for(p5_test_predictions$rung3b,
+                                p5_qualifying_runners),
+      paper3 = p5_bet_units_from_stored(p5_p3_bet_inputs$ratio,
+                                        p5_p3_bet_inputs$place,
+                                        p5_p3_bet_inputs$eachway)
+    )
+  ),
+
+  # The re-derived units must reproduce the stored point ROIs exactly,
+  # otherwise the intervals below would be attached to different bets from
+  # the ones the test report published.
+  tar_target(
+    p5_roi_units_check,
+    {
+      recomputed <- purrr::imap(p5_roi_units, function(a, nm) {
+        purrr::imap(a, function(u, bet) {
+          dplyr::mutate(summarise_single_bets(u), arm = nm, bet = bet,
+                        .before = 1)
+        }) |> purrr::list_rbind()
+      }) |> purrr::list_rbind()
+      cmp <- p5_test_backtests |>
+        dplyr::select(arm, bet, roi_stored = roi, n_stored = n_bets) |>
+        dplyr::left_join(
+          dplyr::select(recomputed, arm, bet, roi_new = roi,
+                        n_new = n_bets),
+          by = c("arm", "bet")
+        ) |>
+        dplyr::mutate(roi_diff = roi_new - roi_stored,
+                      n_diff = n_new - n_stored)
+      stopifnot(max(abs(cmp$roi_diff)) < 1e-12, all(cmp$n_diff == 0L))
+      cmp
+    }
+  ),
+
+  tar_target(
+    p5_roi_contrasts,
+    {
+      races <- Reduce(intersect, list(p5_test_per_race$rung1$race_id,
+                                      p5_test_per_race$rung3b$race_id,
+                                      p5_per_race_p3$race_id))
+      pairs <- list(
+        list(a = "rung3b", b = "rung1",
+             label = "rung 3b (encoder) - rung 1 (summaries)"),
+        list(a = "rung3b", b = "paper3",
+             label = "rung 3b (encoder) - paper 3 (GBT)"),
+        list(a = "rung1", b = "paper3",
+             label = "rung 1 (MLP) - paper 3 (GBT)")
+      )
+      purrr::map(pairs, function(p) {
+        purrr::map(c("win", "place", "eachway"), function(bet) {
+          p5_bootstrap_single_bet_roi(
+            p5_roi_units[[p$a]][[bet]], p5_roi_units[[p$b]][[bet]],
+            races, p$label, bet, n_boot = 2000L, seed = 42L
+          )
+        }) |> purrr::list_rbind()
+      }) |>
+        purrr::list_rbind() |>
+        dplyr::mutate(
+          excludes_zero = (ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0)
+        )
+    }
+  ),
+
+  # -- 2a: feature recovery, validation slice ------------------------------
+  # `p5_fit_gru()` returns scores, not the module, so the hidden states
+  # cannot be read out of anything stored. The selected configuration is
+  # retrained on the fitting partition with the same seed for the number of
+  # epochs validation selected, and the result is CHECKED against the stored
+  # arm's own validation scores before anything is read off it.
+  tar_target(
+    p5_encoder_diag,
+    {
+      cfg <- p5_configs_v7[p5_rung3b_selected$config, ]
+      epochs <- p5_rung3b_selected$best_epoch
+      module <- p5_refit_encoder_module(
+        p5_rung3b_dense$fit, p5_rung3_seq$fit, p5_rung3_seq$len_fit,
+        p5_arm_data$fit$group_sizes, cfg, epochs, seed = 42L, k = 3L
+      )
+
+      h_val <- p5_encoder_hidden(module, p5_rung3_seq$val,
+                                 p5_rung3_seq$len_val)
+      z_rebuilt <- p5_scores_from_hidden(module, p5_rung3b_dense$val, h_val)
+      z_stored <- p5_rung3b_selected$val_scores
+
+      # Two things at once: that the refit reproduces the stored arm, and
+      # that the hidden states extracted here are the ones the arm's own
+      # forward pass used.
+      max_abs_diff <- max(abs(z_rebuilt - z_stored))
+      stopifnot(max_abs_diff < 1e-9)
+
+      removed <- setdiff(P5_RUNG3_DROPPED, P5_RUNG3B_RESTORED)
+      stopifnot(length(removed) == 8L)
+
+      list(
+        h = h_val,
+        hidden_dim = ncol(h_val),
+        epochs = epochs,
+        config = cfg$label,
+        verify = tibble::tibble(
+          check = "refit scores match the stored arm's validation scores",
+          max_abs_diff = max_abs_diff,
+          n = length(z_stored)
+        ),
+        recovery = p5_encoder_recovery(h_val, p5_arm_data$val$rows, removed),
+        # The two terms rung 3b KEPT, as a reference scale: a term the
+        # encoder never had to encode, and one it did.
+        reference = p5_encoder_recovery(
+          h_val, p5_arm_data$val$rows,
+          c("days_LTO_log", "or_relative", "trainerSR")
+        )
+      )
+    }
+  ),
+
+  # -- 2b: sequence length sensitivity, validation slice -------------------
+  # Same configuration, same grid position, same seed, same slice. Only the
+  # number of prior runs the encoder can see changes.
+  tar_target(p5_seq_lengths, c(5L, 10L, 15L)),
+
+  tar_target(
+    p5_seq_length_runs,
+    purrr::map(p5_seq_lengths, function(k) {
+      trunc <- p5_truncate_sequences(p5_sequences, k)
+      fit <- p5_align_sequences(trunc, p5_arm_data$fit$key)
+      val <- p5_align_sequences(trunc, p5_arm_data$val$key)
+      st <- p5_standardise_sequences(fit$x, fit$seq_len, val$x, val$seq_len)
+      cfg <- p5_configs_v7[p5_rung3b_selected$config, ] |>
+        dplyr::mutate(max_epochs = 60L)
+      run <- p5_fit_gru(
+        p5_rung3b_dense$fit, p5_rung3b_dense$val,
+        st$fit, st$val, fit$seq_len, val$seq_len,
+        p5_arm_data$fit$group_sizes, p5_arm_data$val$group_sizes,
+        cfg, seed = 42L, k = 3L
+      )
+      list(max_len = k,
+           mean_len_fit = mean(fit$seq_len),
+           pct_at_cap_fit = 100 * mean(fit$seq_len == k),
+           best_val_loss = run$best_val_loss,
+           best_epoch = run$best_epoch,
+           final_val_loss = run$final_val_loss)
+    })
+  ),
+
+  tar_target(
+    p5_seq_length_table,
+    {
+      full <- p5_rung3b_selected_60
+      rows <- purrr::map(p5_seq_length_runs, function(r) {
+        tibble::tibble(max_len = r$max_len,
+                       mean_len_fit = round(r$mean_len_fit, 2),
+                       pct_at_cap_fit = round(r$pct_at_cap_fit, 1),
+                       best_val_pl_loss = r$best_val_loss,
+                       best_epoch = r$best_epoch,
+                       final_epoch_val_pl_loss = r$final_val_loss)
+      }) |> purrr::list_rbind()
+      out <- dplyr::bind_rows(
+        rows,
+        tibble::tibble(
+          max_len = P5_SEQ_MAX_LEN,
+          mean_len_fit = round(mean(p5_rung3_seq$len_fit), 2),
+          pct_at_cap_fit = round(
+            100 * mean(p5_rung3_seq$len_fit == P5_SEQ_MAX_LEN), 1),
+          best_val_pl_loss = full$best_val_loss,
+          best_epoch = full$best_epoch,
+          final_epoch_val_pl_loss = full$final_val_loss
+        )
+      ) |> dplyr::arrange(max_len)
+
+      rung1 <- p5_mlp_selected_v4$best_val_loss
+      dplyr::mutate(
+        out,
+        gain_over_rung1 = rung1 - best_val_pl_loss,
+        share_of_full_gain = round(
+          100 * (rung1 - best_val_pl_loss) /
+            (rung1 - full$best_val_loss), 1)
+      )
+    }
+  ),
+
+  tar_target(
+    p5_diag_backend_check,
+    p5_assert_backend(
+      list(list(backend = p5_capture_backend())), p5_backend)
+  )
 )
-
-

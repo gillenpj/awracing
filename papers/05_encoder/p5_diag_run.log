@@ -1,0 +1,47 @@
+﻿=== P5-DIAG run started 2026-09-07 22:53:39 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ p5_seq_lengths dispatched
+
+✔ p5_seq_lengths completed [1.6s, 51 B]
+
++ p5_p3_bet_inputs dispatched
+
+✔ p5_p3_bet_inputs completed [60ms, 1.73 MB]
+
++ p5_diag_backend_check dispatched
+
+✔ p5_diag_backend_check completed [30ms, 265 B]
+
++ p5_seq_length_runs dispatched
+
+✔ p5_seq_length_runs completed [12m 35.6s, 281 B]
+
++ p5_encoder_diag dispatched
+
+✔ p5_encoder_diag completed [18.6s, 3.34 MB]
+
++ p5_seq_length_table dispatched
+
+✔ p5_seq_length_table completed [0ms, 438 B]
+
++ p5_roi_units dispatched
+
+✔ p5_roi_units completed [22.8s, 28.42 kB]
+
++ p5_roi_contrasts dispatched
+
+✔ p5_roi_contrasts completed [5.6s, 673 B]
+
++ p5_roi_units_check dispatched
+
+✔ p5_roi_units_check completed [100ms, 333 B]
+
+✔ ended pipeline [13m 32.9s, 9 completed, 125 skipped]
+
+Warning messages:
+
+1: package 'torch' was built under R version 4.6.1 
+
+2: 1 targets produced warnings. Run targets::tar_meta(fields = warnings, complete_only = TRUE) for the messages. 
+
+=== exit code: 0 at 2026-09-07 23:07:23 ===
