@@ -2,18 +2,17 @@
 
 The result says the representation matters. It does not say what the encoder
 found. Two diagnostics narrow that, both on the validation slice, both
-descriptive. **No interval is attached to either and neither is a tested
-claim.** They describe the question rather than settle it.
+descriptive.
 
 ## How much history the gain needs
 
 The selected configuration was refitted with the sequence truncated to the
-five, ten and fifteen most recent runs — same grid position, same seed, same
-slice, only the number of runs the encoder can read changing.
+five, ten and fifteen most recent runs — same seed, same slice, only the
+number of runs the encoder can read changing.
 
 ```{r}
 #| label: tbl-seqlen-sens
-#| tbl-cap: "Sequence length against validation Plackett–Luce loss. The gain column is against the hand-built arm."
+#| tbl-cap: "Sequence length against validation Plackett–Luce loss. The gain column is against the MLP on hand-built features."
 p5_seq_length_table |>
   dplyr::transmute(
     `Prior runs` = max_len,
@@ -28,30 +27,22 @@ p5_seq_length_table |>
 
 Five runs keep
 `r sprintf("%.1f%%", p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`
-of the encoder's advantage. Going from five to twenty — quadrupling the
-history available — buys the remaining
-`r sprintf("%.1f%%", 100 - p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`.
-The direction is consistent and monotone, and the size is small.
-
-Paper 3 sees two prior runs. On this evidence the encoder's advantage is
-about **reading the recent runs properly** rather than about depth of
-history or structure across a long span. What "properly" means is visible in
-@tbl-example-form: the raw finishing position instead of a top-four code,
-with the beaten distance, the going, the class, the field size and the
-distance of each race attached to it. A ninth of fourteen beaten six lengths
-and a twentieth of twenty beaten forty are the same number to paper 3's
-feature set and different rows to the encoder.
+of the encoder's advantage, and quadrupling the history available buys the
+rest. Paper 3 sees two prior runs. The advantage is therefore about reading
+the recent runs properly — the raw finishing position instead of a top-four
+code, with the beaten distance, going, class and field size attached to it —
+rather than about depth of history.
 
 ## Whether it is re-encoding what it replaced
 
-If the encoder were simply computing the discarded summaries for itself, its
+If the encoder were simply computing the discarded features for itself, its
 output would reconstruct them. Each removed feature was regressed on the
 encoder's `r p5_encoder_diag$hidden_dim` output dimensions, on validation
 rows.
 
 ```{r}
 #| label: tbl-recovery
-#| tbl-cap: "Linear recovery of the removed features from the encoder's output. Reference rows are terms the encoder arm kept, and were never required to encode."
+#| tbl-cap: "Linear recovery of the removed features from the encoder's output. Reference rows are features the encoder model kept, and was never required to encode."
 dplyr::bind_rows(
   p5_encoder_diag$recovery |>
     dplyr::transmute(Feature = feature, `R²` = fmt_r2(r_squared),
@@ -63,111 +54,20 @@ dplyr::bind_rows(
   kable(align = "lrrl")
 ```
 
-The reference rows set the floor: a
-`r p5_encoder_diag$hidden_dim`-dimension summary of a horse's history
-correlates with most things about that horse, and terms the encoder never
-had to represent sit at
+The reference rows set the floor: features the encoder never had to
+represent sit at
 `r fmt_r2(min(p5_encoder_diag$reference$r_squared))`–`r fmt_r2(max(p5_encoder_diag$reference$r_squared))`.
-
-Against that floor, only one removed feature is substantially recovered:
+Against that floor only one removed feature is substantially recovered —
 whether the horse finished outside the first four last time, at
-`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_zero"))`. Its
-two-runs-back counterpart follows at
-`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag2_zero"))`. Everything
-else lies between
-`r fmt_r2(min(p5_encoder_diag$recovery$r_squared))` and
-`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_nonzero"))`, and three
-of the eight sit at or below the reference floor. The going-affinity term
-paper 3 built for this purpose, `going_sr_delta`, is at
-`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "going_sr_delta"))`.
+`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_zero"))`. Last time's
+finishing position itself, which is the first of the eight values in the
+most recent slot, comes out at
+`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_nonzero"))`.
 
-The striking row is `pos_lag1_nonzero` at
-`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_nonzero"))`. Last
-time's finishing position is channel one of the sequence's most recent slot,
-and a linear read of the encoder's output recovers under a third of its
-variance.
-
-**The caveat governs the whole table: these are linear $R^2$.** A low value
-means the feature is not *linearly* recoverable from those dimensions, not
-that the information is absent — a recurrent state is free to hold it in a
-form no regression will find. What the table supports is the narrow claim
-that the encoder is not a linear re-encoding of the summaries it replaced.
-It does not establish what else the encoder is representing, and no stronger
-reading should be taken from it.
-
-# Rungs that were not run {#sec-declined}
-
-Two further rungs were specified in advance and deliberately not run. Both
-were dropped for reasons that would not have been resolved by running them.
-
-**Embeddings alongside the strike rates rather than in place of them.** The
-obvious response to rung 2 is to keep both, so the rare-bucket problem stops
-being fatal: an entity outside the vocabulary would still carry its strike
-rate. The difficulty is what remains for the embedding to do. It can only
-contribute where an entity appears often enough in the fitting partition to
-be worth a vector, and those are exactly the entities whose strike rate is
-computed from the most runs and is therefore already reliable. The rung
-would test whether an embedding adds anything on the rows where the
-hand-built feature is strongest, which is not the question rung 2 raised.
-The response that does address it is pre-training the embeddings on the full
-archive rather than on the in-scope rows — which means fitting on races
-outside this paper's scope, a change to the series' data scope rather than a
-rung on its ladder.
-
-**A Deep Sets encoder over today's field** [@zaheer2017]. Every rung in this
-paper encodes one horse's own history. A field encoder would instead read
-the other runners in today's race — a permutation-invariant summary of who
-else is in it — and give each horse a term for the company it keeps. The
-objection is arithmetic. Such a model is fitted at race grain, not
-runner-race grain: `r p5_comma(n_train_races)` training races against
-`r p5_comma(n_train_rows)` runner-rows, an order of magnitude less data than
-every other rung in the paper, and it introduces a new architecture at the
-same time. The ladder's rule is one change a rung, and this would be two on a
-tenth of the sample.
-
-# Limitations {#sec-limitations}
-
-**The handicapper has already compressed the same history.** `or_relative`
-— the horse's official rating relative to its race — stays in both arms, and
-an official rating is the handicapper's own summary of the horse's form,
-revised after every run, from a wider base of races than this paper models
-and with knowledge the feed does not carry. The encoder is therefore
-competing for the residual: whatever remains in a horse's run history once a
-professional assessment of that history is already in the model. The gain
-reported here is a gain on top of that, which makes it more interesting and
-also bounds it.
-
-**Going barely varies in scope.** All-Weather surfaces are consistent by
-design and the in-scope races are overwhelmingly Standard going, so the
-going channel does most of its work on the cross-surface part of a horse's
-history — its turf and jumps runs — rather than on the races being
-predicted. A going-affinity signal has little room to operate here, which is
-consistent with both paper 3's finding and the low recovery of
-`going_sr_delta` above, and says nothing about how it would behave on turf.
-
-**These models overfit this data quickly.** Across three rungs the best
-validation epoch arrived within about three passes over the training data,
-and the loss then rose monotonically — in the worst configuration by more
-than two nats per race by epoch 200. Early stopping on a held-out slice is
-doing a great deal of the work. That is a statement about how little
-`r p5_comma(n_train_races)` training races is for models of this size, and
-it is the strongest reason to be cautious about extending the architecture
-before extending the data.
-
-**The twenty-run cap is generous and nothing hangs on it.** Paper 2b already
-found that a third prior-run lag added nothing, and @tbl-seqlen-sens shows
-the encoder's gain is essentially complete by five runs. The cap was set
-wide to avoid making the truncation a live parameter, and the sensitivity
-analysis confirms it never became one.
-
-**The backend is fixed and the comparisons are internal.** All fitting is
-CPU `libtorch` in double precision. Results do not reproduce across
-backends, so every number here belongs to that one; @sec-appx-c records what
-would be needed to reproduce it.
-
-**One measure moved the wrong way.** The encoder has the better
-Brier_place and the worse place ROI of the two paper-5 arms. That is
-recorded in @sec-results as it stands rather than resolved.
+These are linear $R^2$, so a low value means the feature is not *linearly*
+recoverable from those dimensions, not that the information is absent. What
+the table supports is the narrow claim that the encoder is not a linear
+re-encoding of the features it replaced.
 
 # Conclusion {#sec-conclusion}
 
@@ -178,13 +78,28 @@ than the switch from trees to a neural scorer buys. After four papers in
 which no model could be distinguished from another on this test split, three
 now order strictly.
 
-The ladder that got there produced two results of its own. A multi-layer
-perceptron beat a linear scorer on identical features, which paper 3's
-conclusion about function class did not anticipate and which that paper's
-evidence did not cover. And learned entity embeddings lost to the strike
-rates they replaced, cleanly and without remediation, because a hand-built
-feature computed from a wider information set than the model can be fitted
-on is a hard thing for a learned representation to beat.
+Two other things were found along the way. A multi-layer perceptron beat a
+linear scorer on identical features, which paper 3's conclusion about
+function class did not anticipate and which that paper's evidence did not
+cover. And learned entity representations lost to the strike rates they
+replaced, cleanly and without remediation, because a hand-built feature
+computed from a wider information set than the model can be fitted on is a
+hard thing for a learned representation to beat.
+
+Two limitations bound the result. `or_relative` — the horse's official
+rating relative to its race — stays in both models, and an official rating
+is the handicapper's own summary of the same history, revised after every
+run from a wider base of races than this paper models. The encoder is
+competing for what is left after that, which makes the gain more interesting
+and also bounds it. And these models overfit quickly: the best epoch arrived
+within about three passes over the training data in every rung, which says
+how little `r p5_comma(n_train_races)` training races is for models of this
+size, and is the strongest reason to be cautious about extending the
+architecture before extending the data.
+
+All fitting was done on the CPU `libtorch` build in double precision.
+Results do not reproduce across backends, so every number here belongs to
+that one; @sec-appx-c records what reproducing it requires.
 
 What has not changed is the market. It ranks better than the encoder, as it
 ranked better than everything before it, and no betting return in this paper

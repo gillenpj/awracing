@@ -1,63 +1,35 @@
 # Appendix A — The Plackett–Luce objective in torch {#sec-appx-a}
 
 Paper 3 implements the depth-$k$ Plackett–Luce likelihood as a custom
-XGBoost objective with an analytic gradient and Hessian. This paper needs
-the same likelihood as a differentiable loss over padded, variable-length
-race batches. A second implementation of a likelihood is a place where a
-series quietly stops comparing like with like, so it is verified against the
-first rather than trusted.
-
-## The loss
-
-A batch is a set of whole races, padded to that batch's widest field. For
-each race $r$ with $J_r$ runners, scores $z_{rj}$ and $S = \min(k, J_r - 1)$
-scoring stages, the negative log-likelihood is
-
-$$
-\ell_r \;=\; -\sum_{s=1}^{S}\Big[ z_{r,(s)} \;-\; \log \sum_{j \in R_{r,s}}
-\exp\big(z_{rj}\big) \Big],
-$$
-
-reduced over races rather than rows. Two masks carry the structure: a
-validity mask marking real runners against padding, and a stage mask marking
-which runners remain in the denominator at stage $s$. The row ordering
-contract is paper 3's — within each race the first $S$ rows are the top
-finishers in order — and it is asserted on every partition before fitting.
-
-The loss is computed in double precision throughout, with the usual
-per-race maximum subtracted before exponentiating so that scores spread over
-a wide range do not overflow.
+XGBoost objective with an analytic gradient. This paper needs the same
+likelihood as a differentiable loss over variable-length races. It is
+verified against paper 3's implementation rather than trusted.
 
 ## Verification against paper 3
 
-`scripts/verify_p5_pl_torch.R` is a standing gate, run after any change to
-the objective. It asserts agreement with `R/pl_objective.R::pl_neg_loglik()`
-— the function paper 3 was fitted with — on identical inputs across random
-scores at mixed field sizes; the edge cases (two-runner races where $S = 1$,
-races at exactly $k+1$ runners, ragged and single-race batches); depths
-$k = 1$ to $4$; shift invariance; degenerate score vectors including scores
-spread over 200, where a naive `exp()` overflows; and padding width.
+`scripts/verify_p5_pl_torch.R` asserts agreement with the function paper 3
+was fitted with, on identical inputs: random scores at mixed field sizes;
+the edge cases, meaning two-runner races, races at exactly $k+1$ runners,
+and ragged and single-race batches; depths $k = 1$ to 4; shift invariance;
+and score vectors spread widely enough that a naive `exp()` overflows.
 
-Agreement is about **1e-9 relative**. The autograd gradient matches finite
-differences to **2.9e-8** and matches paper 3's analytic `pl_grad_hess()` to
-**2.9e-8**. Paper 5 therefore descends the same surface paper 3 did.
-
-Reproducibility was checked across two fresh `Rscript` processes rather than
-two calls in one session, since process-constant state can make a broken
-setting look verified when re-checked in the same session.
+Agreement is about 1e-9 relative. The gradient matches finite differences to
+2.9e-8, and matches paper 3's analytic gradient to 2.9e-8, so this paper
+descends the same surface paper 3 did. The check was run in two fresh R
+processes rather than twice within one, since state held at the process
+level can make a broken setting look verified on a second call.
 
 ## The two-optimiser check
 
 Agreement on a loss value does not establish that an optimiser reaches the
 same place. A linear scorer was therefore fitted in torch on paper 2b's
-seventeen terms and its validation loss compared with paper 2b's own
-`{mlogit}` fit on the same fitting partition — two entirely different
-optimisers, gradient descent against iteratively reweighted least squares,
-on the same objective and the same data.
+seventeen features and its validation loss compared with paper 2b's own
+`{mlogit}` fit on the same rows — gradient descent against iteratively
+reweighted least squares, on the same objective and the same data.
 
 ```{r}
 #| label: tbl-two-optim
-#| tbl-cap: "Two optimisers on the same objective and the same 17 terms, validation Plackett–Luce loss per race."
+#| tbl-cap: "Two optimisers on the same objective and the same 17 features, validation Plackett–Luce loss per race."
 tibble::tibble(
   Fit = c("paper 2b, `{mlogit}`, closed form",
           "linear scorer, torch, Adam"),
@@ -70,26 +42,20 @@ tibble::tibble(
 
 The two agree to
 `r formatC(abs(loss_2b - p5_diag_linear$best_val_pl_loss), format = "e", digits = 1)`
-per race. The torch fit is marginally the lower of the two, which is what a
-first-order method run to convergence on a well-conditioned convex problem
-should produce against a closed-form fit with a different convergence
-tolerance. The implementation is optimising the objective the series
-intends, not merely computing it.
+per race, with the torch fit marginally the lower — which is what a
+first-order method run to convergence should produce against a closed-form
+fit with a different convergence tolerance.
 
-## A bug a value-only check would have passed
+## A bug a check on the loss value would have passed
 
-The gate caught one real fault, and it is worth recording because of the
-shape of it.
+Entries that pad a race out to a common width must not contribute to its
+denominator. Writing that condition as `torch_where(mask, value, fallback)`
+returns the value of one branch but computes derivatives for both, and the
+discarded branch here contained $\log 0$.
 
-Padded slots must not contribute to the denominator. The natural way to
-write that is `torch_where(mask, value, fallback)`. `torch_where()` selects
-the value of one branch **but differentiates both**. Padded slots carried
-$\log(0)$ in the unselected branch, so the forward loss was exactly correct
-— agreeing with paper 3's implementation to 1e-9 — while the gradient was
-`NaN`.
-
-A gate that checked only the loss value would have passed this and left
-every fit silently broken. The fix makes the denominator finite *before* the
-mask is applied rather than relying on the mask to discard an infinity, and
-the gate now asserts a finite gradient where the padding and stage masks
-overlap, alongside the value agreement.
+The forward loss was therefore exactly correct — agreeing with paper 3's
+implementation to 1e-9 — while the gradient was `NaN`. A check on the loss
+value alone would have passed it and left every fit broken. The fix makes
+the denominator finite before the condition is applied rather than relying
+on the condition to remove an infinity, and the gate now asserts a finite
+gradient as well as a correct value.

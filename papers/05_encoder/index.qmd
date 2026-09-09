@@ -5,32 +5,29 @@ author: "Patrick Gillen"
 date: "2026-09-08"
 abstract: |
   Papers 1 to 3 gave a model of UK All-Weather Flat handicaps a horse's
-  recent form as a handful of hand-built numbers: last time out's finishing
+  recent form as a handful of hand-built features: last time out's finishing
   position if it was in the first four, the position two runs back on the
   same rule, whether the horse had ever won, and a small going-affinity
-  block. This paper changes how that history reaches the model. The
-  summaries are removed and a gated recurrent encoder reads the horse's
-  twenty most recent prior runs directly, eight channels a run, with the
-  raw finishing position rather than a top-four code. Everything else is
-  held fixed: the same races, the same depth-three Plackett–Luce
-  likelihood, the same downstream scorer, the same seed. On
+  block. This paper changes how that history reaches the model. Those
+  features are removed and a gated recurrent encoder reads the horse's
+  twenty most recent prior runs directly, eight values a run, with the raw
+  finishing position rather than a top-four code. Everything else is held
+  fixed: the same races, the same depth-three Plackett–Luce likelihood, the
+  same downstream scorer. On
   `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
-  held-out test races the encoder beats the hand-built summaries on every
-  ranking measure — P1_rank
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "P1_rank"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
-  Brier_place
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "Brier_place"]; formatC(v, format = "e", digits = 3) })`,
-  pseudo-$R^2$
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); d <- targets::tar_read(p5_test_contrasts, store = S); v <- d$diff_point[grepl("rung 3b.*rung 1", d$contrast) & d$metric == "test_pl_r2"]; formatC(v, format = "e", digits = 3, flag = "+") })`,
-  every interval excluding zero — and beats paper 3's gradient-boosted
-  trees by more. Three models now separate cleanly on a test split where
-  papers 1 to 3 could not be told apart. Two further findings come from the
-  ladder that got there: a multi-layer perceptron on identical features
-  beat a linear scorer, which paper 3's function-class conclusion did not
-  anticipate; and learned entity embeddings for trainer, jockey and sire
-  lost to the strike rates they replaced, both intervals excluding zero.
-  The market still ranks better than any of it, and no betting return is
-  distinguishable from no improvement at all.
+  held-out test races the encoder beats the hand-built features on every
+  ranking measure, every interval excluding zero, and beats paper 3's
+  gradient-boosted trees by more; Section 1 gives the figures. Three models
+  now separate cleanly on a test split where papers 1 to 3 could not be told
+  apart. Two further findings: a multi-layer perceptron on identical
+  features beat a linear scorer, which paper 3's conclusion about function
+  class did not anticipate; and learned entity representations for trainer,
+  jockey and sire lost to the strike rates they replaced, both intervals
+  excluding zero. The market still ranks better than any of these models.
+  The single-bet win backtest improves to
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); b <- targets::tar_read(p5_test_backtests, store = S); sprintf("%.1f%%", 100 * b$roi[b$arm == "rung3b" & b$bet == "win"]) })`,
+  the best in the series, but the difference from paper 3 cannot be
+  distinguished from zero.
 format:
   html: default
   pdf:
@@ -70,7 +67,7 @@ tar_load(c(
   p5_qualifying_runners, p5_arm_data, p5_scorable,
   # method (_03)
   p5_control_terms, p5_rung3b_terms, p5_configs_v4_mlp, p5_configs_v7,
-  p5_diag_linear, p5_gru_mask_check, p5_backend,
+  p5_diag_linear, p5_backend,
   # the ladder on validation (_04)
   p5_budget_decomposition, p5_mlp_vs_linear_v4, p5_mlp_scores_v4,
   p5_linear_scores_v4, p5_mlp_selected_v4, p5_linear_selected_v4,
@@ -79,9 +76,9 @@ tar_load(c(
   p5_rung3b_vs_rung3, p5_rung3b_selected, p5_rung3b_budget_check,
   p5_rung3b_decomposition, p5_test_arm_choice,
   # the test split (_05)
-  p5_test_arm_difference, p5_test_race_universe, p5_test_contrasts,
+  p5_test_race_universe, p5_test_contrasts,
   p5_test_backtests, p5_roi_contrasts, p5_roi_units_check,
-  p5_test_fit_rung1, p5_test_fit_rung3b, p5_test_backend_check,
+  p5_test_fit_rung1, p5_test_fit_rung3b,
   p5_gbt_train_data, p5_gbt_test_data,
   # diagnostics (_06)
   p5_encoder_diag, p5_seq_length_table
@@ -126,6 +123,21 @@ market_brier <- 0.1875
 {{< include _05_results.qmd >}}
 
 {{< include _06_discussion.qmd >}}
+
+# Acknowledgments {.unnumbered}
+
+I have been interested in modelling horse racing since first acquiring the
+Smartform database more than a decade ago. The project has been picked up
+and put down many times, the obstacle almost always being the gap between
+an idea and a running implementation. What is different now is that working
+alongside Claude Code (Anthropic's coding agent), with web-based Claude as a
+research companion, has compressed that gap dramatically. I am grateful to
+my brother, Michael Gillen, for the suggestion to build the model on
+All-Weather races — the foundation of the scope choices set out in
+@sec-data. The design choices — dataset, scope, model, comparison,
+editorial line — are mine. The implementation, the bulk of the draft prose,
+and a great deal of the verification were Claude Code's, under my direction;
+every output was reviewed and edited before it reached the paper.
 
 {{< include _appx_a_objective.qmd >}}
 

@@ -44,20 +44,20 @@ ex_name <- ex$name
 
 ## What changed
 
-Every model in this series has been given a horse's recent form as a few
-hand-built numbers. The largest of them is the position lag block: last time
-out's finishing position, recorded only if the horse finished in the first
-four and zero otherwise, with a companion indicator for the zero case, and
-the same pair for the run before that. Four numbers, two runs. Alongside
-them sit an ever-won flag and three going-affinity terms.
+Every model in this series has been given a horse's recent form as eight
+hand-built features. Four of the eight are position lags: last time out's
+finishing position, recorded only if the horse finished in the first four
+and zero otherwise, with a companion indicator for the zero case, and the
+same pair for the run before that. Alongside them sit an ever-won flag and
+three going-affinity terms.
 
-This paper removes those eight numbers and gives the model the runs
-themselves. A gated recurrent encoder [@cho2014] reads up to the twenty most
-recent prior runs, cross-surface, eight channels a run: the **raw**
-finishing position, how far the horse was beaten, the going, the class, the
-field size, the race distance, and the gap to the run before. Everything
-downstream is unchanged — the same races, the same likelihood, the same
-scorer, the same seed.
+This paper removes those eight features and gives the model the runs
+themselves. A gated recurrent encoder reads up to the twenty most recent
+prior runs, cross-surface, with eight values describing each run: the
+**raw** finishing position, how far the horse was beaten, the going, the
+class, the field size, the race distance, and the gap to the run before.
+Everything downstream is unchanged — the same races, the same likelihood,
+the same scorer.
 
 ## What one horse looks like to each model
 
@@ -72,7 +72,7 @@ encoder reads:
 kable(ex_tbl, align = "lrrrrrrr")
 ```
 
-Paper 3 sees this record as four numbers:
+Paper 3 sees this record as four features:
 `pos_lag1_zero` = `r ex$pos_lag1_zero`,
 `pos_lag1_nonzero` = `r ex$pos_lag1_nonzero`,
 `pos_lag2_zero` = `r ex$pos_lag2_zero`,
@@ -85,8 +85,8 @@ Last time out the horse finished `r ex_tbl$Finish[1]`th of
 `r ex_tbl$Field[1]`, beaten `r ex_tbl[["Beaten (l)"]][1]` lengths. Because
 that is outside the first four, the position lag records it as zero and
 raises the indicator. A horse that finished last of twenty, beaten forty
-lengths, produces exactly the same two numbers. The run before was a fourth
-of `r ex_tbl$Field[2]`, beaten `r ex_tbl[["Beaten (l)"]][2]` lengths, and is
+lengths, produces exactly the same pair. The run before was a fourth of
+`r ex_tbl$Field[2]`, beaten `r ex_tbl[["Beaten (l)"]][2]` lengths, and is
 recorded as the single figure 4 — the same value a fourth beaten a
 short-head in a six-runner race would produce.
 
@@ -96,24 +96,27 @@ gap before the third-last run — is not in paper 3's feature set at all.
 
 ## What happened
 
-On `r p5_comma(n_test_races)` held-out test races, with nothing tuned
-between validation and test:
+Both models use the same MLP scorer and differ only in how the horse's
+history reaches it: the eight hand-built summary features in one, the
+encoder in the other. Both were fixed before any test race was scored. On
+`r p5_comma(n_test_races)` held-out test races:
 
 ```{r}
 #| label: tbl-headline
-#| tbl-cap: "Encoder against hand-built summaries, held-out test split. Paired race-level bootstrap, B = 2000, seed 42, 90% intervals."
+#| tbl-cap: "Encoder against hand-built features, held-out test split. Paired race-level bootstrap, B = 2000, 90% intervals."
 p5_test_contrasts |>
   dplyr::filter(stringr::str_detect(contrast, "rung 3b.*rung 1")) |>
-  p5_contrast_table("Encoder", "Summaries") |>
+  p5_contrast_table("Encoder", "Hand-built") |>
   kable(align = "lrrrrl")
 ```
 
 Every interval excludes zero. The same three comparisons against paper 3's
 gradient-boosted trees [@chenguestrin2016] are larger still, and the
-hand-built arm itself beats paper 3 by a smaller margin, so the three models
-order strictly on all three measures:
+hand-built model itself beats paper 3 by a smaller margin, so the three
+models order strictly on all three measures:
 
-$$\text{paper 3 (trees)} \;<\; \text{hand-built summaries (MLP)} \;<\; \text{sequence encoder}$$
+$$\text{paper 3 (trees)} \;<\; \text{hand-built features (MLP)} \;<\;
+\text{sequence encoder (MLP)}$$
 
 Nine contrasts, nine intervals excluding zero. That is worth setting beside
 what came before it. In papers 1 to 3 no model could be distinguished from
@@ -131,8 +134,8 @@ and Brier_place
 `r fmt_metric(p5_ct(p5_test_contrasts, "Brier_place", "rung 3b.*rung 1")$point_a)`
 against the market baseline of roughly `r sprintf("%.5f", market_p1)` and
 `r sprintf("%.4f", market_brier)` that papers 2b and 3 published. The gap
-narrows on both and closes on neither. No market contrast was run in this
-paper.
+narrows on both and closes on neither. The encoder and the market were not
+compared directly here; these are published figures set side by side.
 
 **No betting return improves in a way that can be distinguished from
 nothing.** The single-bet-per-race backtest gives the encoder a win ROI of
@@ -142,12 +145,10 @@ series — but the difference is
 `r fmt_pts(p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$diff_point)`
 points with a 90% interval of
 `r fmt_pts_ci(p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$ci_lo, p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$ci_hi)`.
-Eight of the nine ROI intervals contain zero. Every arm loses money.
+Eight of the nine ROI intervals contain zero. Every model loses money.
 
 **And the gain is not about long careers.** Truncating the encoder to the
 five most recent runs keeps
 `r sprintf("%.1f%%", p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`
-of its advantage. Reading twenty runs instead of five is worth the remaining
-`r sprintf("%.1f%%", 100 - p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`.
-What the encoder is doing is reading the recent runs properly, not reading
-further back.
+of its advantage, so what it is doing is reading the recent runs properly
+rather than reading further back.

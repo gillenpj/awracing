@@ -26,8 +26,7 @@ and verified against paper 3's analytic gradient, so this paper descends the
 same surface paper 3 did; @sec-appx-a gives the verification.
 
 Weights are shared across horses. The scorer maps one runner's features to
-one number, and runners are coupled only through the per-race denominator,
-so variable field sizes need nothing beyond masking.
+one number, and runners are coupled only through the per-race denominator.
 
 ## A ladder, one change at a rung
 
@@ -39,53 +38,42 @@ and not to a bundle of them.
 | rung | the one change | comparator |
 |---|---|---|
 | 1 | linear scorer → multi-layer perceptron, identical features | paper 2b's linear predictor |
-| 2 | three strike rates → learned entity embeddings | rung 1 |
+| 2 | three strike rates → learned entity representations | rung 1 |
 | 3 | eight history summaries → sequence encoder | rung 1 |
 
-This discipline is the paper's method as much as the models are. Rung 1 took
-four attempts, and three were spent on arms that differed from their
-comparator in two respects at once — a feature encoding and a function
-class, then a function class and a feature count, then a function class and
-a selection budget. None of those three could test what the rung existed to
-test. The rule that came out of it is that the term-by-term difference
-between two arms is stated before anything is fitted and asserted in code,
-not left to prose. Every rung below carries such an assertion, and the
-tables in @sec-ladder and @sec-results are those assertions rendered.
+The difference between two models is stated and asserted in code before
+either is fitted, rather than left to prose.
+
+Two further rungs were specified and not run. Adding entity representations
+**alongside** the strike rates rather than in place of them would only test
+whether they help where the strike rate is already most reliable, since a
+representation can only be learned for entities that appear often enough in
+the fitting data. A Deep Sets encoder over today's field — a summary of the
+other runners rather than of the horse's own past — would be fitted at race
+grain: `r p5_comma(n_train_races)` races against `r p5_comma(n_train_rows)`
+runner-rows, an order of magnitude less data than every other rung, and a
+new architecture at the same time.
 
 ## Selection, and what it was allowed to see
 
-Nine configurations per arm, declared in full before any of them was scored,
-selected on validation Plackett–Luce loss and nothing else. Selection never
-saw a ranking metric, a betting return, or a test row.
+Nine configurations per model, declared in full before any of them was
+scored. Selection saw validation Plackett–Luce loss and nothing else: never
+a ranking metric, never a betting return, never a test row.
 
-The neural arms overfit this data quickly: across three rungs the best epoch
-was reached within about three passes over the training data and the
-validation loss then rose monotonically. Epoch selection is therefore doing
-real work, and it is done the same way for every arm — the parameters from
-the best validation epoch are the ones kept.
+In every rung the best epoch arrived within about three passes over the
+training data, and the validation loss rose steadily afterwards. Early
+stopping therefore does real work, and it is done the same way for every
+model — the parameters kept are those from the best validation epoch.
 
-Rungs 1 and 2 ran nine configurations for 200 epochs each. Rung 3 ran nine
-for 60 and then refitted the selected configuration alone at 200, which
-reproduced the shorter run's trace exactly and did not improve on it: the
-optimum was at the same epoch either way. That is what makes the shorter
-search budget safe to use, and it is checked rather than assumed.
+## The two models that reach the test split
 
-## The two arms that reach the test split
+The hand-built model scores 26 features. The encoder model scores 19 of them
+plus the sequence encoder's output, the difference being the eight history
+summaries of @sec-data replaced by the encoder, and `career_runs_prior`
+added alongside it. The downstream scorer, the objective, the races, the
+validation slice and the seed are identical.
 
-```{r}
-#| label: tbl-arm-difference
-#| tbl-cap: "The two test-split arms, term by term. Asserted in the pipeline before either was scored."
-p5_test_arm_difference |>
-  dplyr::transmute(
-    Respect = respect,
-    `Hand-built (rung 1)` = rung_1,
-    `Encoder (rung 3b)` = rung_3b,
-    Differs = dplyr::if_else(differs, "yes", "")
-  ) |>
-  kable(align = "llll")
-```
-
-Both arms are refitted on the **full** training split — the validation slice
+Both are refitted on the **full** training split — the validation slice
 folded back in — at the configuration the slice selected, then score the
 test split once. Both train for the same number of epochs, the epoch each
 selected on validation, and there is no per-epoch evaluation at that stage:
@@ -94,29 +82,5 @@ inside the selection loop.
 
 One consequence is worth stating plainly. The full training split is about
 43% larger than the fitting partition used for selection, so an epoch is 43%
-more gradient steps than it was during selection. Both arms take that change
-identically, so the contrast between them is unaffected by it.
-
-## The backend is a frozen parameter
-
-Every model in this paper is fitted on the CPU `libtorch` build in double
-precision. Results do not reproduce across backends, so the backend is
-treated as a parameter of the whole paper rather than a runtime detail: it
-was decided once, before the ladder was built, and not revisited.
-
-The lockfile that pins the R packages cannot capture which C++ runtime is
-installed, so the backend is captured inside every fitted model and asserted
-against the pipeline's own record. A report cannot claim a backend a fit did
-not use. @sec-appx-c gives the mechanism and the reasoning behind choosing
-CPU on this hardware.
-
-```{r}
-#| label: tbl-backend
-#| tbl-cap: "The backend, captured at fit time and asserted for both test-split arms."
-p5_test_backend_check |>
-  dplyr::transmute(Device = device, `CUDA available` = cuda_is_available,
-                   torch = torch_version, libtorch = libtorch_version,
-                   Threads = torch_threads, R = r_version,
-                   `Fits checked` = n_runs_checked) |>
-  kable(align = "lllrrlr")
-```
+more gradient steps than it was during selection. Both models take that
+change identically, so the contrast between them is unaffected by it.
