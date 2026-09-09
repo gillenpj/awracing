@@ -37,7 +37,8 @@ papers <- c(
   "02a_extended_win_model"    = "paper2a",
   "02b_ranking_model"         = "paper2b",
   "03_gradient_boosted_trees" = "paper3",
-  "04_market_blend"           = "paper4"
+  "04_market_blend"           = "paper4",
+  "05_encoder"                = "paper5"
 )
 
 copied  <- character(0)
@@ -64,24 +65,42 @@ for (src in names(papers)) {
 # structure" note on the note's provenance). Fail loudly rather than
 # skipping it, since a silent skip would leave the published copy stale
 # with no indication anything was wrong.
+#
+# Paper 5's supplement is different in kind: it IS reproducible, being
+# rendered from committed Quarto source under papers/05_encoder/supplement/.
+# Its _output/ is gitignored like every other render, so it is copied here
+# the same way, and the same fail-loudly rule applies.
 supplements <- list(
   list(
     src   = file.path(root, "notes", "Notes_on_Tree-based_Methods.pdf"),
     dest  = file.path(root, "docs", "paper3", "notes-on-tree-based-methods.pdf"),
-    label = file.path("docs", "paper3", "notes-on-tree-based-methods.pdf")
+    label = file.path("docs", "paper3", "notes-on-tree-based-methods.pdf"),
+    hint  = paste(
+      "notes/*.pdf is gitignored, so this file must already exist locally",
+      "-- it is not reproduced by tar_make() or any other step. See",
+      "CLAUDE.md's Project structure note on this file's provenance",
+      "before recreating it."
+    )
+  ),
+  list(
+    src   = file.path(root, "papers", "05_encoder", "supplement", "_output",
+                      "notes_on_neural_scorers.pdf"),
+    dest  = file.path(root, "docs", "paper5", "notes-on-neural-scorers.pdf"),
+    label = file.path("docs", "paper5", "notes-on-neural-scorers.pdf"),
+    hint  = paste(
+      "Render it first, from papers/05_encoder/supplement:",
+      "quarto render notes_on_neural_scorers.qmd --to pdf.",
+      "It has no executable chunks, so it needs neither renv nor the",
+      "targets store."
+    )
   )
 )
 for (s in supplements) {
   if (!file.exists(s$src)) {
-    stop(
-      "Supplementary source file not found: ", s$src, "\n",
-      "notes/*.pdf is gitignored, so this file must already exist locally ",
-      "-- it is not reproduced by tar_make() or any other step. See ",
-      "CLAUDE.md's Project structure note on this file's provenance ",
-      "before recreating it.",
-      call. = FALSE
-    )
+    stop("Supplementary source file not found: ", s$src, "\n", s$hint,
+         call. = FALSE)
   }
+  if (!dir.exists(dirname(s$dest))) dir.create(dirname(s$dest), recursive = TRUE)
   file.copy(s$src, s$dest, overwrite = TRUE)
   copied <- c(copied, s$label)
 }

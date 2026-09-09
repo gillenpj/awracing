@@ -50,6 +50,22 @@
     &mdash; tests whether the model adds anything to the market price rather
     than whether it beats it: nothing distinguishable against the settled
     starting price, a great deal against the pre-race forecast price</li>
+    <li><a href="paper5/">Paper 5: Sequence encoding of run histories</a>
+    &mdash; <a href="paper5/index.pdf">PDF</a>
+    &mdash; replaces the eight hand-built features summarising a horse's own
+    run history with a recurrent encoder that reads the twenty most recent
+    runs themselves: beats the summaries on every ranking measure on the test
+    split, and three models separate cleanly where papers 1&ndash;3 could not
+    be told apart, with the market still ahead and no distinguishable
+    improvement in returns
+    <ul>
+      <li><a href="paper5/notes-on-neural-scorers.pdf">Supplementary: Notes on neural scorers and sequence encoders</a>
+      &mdash; background theory the paper's machinery follows, from neural
+      networks and how they are trained through the Plackett&ndash;Luce
+      likelihood under a neural scorer, embeddings, and recurrent sequence
+      encoders</li>
+    </ul>
+    </li>
   </ul>
 </body>
 </html>

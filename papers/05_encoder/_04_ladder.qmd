@@ -1,0 +1,206 @@
+# The ladder, on the validation slice {#sec-ladder}
+
+Everything in this section is measured on the `r p5_comma(n_val_races)`
+validation races. No test row is involved.
+
+## Rung 1: the control that was meant to tie, and did not
+
+Rung 1 exists to establish a baseline, not to find anything. The plan was to
+give a multi-layer perceptron exactly the features paper 2b's linear
+predictor has, on the same likelihood and the same races, and confirm the
+two tie — so that any later gain from a sequence encoder could be attributed
+to the representation rather than to having switched to a neural network.
+
+They do not tie.
+
+```{r}
+#| label: tbl-rung1
+#| tbl-cap: "MLP against a linear scorer on identical 26 features and an equal selection budget, validation slice. Paired race-level bootstrap, B = 2000, 90% intervals."
+p5_mlp_vs_linear_v4 |>
+  p5_contrast_table("MLP", "Linear") |>
+  kable(align = "lrrrrl")
+```
+
+Both intervals exclude zero. The two models carry identical features, the
+same loss, the same slice and an equal budget of nine configurations at 200
+epochs each.
+
+@tbl-budget-decomp separates two changes. Paper 2b's linear model has 17
+features. Giving the same linear model nine more — the four going-affinity
+terms, the draw position and the four course indicators paper 2b lacks —
+improved it by `r fmt_gain(gain_ninefeature)` per race. Switching that same
+26-feature model from a linear scorer to an MLP improved it by a further
+`r fmt_gain(gain_nonlinear)`, about
+`r sprintf("%.0f", gain_nonlinear / gain_ninefeature)` times as much.
+
+```{r}
+#| label: tbl-budget-decomp
+#| tbl-cap: "Three fits on the validation slice: paper 2b's linear model on 17 features, the same linear model on 26, and the MLP on those same 26."
+p5_budget_decomposition |>
+  dplyr::transmute(
+    Model = arm, Features = terms, Budget = budget,
+    `Val PL loss` = purrr::map_chr(val_pl_loss, fmt_loss),
+    `Gain on previous row` = dplyr::if_else(
+      is.na(gain_vs_prev), "—", purrr::map_chr(gain_vs_prev, fmt_gain))
+  ) |>
+  kable(align = "lrlrr")
+```
+
+**This sits against paper 3's conclusion, and the paper should say so
+directly.** Paper 3 replaced a linear predictor with a gradient-boosted tree
+ensemble on the same features and objective, found every paired interval
+containing zero, and read that as the function class not being the binding
+constraint. On the evidence in front of it that reading was sound, but the
+evidence was one function class. A different nonlinear model, on essentially
+the same information and the same objective, does better than the linear
+predictor here. What paper 3 established is that trees did not help; what it
+did not establish is that nonlinearity did not.
+
+Two differences between the comparisons are worth keeping in view: paper 3's
+contrast was scored on the test split while this one is on a validation
+slice, and paper 3's trees route missing values natively where this model
+imputes them. Neither changes the direction of the finding.
+
+## Rung 2: embeddings for trainer, jockey and sire
+
+An embedding is a short list of numbers the model learns for each trainer,
+jockey and sire, used in place of a single strike rate. Because the model
+fits those numbers itself, they can carry more than a win rate can — the
+supplementary note accompanying this paper gives the construction.
+
+They do not update. Each trainer gets one vector, learned during fitting and
+fixed thereafter. A strike rate is recomputed before every race from the
+archive, so it tracks a trainer improving or declining across the period;
+an embedding cannot.
+
+Rung 2 makes the swap. The three strike rates `trainerSR`, `jockeySR` and
+`sireSR` come out, leaving 23 features, and a four-number embedding of the
+trainer, of the jockey and of the sire goes in. The embeddings are learned
+only from the fitting rows, and an entity with fewer than twenty
+runs there is pooled into a shared bucket rather than given its own.
+
+```{r}
+#| label: tbl-rung2
+#| tbl-cap: "Embeddings against the strike rates they replaced, validation slice."
+p5_rung2_vs_rung1 |>
+  p5_contrast_table("Embeddings", "Strike rates") |>
+  kable(align = "lrrrrl")
+```
+
+Both intervals exclude zero, against the embeddings. The swap costs
+`r fmt_gain(cost_embeddings)` per race on validation loss, and the
+separation is complete: the best of the nine configurations with
+embeddings, `r fmt_loss(min(p5_rung2_scores$best_val_pl_loss))`, is
+worse than the worst of the nine with strike rates,
+`r fmt_loss(max(p5_mlp_scores_v4$best_val_pl_loss))`. The reading was fixed
+before the fit and it fired as *worse — report and stop, do not remediate*.
+No remediation was attempted.
+
+### The mechanism
+
+A strike rate is arithmetic: the entity's cumulative wins over runs at the
+latest meeting date before this race, computed over the whole 1.72M-row
+archive. It updates after every race the trainer has, and it is defined for
+trainers the model has never been fitted on.
+
+An embedding is neither. It is one fixed vector per entity,
+learned only from the
+`r p5_comma(nrow(p5_arm_data$fit$key))` in-scope fitting rows, and it exists
+only for entities that appear there often enough to be worth one.
+
+```{r}
+#| label: tbl-vocab
+#| tbl-cap: "Which entities got their own embedding, frozen on the fitting partition."
+p5_entity_indices$summary |>
+  dplyr::transmute(
+    Entity = entity,
+    `Distinct in fitting` = p5_comma(n_distinct_fit),
+    `Given an embedding` = p5_comma(vocab_size),
+    `% fitting rows pooled` = pct_fit_bucket,
+    `% validation rows pooled` = pct_val_bucket,
+    `% validation rows unseen` = pct_val_unseen
+  ) |>
+  kable(align = "lrrrrr")
+```
+
+Under a chronological split that matters. About half the validation rows
+carry at least one entity in the shared bucket, against about a fifth of
+fitting rows, and on those rows the model reads a generic vector where the
+strike rate it replaced was a real number — `trainerSR`, `jockeySR` and
+`sireSR` are missing on no row of either partition.
+
+Stated generally: **an embedding loses to a hand-built feature
+when the hand-built feature is computed from a wider information set than
+the model can be fitted on.**
+
+## Rung 3: the sequence encoder
+
+Rung 3 removes the history summaries and adds the encoder. Nine
+configurations were declared, varying the four settings that belong to the
+encoder itself: the hidden size, the number of recurrent layers, the dropout
+rate and the learning rate, spread around a centre of hidden size 32, one
+layer, dropout 0.1 and a learning rate of 1e-3. The downstream scorer is
+held at rung 1's selected architecture throughout, so the only architecture
+being searched is the encoder's.
+
+@tbl-rung3b-grid gives the nine. Three things to take from it: dropout is
+the setting that matters, and its ordering is monotone — the highest setting
+is best and zero is second worst; capacity past a hidden size of 32 buys
+nothing; and the spread from best to worst configuration,
+`r fmt_gain(max(p5_rung3b_scores_60$best_val_pl_loss) - min(p5_rung3b_scores_60$best_val_pl_loss))`,
+is small against the `r fmt_gain(gain_encoder)` the encoder gains over the
+hand-built model.
+
+```{r}
+#| label: tbl-rung3b-grid
+#| tbl-cap: "The nine encoder configurations, validation slice, 60 epochs each. Selection on validation PL loss and nothing else."
+p5_rung3b_scores_60 |>
+  dplyr::transmute(
+    Config = config, Hidden = hidden, Layers = layers, Dropout = dropout,
+    `Learning rate` = formatC(lr, format = "e", digits = 0),
+    `Best val PL loss` = purrr::map_chr(best_val_pl_loss, fmt_loss),
+    `Best epoch` = best_epoch,
+    `Loss at epoch 60` = purrr::map_chr(final_epoch_val_pl_loss, fmt_loss)
+  ) |>
+  kable(align = "rrrrrrrr")
+```
+
+Refitting the selected configuration at 200 epochs reproduced its 60-epoch
+trace exactly — maximum absolute difference
+`r p5_rung3b_budget_check$max_abs_trace_diff_first_60` — and did not improve
+on it. The optimum is at epoch
+`r p5_rung3b_budget_check$best_epoch_at_200` either way.
+
+The encoder keeps `days_LTO_log`, for the reason given in @sec-data. On the
+validation slice that term is worth `r fmt_gain(loss_rung3 - loss_rung3b)`
+per race:
+
+```{r}
+#| label: tbl-rung3b
+#| tbl-cap: "The layoff term in the encoder model, validation slice."
+p5_rung3b_vs_rung3 |>
+  p5_contrast_table("Layoff kept", "Layoff dropped") |>
+  kable(align = "lrrrrl")
+```
+
+## The ladder in one table
+
+```{r}
+#| label: tbl-ladder
+#| tbl-cap: "Validation Plackett–Luce loss per race. Positive gain is better than rung 1."
+p5_rung3b_decomposition |>
+  dplyr::transmute(
+    Model = arm,
+    `Val PL loss` = purrr::map_chr(val_pl_loss, fmt_loss),
+    `Gain over rung 1` = purrr::map_chr(gain_over_rung1, \(x)
+      if (abs(x) < 1e-12) "—" else fmt_gain(x))
+  ) |>
+  kable(align = "lrr")
+```
+
+The encoder is worth `r fmt_gain(gain_encoder)` per race over the hand-built
+model — about `r sprintf("%.1f", gain_encoder / gain_nonlinear)` times the
+nonlinearity and `r sprintf("%.0f", gain_encoder / gain_ninefeature)` times
+the nine extra features — on **seven fewer** hand-built features. Which
+model went to the test split was decided on this column and recorded in the
+pipeline, not chosen by hand.

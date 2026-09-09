@@ -24,7 +24,8 @@ Stop and ask only when one of these is true:
 Verification gates are not a reason to stop; they are the reason not to.
 Where a gate exists — `scripts/verify_pl_objective.R`,
 `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
-`scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R` — proceed
+`scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
+`scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R` — proceed
 and let the gate catch you. If a gate fails, fix it and report. Do not
 ask permission to fix it.
 
@@ -93,13 +94,49 @@ below has five entries for four numbered papers.
   store (`_targets_p4.R` / `_targets_p4`). Pre-registration:
   `papers/04_market_blend/PRE_REGISTRATION.md`.
   Live: <https://gillenpj.github.io/awracing/paper4/>.
+- **Paper 5 — Sequence encoding of run histories.** Changes how a horse's
+  own run history reaches the model. Eight of the 26 features — the two
+  position lags and their indicators, `has_wins` and the three
+  going-affinity terms — are replaced by a GRU encoder reading the 20 most
+  recent prior runs directly, eight values a run, with the raw finishing
+  position instead of a top-four code. The other 18 features, the races,
+  the depth-3 Plackett-Luce objective and the downstream MLP scorer are
+  unchanged. On the test split the encoder beats the hand-built summaries
+  on all three ranking measures — P1_rank +2.586e-04, Brier_place
+  −3.204e-03, pseudo-R² +1.059e-02, every 90% interval excluding zero —
+  and beats paper 3 by more, so three models order strictly: **paper 3 <
+  MLP on hand-built summaries < encoder**, nine contrasts and nine
+  exclusions of zero, on a split where papers 1-3 could not be told apart.
+  The market still ranks ahead of all of them, and **no ROI improvement is
+  distinguishable from zero** (win ROI −12.2%, the best in the series, but
+  the difference from paper 3 is +10.1 points with a 90% interval of
+  [−4.0, +23.3]; eight of nine ROI intervals contain zero).
+  Two findings from the ladder that got there: an MLP beat a linear scorer
+  on identical 26 features, which paper 3's conclusion about function class
+  did not anticipate; and embeddings for trainer, jockey and sire lost to
+  the strike rates they replaced, both intervals excluding zero, because a
+  hand-built feature computed from a wider information set than the model
+  can be fitted on is hard for an embedding to beat.
+  Own pipeline and store (`_targets_p5.R` / `_targets_p5`), following
+  paper 4's arrangement, so nothing it does can touch papers 1-4; its qmd
+  setup chunk passes `store =` to each `tar_load()` rather than calling
+  `tar_config_set()`, so the root `_targets.yaml` papers 1-3 share is never
+  written. Fitting is `{torch}` directly, not `{tidymodels}`. Standing
+  gates: `scripts/verify_p5_pl_torch.R` and `scripts/verify_p5_gru_mask.R`.
+  Model selection ran on a validation slice carved out of the training
+  split at 2010-12-15 (3,517 fitting / 1,505 validation races); the test
+  split was scored once. Per-rung stage reports are in
+  `papers/05_encoder/`, and the supplementary theory note is in
+  `papers/05_encoder/supplement/`.
+  Live: <https://gillenpj.github.io/awracing/paper5/>.
 
 ## Standing conventions
 
 - **Verification gates are the reason not to stop, not a reason to.**
   Where a gate exists (`scripts/verify_pl_objective.R`,
   `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
-  `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`),
+  `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
+  `scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R`),
   proceed and let it catch mistakes; fix and report, don't ask first
   (see "Default to proceeding" above).
 - **Reproducibility checks need two fresh processes, not two calls in
@@ -107,6 +144,25 @@ below has five entries for four numbered papers.
   internal RNG, or anything else cached at the process level — can make
   a broken setting look verified when re-checked within the same R
   session. Always verify across two separate `Rscript` invocations.
+- **Editing `R/p5_gru.R` costs about 3h20m of recompute, even for an
+  unrelated constant.** `p5_gru_module` is built at **source time** by
+  `torch::nn_module()`, and the R6 generator it returns captures the
+  enclosing environment. Adding anything to that environment changes the
+  generator's hash, so every target depending on it — `p5_rung3_runs`,
+  `p5_rung3_refit_200`, `p5_rung3b_runs`, `p5_rung3b_refit_200`,
+  `p5_gru_mask_check` — is invalidated and rungs 3 and 3b refit from
+  scratch. Confirmed empirically at P5-3b: adding two term-list helpers
+  to that file re-ran rung 3's whole grid (1h40m wasted), while
+  `p5_rung2_runs` — the same pattern via `p5_embed_module`, in a file
+  that was not touched — skipped, along with all of rungs 1 and 2. The
+  recompute is deterministic, so it costs time and nothing else; rung 3
+  reproduced to every printed digit. **Not being fixed**, because the fix
+  — putting the generator behind a lazily-called function — is itself an
+  edit to that file and would trigger the same recompute. Practical rule:
+  put new paper-5 helpers in a NEW file, never in `R/p5_gru.R`, and
+  before any long run check `tar_outdated()` to see whether the GRU
+  targets have been invalidated. The same trap applies in principle to
+  `p5_embed_module` in `R/p5_embed.R` (rung 2, about 49m).
 - **Never give a driver script's own helper the same name as a base R
   function.** Files under `R/` are `source()`d into the caller's global
   environment, not loaded as a namespaced package, so a same-named
@@ -160,6 +216,38 @@ below has five entries for four numbered papers.
 - `{targets}` + `{tarchetypes}` pipeline; entry point `_targets.R`.
 - `{DBI}` + `{RMariaDB}` for the Smartform MySQL database.
 - `{tidyverse}`, `{tidymodels}`, `{mlogit}` for modelling.
+- **`{torch}` 0.17.0 (libtorch 2.8.0) + `{luz}` 0.5.2 (and `coro` 1.1.0)
+  for paper 5.** Pinned with `renv::record()`. The backend is the **CPU**
+  libtorch build, and **`renv.lock` cannot capture that** — it pins R
+  packages, not the C++ runtime. Reproducing this environment therefore
+  needs `Sys.setenv(CUDA = "cpu")` before `torch::install_torch()`.
+  **The CPU backend is a frozen parameter of paper 5. Decided
+  2026-09-07; do not revisit mid-ladder.** Every rung is fitted on it,
+  and results do not reproduce across backends, so switching would
+  invalidate the frozen comparator and force refitting every closed
+  rung. The pipeline records the backend at fit time in `p5_backend`
+  and inside each fitted run, so no report can claim a backend it was
+  not fitted on.
+  - **Why CPU, correctly stated.** It is *not* the driver: driver
+    560.94 supports a CUDA 12.6 runtime, as `nvidia-smi` reports. What
+    failed at P5-1b was the installer's **toolkit** probe —
+    `torch:::cuda_version_from_system_windows()` reads `CUDA_PATH`,
+    then `version.txt`, then `nvcc`, and this machine's toolkit is
+    v12.0. torch 0.17.0 ships **no CUDA build below 12.6** on Windows or
+    Linux (`supported_cuda_versions_windows` is `12.6, 12.8, 12.9`), so
+    `check_supported_version()` aborts. The probe is bypassable without
+    installing a toolkit — `torch:::cuda_version()` honours
+    `Sys.setenv(CUDA = "12.6")` first, and libtorch ships its own CUDA
+    runtime — so a GPU build was available and was declined on the
+    merits, not blocked.
+  - **The merits.** The GPU is a GeForce GT 1030 (Pascal GP108, compute
+    6.1, 2 GB, ~1.1 GB free with the desktop on it). Consumer Pascal
+    runs FP64 at 1/32 rate — about 35 GFLOPS — against roughly 50-70
+    GFLOPS achievable on this i5-3470. **The paper-5 fitting path is
+    `float64` throughout**, so the GPU would likely be slower, and
+    float32 is a larger change than the backend: it would break
+    `verify_p5_pl_torch.R`'s 1e-4 gradient assertions and force a
+    refit of every rung anyway.
 - `{quarto}` for the papers under `papers/`. Quarto CLI is bundled
   with RStudio at
   `C:/Program Files/RStudio/resources/app/bin/quarto/bin/quarto.exe`.
@@ -215,13 +303,17 @@ below has five entries for four numbered papers.
   objective plus a custom eval metric plus group info together. Same
   kind of exception as the `{mlogit}` route in papers 1/2 (see
   "Modelling notes" below).
-- **Documented exception (paper 5, planned): `{torch}` and `{luz}` used
-  directly, not via `{tidymodels}`/`{parsnip}`.** `{tidymodels}` has no
-  interface for a custom Plackett–Luce objective over variable-length,
-  padded sequences — the same class of gap the `{mlogit}` and
-  `{xgboost}` exceptions above cover. The project stays tidyverse-first
-  throughout; this is a scorer-fitting exception, not a departure from
-  it.
+- **Documented exception (paper 5, in force): `{torch}` used directly,
+  not via `{tidymodels}`/`{parsnip}`.** `{tidymodels}` has no interface
+  for a custom Plackett–Luce objective over variable-length, padded
+  sequences — the same class of gap the `{mlogit}` and `{xgboost}`
+  exceptions above cover. The project stays tidyverse-first throughout;
+  this is a scorer-fitting exception, not a departure from it.
+  `{luz}` is installed and pinned but the training loop is written
+  against `{torch}` directly: the loss is race-grouped — a batch is a
+  set of whole races, padded to that batch's widest field, reducing over
+  races rather than rows — and an explicit loop is easier to audit than
+  the same thing routed through luz's callback API.
 
 ## Project structure
 - `R/` — functions, sourced by `_targets.R` via `tar_source()`.
@@ -262,6 +354,28 @@ below has five entries for four numbered papers.
     `scripts/p4_audit_forecast_price.R`, because
     `scripts/verify_p4_data_targets.R` and the paper-4 report target both
     read the `.rds` it writes.
+  - `papers/05_encoder/` — **paper 5, complete and published.** Sequence
+    encoding of run histories. Built by its own pipeline, `_targets_p5.R`,
+    into its own store, `_targets_p5` — NOT by `_targets.R`. Run it with
+    `Rscript scripts/run_p5_pipeline.R`, or
+    `targets::tar_make(script = "_targets_p5.R", store = "_targets_p5")`.
+    Rendered by `tar_quarto(paper_5_encoder)` inside that pipeline.
+    Upstream targets are read from the main store **read-only**, with
+    their content hashes recorded in `p5_upstream_fingerprint` so an
+    upstream change invalidates downstream work rather than going stale.
+    `tar_config_set()` is never called anywhere in paper 5 — the qmd setup
+    chunk passes `store =` to each `tar_load()` — so the root
+    `_targets.yaml` papers 1-3 share is never written. Alongside the paper
+    the folder keeps the per-rung stage reports (`P5_1_REPORT.md` through
+    `P5_3b_REPORT.md`, `P5_TEST_REPORT.md`, `P5_DIAGNOSTICS_REPORT.md`)
+    and their `tar_make()` run logs.
+  - `papers/05_encoder/supplement/` — paper 5's supplementary theory note,
+    *Notes on Neural Scorers and Sequence Encoders*, a tutorial following
+    the precedent of paper 3's tree notes. Its own tiny Quarto project,
+    PDF only, and **not** on the `{targets}` graph: it has no executable
+    chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
+    that folder needs neither renv nor the targets store. `publish_docs.R`
+    copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -271,9 +385,10 @@ below has five entries for four numbered papers.
   - `docs/index.html` — landing page, one entry per paper; each entry
     links the HTML and a "— PDF" link to `paperN/index.pdf`.
   - `docs/paper1/`, `docs/paper2a/`, `docs/paper2b/`, `docs/paper3/`,
-    `docs/paper4/` —
+    `docs/paper4/`, `docs/paper5/` —
     rendered `index.html` + `index.pdf`, copied from the matching
-    `papers/*/_output/` after each render.
+    `papers/*/_output/` after each render. `docs/paper3/` and
+    `docs/paper5/` also carry a supplementary PDF each.
   - Pages source is set to `main` branch, `/docs` folder. There is
     **no GitHub Actions workflow** — Pages serves the committed
     `/docs` files directly and runs its own build on push, so
@@ -332,6 +447,30 @@ below has five entries for four numbered papers.
     data-section targets to the frozen P4-0 audit, and asserting the
     distributional summaries touch no test race. Run after any change to
     `R/p4_data_summaries.R`.
+  - `verify_p5_pl_torch.R` — standing gate on paper 5's `{torch}`
+    Plackett–Luce objective (`R/p5_torch.R`): asserts it agrees with
+    `R/pl_objective.R::pl_neg_loglik()` on identical input (~1e-9
+    relative) across mixed field sizes, the edge cases, depths k = 1 to
+    4, shift invariance and padding width, and that its autograd
+    gradient matches paper 3's analytic `pl_grad_hess()` (~2.9e-08). Run
+    after any change to `R/p5_torch.R`. It caught a real bug and a
+    loss-value-only check would not have: `torch_where()` selects one
+    branch but differentiates both, so padded slots carrying `log(0)`
+    gave an exactly correct forward loss and a NaN gradient.
+  - `verify_p5_gru_mask.R` — standing gate on paper 5's sequence encoder
+    (`R/p5_gru.R`): asserts the GRU never reads padding and reads the
+    correct slot. Sequences are right-padded and the encoder output is the
+    hidden state at `seq_len`. Three seeds, four checks — padding width
+    inert, padding content inert, a zero-length row giving the zero
+    vector, and the output matching the same encoder run on the unpadded
+    sequence. That last one is the check that earns its place: an
+    off-by-one in the gather index passes both invariance checks while
+    summarising the wrong run. Also on the graph as `p5_gru_mask_check`.
+    Run after any change to `R/p5_gru.R` — but see the recompute trap in
+    "Standing conventions" first.
+  - `run_p5_pipeline.R` — the paper-5 driver. Exists because `Rscript -e`
+    does not activate renv on this machine and because the script/store
+    pair must be passed explicitly on every call.
   - `publish_docs.R` — the publish step. After `tar_make()`, copies
     each paper's `_output/index.{html,pdf}` into `docs/paperN/`
     (mapping table at the top of the file; add a row per new paper).
@@ -343,6 +482,8 @@ below has five entries for four numbered papers.
     `papers/03_gradient_boosted_trees/TUNING_PROVENANCE.md` for exactly
     how to reproduce and check it).
 - `_targets/` — pipeline cache (gitignored).
+- `_targets_p5/` — paper 5's own pipeline store (gitignored, alongside
+  paper 4's `_targets_p4/`).
 - `renv/`, `renv.lock` — package state.
 - `.env` — DB credentials (gitignored). Read at runtime by
   `R/db.R::connect_smartform()` via `dotenv::load_dot_env()`.
@@ -712,11 +853,63 @@ observations are documented in §4.3 of paper 1.
   positive as plausibly indistinguishable from zero, and ours as a
   confident null on the larger sample.
 
-## Paper 5 concept — sequence encoding of run histories
+## Paper 5 — sequence encoding of run histories (COMPLETE)
 
-The neural encoder ladder. Full concept, ladder structure,
-pre-registered stopping rules and revised priors live in Google Tasks,
-not here. Not yet in scope; do not act on it.
+Published. See the Papers list above for the result and the pipeline
+details, and `papers/05_encoder/` for the per-rung stage reports. What
+follows is what the work left behind for later — the lessons and the
+built inputs — not a restatement of the results.
+
+**Rung 1 (the MLP control) is closed, at 3bf41be.** It took four
+attempts, and three of them were wasted on the same mistake: an arm that
+differed from its comparator in two respects at once, so the contrast
+could not test what the rung existed to test. P5-1 pitted paper 3's 24
+tree-shaped features against paper 2b's 17; P5-1b fixed the encoding but
+gave the MLP eight features 2b did not have; P5-1c matched the features
+and left the selection budget asymmetric (9 x 60 evaluations against
+1 x 200); P5-1d equalised the budget and settled it. **Standing lesson,
+and it applies to every rung that follows: state the term-by-term
+difference between the two arms before fitting anything, and confirm it
+is exactly one difference.**
+
+The result: on identical 26 terms and an equal budget the MLP beats a
+linear scorer on both P1_rank and Brier_place, both 90% intervals
+excluding zero. The control claim does not hold — the nonlinearity is
+worth about 0.0127 per race on validation PL loss, roughly 4.2 times the
+0.0030 the nine features paper 2b lacks are worth — so **later rungs are
+judged against the rung-1 MLP, not against paper 2b or paper 3.**
+
+Sequence channels are built and bounded (`R/p5_sequences.R`): eight
+channels over the 20 most recent strictly-prior runs, cross-surface,
+row-identical to paper 3's frame. Unavailable readings take **−1**, not
+0, because 0 is legitimate for several channels and is also the padding
+value; padding stays 0 and is masked by `seq_len`. `class` and
+`finish_pos` sentinels read as unavailable; `field_size` (40),
+`days_since_prev` (1000) and `beaten_dist` (100) are winsorised, which
+keeps the ordering where the magnitude stops being informative.
+
+**What rung 3 consumes them with, and the one thing it does not get
+back.** Sequences are right-padded — real runs in the leading slots,
+padding after — and the encoder output is the GRU hidden state at slot
+`seq_len`, so the recurrence never consumes padding. Left-padding would
+not do: a GRU fed zero vectors from a zero state does not stay at zero,
+because the gates carry biases. Runs are reversed into chronological
+order first, so the last thing the encoder reads is the most recent run.
+Gate: `scripts/verify_p5_gru_mask.R`, also on the graph as
+`p5_gru_mask_check`. Its third check — output must match feeding a row's
+real runs with no padding at all — is the one that matters: an
+off-by-one in the gather index passes both padding-invariance checks
+while summarising the wrong run. **`days_LTO_log` leaves in rung 3 and
+the sequences do not restore it**: `days_since_prev` is the gap between
+a historical run and the one before it, not the gap to today's race. The
+encoder wins having lost that, which is the obvious first thing to try
+if it is developed further.
+
+**The CPU backend is frozen and recorded.** `p5_capture_backend()` runs
+both as the `p5_backend` target and inside every fitting function, and
+`p5_backend_check` asserts all fitted runs agree with it, so no report
+can claim a backend it was not fitted on. See the `{torch}` entry under
+"Tech stack" for why CPU, and do not revisit it mid-ladder.
 
 **Abandoned unpublished: comment tags.** Features parsed from
 `in_race_comment` on a horse's prior runs were tried against paper 3's

@@ -1,0 +1,152 @@
+# The result {#sec-result}
+
+```{r}
+#| label: example-setup
+#| include: false
+
+# The worked example, selected by a rule rather than by eye: the first
+# runner, in race and runner order, on the validation slice whose career
+# consists of exactly eight prior runs.
+ex_key <- p5_sequences$key |>
+  dplyr::mutate(row = dplyr::row_number(),
+                seq_len = p5_sequences$seq_len,
+                career = p5_sequences$career_runs_prior)
+
+ex <- ex_key |>
+  dplyr::filter(race_id %in% p5_slice$val_race_ids,
+                seq_len == 8L, career == 8L) |>
+  dplyr::arrange(race_id, runner_id) |>
+  dplyr::slice(1) |>
+  dplyr::left_join(
+    dplyr::select(p5_runners_interactions, race_id, runner_id, name,
+                  pos_lag1_zero, pos_lag1_nonzero, pos_lag2_zero,
+                  pos_lag2_nonzero, has_wins, going_runs_prior,
+                  going_sr_shrunk, going_sr_delta, days_LTO_log),
+    by = c("race_id", "runner_id")
+  )
+
+ex_seq <- p5_sequences$x[ex$row, seq_len(ex$seq_len), , drop = FALSE]
+dimnames(ex_seq) <- list(NULL, NULL, p5_sequences$features)
+
+ex_tbl <- tibble::tibble(
+  `Run` = paste0(seq_len(ex$seq_len), if_else(seq_len(ex$seq_len) == 1L,
+                                              " (last time)", "")),
+  `Finish` = as.integer(ex_seq[1, , "finish_pos"]),
+  `Beaten (l)` = sprintf("%.2f", ex_seq[1, , "beaten_dist"]),
+  `Field` = as.integer(ex_seq[1, , "field_size"]),
+  `Class` = as.integer(ex_seq[1, , "class"]),
+  `Dist (f)` = as.integer(ex_seq[1, , "distance_furlongs"]),
+  `Going (ord.)` = as.integer(ex_seq[1, , "going_ordinal"]),
+  `Days since previous` = as.integer(ex_seq[1, , "days_since_prev"])
+)
+ex_name <- ex$name
+```
+
+The models in this series score a horse on 26 features. Most of them
+describe the horse and the race rather than its recent form: the official
+rating, the weight carried, age, sex, headgear, the draw, the course,
+today's going, the days since the horse last ran, and strike rates for the
+trainer, the jockey and the sire. Eight of the 26 describe the horse's own
+run history, and those eight are the only ones this paper changes.
+
+Four of the eight are position lags: last time out's finishing position,
+recorded only if the horse finished in the first four and zero otherwise,
+with a companion indicator for the zero case, and the same pair for the run
+before that. The other four are an ever-won flag and three going-affinity
+terms.
+
+This paper replaces those eight with the runs themselves. A gated recurrent
+encoder reads up to the twenty most recent prior runs, cross-surface, with
+eight values describing each run: the **raw** finishing position, how far
+the horse was beaten and whether that reading exists, the going, the class,
+the field size, the race distance, and the gap to the run before. The other
+eighteen features stay in both models, as do the races, the likelihood and
+the scorer.
+
+Take `r ex_name`, running at
+`r format(p5_frame$race_date[p5_frame$race_id == ex$race_id & p5_frame$runner_id == ex$runner_id][1], "%d %B %Y")`
+with eight prior runs behind it. Its record, most recent first, is what the
+encoder reads:
+
+```{r}
+#| label: tbl-example-form
+#| tbl-cap: !expr glue::glue("{ex_name}'s eight prior runs, as the encoder receives them. Going is on the series' ordinal scale; the days column is the gap back to the run before that one, so the earliest run in the career has no reading and carries the unavailable code −1.")
+kable(ex_tbl, align = "lrrrrrrr")
+```
+
+Paper 3 sees this record as four features:
+`pos_lag1_zero` = `r ex$pos_lag1_zero`,
+`pos_lag1_nonzero` = `r ex$pos_lag1_nonzero`,
+`pos_lag2_zero` = `r ex$pos_lag2_zero`,
+`pos_lag2_nonzero` = `r ex$pos_lag2_nonzero` — plus `has_wins` =
+`r ex$has_wins` and a going block of
+(`r ex$going_runs_prior`, `r sprintf("%.2f", ex$going_sr_shrunk)`,
+`r sprintf("%.2f", ex$going_sr_delta)`).
+
+Last time out the horse finished `r ex_tbl$Finish[1]`th of
+`r ex_tbl$Field[1]`, beaten `r ex_tbl[["Beaten (l)"]][1]` lengths. Because
+that is outside the first four, the position lag records it as zero and
+raises the indicator. A horse that finished last of twenty, beaten forty
+lengths, produces exactly the same pair. The run before was a fourth of
+`r ex_tbl$Field[2]`, beaten `r ex_tbl[["Beaten (l)"]][2]` lengths, and is
+recorded as the single figure 4 — the same value a fourth beaten a
+short-head in a six-runner race would produce.
+
+The rest of the table — the six earlier runs, the beaten distances, the
+class and distance of each race, the `r ex_tbl[["Days since previous"]][3]`-day
+gap before the third-last run — is not in paper 3's feature set at all.
+
+Both models use the same MLP scorer and differ only in how the horse's run
+history reaches it: the eight hand-built summary features in one, the
+encoder in the other. Both were fixed before any test race was scored. On
+`r p5_comma(n_test_races)` held-out test races:
+
+```{r}
+#| label: tbl-headline
+#| tbl-cap: "Encoder against hand-built features, held-out test split. Paired race-level bootstrap, B = 2000, 90% intervals."
+p5_test_contrasts |>
+  dplyr::filter(stringr::str_detect(contrast, "rung 3b.*rung 1")) |>
+  p5_contrast_table("Encoder", "Hand-built") |>
+  kable(align = "lrrrrl")
+```
+
+Every interval excludes zero. The same three comparisons against paper 3's
+gradient-boosted trees [@chenguestrin2016] are larger still, and the
+hand-built model itself beats paper 3 by a smaller margin, so the three
+models order strictly on all three measures:
+
+$$\text{paper 3 (trees)} \;<\; \text{hand-built features (MLP)} \;<\;
+\text{sequence encoder (MLP)}$$
+
+Nine contrasts, nine intervals excluding zero. That is worth setting beside
+what came before it. In papers 1 to 3 no model could be distinguished from
+another on this same test split: every paired interval in paper 3 against
+paper 2b contained zero, and the only contrast in that paper whose interval
+excluded zero was the market beating both models. Three models now separate
+cleanly.
+
+Three things did not change. **The market still ranks better than any of
+them.** The encoder reaches P1_rank
+`r fmt_metric(p5_ct(p5_test_contrasts, "P1_rank", "rung 3b.*rung 1")$point_a)`
+and Brier_place
+`r fmt_metric(p5_ct(p5_test_contrasts, "Brier_place", "rung 3b.*rung 1")$point_a)`
+against the market baseline of roughly `r sprintf("%.5f", market_p1)` and
+`r sprintf("%.4f", market_brier)` that papers 2b and 3 published. The gap
+narrows on both and closes on neither. The encoder and the market were not
+compared directly here; these are published figures set side by side.
+
+**No betting return improves in a way that can be distinguished from
+nothing.** The single-bet-per-race backtest gives the encoder a win ROI of
+`r fmt_pct(p5_bt(p5_test_backtests, "rung3b", "win")$roi)` against paper 3's
+`r fmt_pct(p5_bt(p5_test_backtests, "paper3", "win")$roi)` — the best in the
+series — but the difference is
+`r fmt_pts(p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$diff_point)`
+points with a 90% interval of
+`r fmt_pts_ci(p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$ci_lo, p5_roi(p5_roi_contrasts, "rung 3b.*paper 3", "win")$ci_hi)`.
+Eight of the nine ROI intervals contain zero. Every model loses money.
+
+**And the gain is not about long careers.** Truncating the encoder to the
+five most recent runs keeps
+`r sprintf("%.1f%%", p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`
+of its advantage, so what it is doing is reading the recent runs properly
+rather than reading further back.

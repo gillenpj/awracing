@@ -1,0 +1,109 @@
+# What the encoder is doing {#sec-discussion}
+
+The result says the representation matters. It does not say what the encoder
+found. Two diagnostics narrow that, both on the validation slice, both
+descriptive.
+
+## How much history the gain needs
+
+The selected configuration was refitted with the sequence truncated to the
+five, ten and fifteen most recent runs — same seed, same slice, only the
+number of runs the encoder can read changing.
+
+```{r}
+#| label: tbl-seqlen-sens
+#| tbl-cap: "Sequence length against validation Plackett–Luce loss. The gain column is against the MLP on hand-built features."
+p5_seq_length_table |>
+  dplyr::transmute(
+    `Prior runs` = max_len,
+    `Mean length` = mean_len_fit,
+    `% at the cap` = pct_at_cap_fit,
+    `Best val PL loss` = purrr::map_chr(best_val_pl_loss, fmt_loss),
+    `Gain over rung 1` = purrr::map_chr(gain_over_rung1, fmt_gain),
+    `Share of the full gain` = sprintf("%.1f%%", share_of_full_gain)
+  ) |>
+  kable(align = "rrrrrr")
+```
+
+Five runs keep
+`r sprintf("%.1f%%", p5_seqlen(p5_seq_length_table, 5)$share_of_full_gain)`
+of the encoder's advantage, and quadrupling the history available buys the
+rest. Paper 3 sees two prior runs. The advantage is therefore about reading
+the recent runs properly — the raw finishing position instead of a top-four
+code, with the beaten distance, going, class and field size attached to it —
+rather than about depth of history.
+
+## Whether it is re-encoding what it replaced
+
+If the encoder were simply computing the discarded features for itself, its
+output would reconstruct them. Each removed feature was regressed on the
+encoder's `r p5_encoder_diag$hidden_dim` output dimensions, on validation
+rows.
+
+```{r}
+#| label: tbl-recovery
+#| tbl-cap: "Linear recovery of the removed features from the encoder's output. Reference rows are features the encoder model kept, and was never required to encode."
+dplyr::bind_rows(
+  p5_encoder_diag$recovery |>
+    dplyr::transmute(Feature = feature, `R²` = fmt_r2(r_squared),
+                     n = p5_comma(n), Role = "removed"),
+  p5_encoder_diag$reference |>
+    dplyr::transmute(Feature = feature, `R²` = fmt_r2(r_squared),
+                     n = p5_comma(n), Role = "reference (kept)")
+) |>
+  kable(align = "lrrl")
+```
+
+The reference rows set the floor: features the encoder never had to
+represent sit at
+`r fmt_r2(min(p5_encoder_diag$reference$r_squared))`–`r fmt_r2(max(p5_encoder_diag$reference$r_squared))`.
+Against that floor only one removed feature is substantially recovered —
+whether the horse finished outside the first four last time, at
+`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_zero"))`. Last time's
+finishing position itself, which is the first of the eight values in the
+most recent slot, comes out at
+`r fmt_r2(p5_rec(p5_encoder_diag$recovery, "pos_lag1_nonzero"))`.
+
+These are linear $R^2$, so a low value means the feature is not *linearly*
+recoverable from those dimensions, not that the information is absent. What
+the table supports is the narrow claim that the encoder is not a linear
+re-encoding of the features it replaced.
+
+# Conclusion {#sec-conclusion}
+
+Replacing eight of the model's 26 features — the hand-built summaries of a
+horse's own run history — with a sequence encoder that reads the runs
+themselves improves ranking on held-out data,
+by margins whose intervals exclude zero on every measure tested, and by more
+than the switch from trees to a neural scorer buys. After four papers in
+which no model could be distinguished from another on this test split, three
+now order strictly.
+
+Two other things were found along the way. A multi-layer perceptron beat a
+linear scorer on identical features, which paper 3's conclusion about
+function class did not anticipate and which that paper's evidence did not
+cover. And embeddings for trainer, jockey and sire lost to the strike rates they
+replaced, cleanly and without remediation, because a hand-built feature
+computed from a wider information set than the model can be fitted on is a
+hard thing for an embedding to beat.
+
+Two limitations bound the result. `or_relative` — the horse's official
+rating relative to its race — stays in both models, and an official rating
+is the handicapper's own summary of the same history, revised after every
+run from a wider base of races than this paper models. The encoder is
+competing for what is left after that, which makes the gain more interesting
+and also bounds it. And these models overfit quickly: the best epoch arrived
+within about three passes over the training data in every rung, which says
+how little `r p5_comma(n_train_races)` training races is for models of this
+size, and is the strongest reason to be cautious about extending the
+architecture before extending the data.
+
+All fitting was done on the CPU `libtorch` build in double precision.
+Results do not reproduce across backends, so every number here belongs to
+that one; @sec-appx-c records what reproducing it requires.
+
+What has not changed is the market. It ranks better than the encoder, as it
+ranked better than everything before it, and no betting return in this paper
+is distinguishable from no improvement at all. The representation of a
+horse's history was a real constraint and is now a smaller one. It was not
+the constraint that separates these models from the price.

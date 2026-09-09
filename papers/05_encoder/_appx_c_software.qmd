@@ -1,0 +1,52 @@
+# Appendix C — Software and reproducibility {#sec-appx-c}
+
+## The series pattern
+
+The analysis is a `{targets}` pipeline [@targetsr] in R, with `{renv}`
+pinning package versions and one function per target. Paper 5 has its own
+pipeline script and its own store, `_targets_p5.R` and `_targets_p5`,
+following paper 4's arrangement, so nothing it does can invalidate or
+overwrite the published work of papers 1 to 4.
+
+Upstream objects — the career history, the runner table, paper 3's own
+fitting and test matrices, paper 2b's fitted model — are read from the main
+store **read-only**, with their content hashes recorded in a fingerprint
+target. An upstream change therefore invalidates this paper's downstream
+work rather than leaving it silently stale.
+
+Every number in this document is read from a target at render time via
+`tar_read()` or `tar_load()`. None is transcribed. A figure with nothing
+behind it is a figure that can go stale without anyone noticing.
+
+## Fitting
+
+Fitting uses `{torch}` [@torchr] directly rather than through
+`{tidymodels}`. This is a documented exception of the same kind papers 1 and
+2 make for `{mlogit}` and paper 3 makes for `{xgboost}`
+[@chenguestrin2016]: there is no interface in `{tidymodels}` for a custom
+Plackett–Luce objective over variable-length races with race-grouped
+reduction.
+
+```{r}
+#| label: tbl-versions
+#| tbl-cap: "Fitting environment, captured at fit time from inside the model-fitting functions."
+p5_backend |>
+  dplyr::transmute(
+    torch = torch_version, libtorch = libtorch_version,
+    R = r_version, Platform = platform,
+    Device = device, `CUDA available` = cuda_is_available,
+    `CPU threads` = torch_threads
+  ) |>
+  kable(align = "llllllr")
+```
+
+The lockfile pins the R packages but not the C++ runtime underneath
+`{torch}`, and the same R package version can sit on a CPU build or on any
+of several CUDA builds, which do not produce identical results. Everything
+here is fitted on the **CPU** build in double precision, so reproducing the
+environment requires setting `CUDA = "cpu"` before installing the backend;
+without it the installer probes for a CUDA toolkit and selects a different
+build. Because none of that appears in the lockfile, the backend is captured
+inside every fitting function and returned with the fitted model, then
+asserted against the pipeline's own record, so a mixed-backend comparison
+fails loudly rather than being published.

@@ -1,0 +1,86 @@
+# Method {#sec-method}
+
+## The objective is paper 2b's and paper 3's
+
+The likelihood does not change in this paper. Each runner $j$ in race $r$
+receives a score $z_{rj}$, and the probability of the observed finishing
+order down to depth $k$ is the Plackett–Luce form
+[@plackett1975; @luce1959] that paper 2b's exploded conditional logit fits
+and paper 3's custom objective optimises:
+
+$$
+\Pr(\text{top-}k \text{ order}) \;=\; \prod_{s=1}^{S}
+\frac{\exp(z_{r,(s)})}{\sum_{j \in R_{r,s}} \exp(z_{rj})},
+\qquad S = \min(k,\, J_r - 1),
+$$
+
+where $(s)$ is the horse that finished $s$-th and $R_{r,s}$ is the set still
+unplaced at stage $s$. Depth $k = 3$ throughout, as in papers 2b and 3. At
+$k = 1$ this is McFadden's conditional logit [@mcfadden1974], which is
+paper 1's model.
+
+What changes across the series is only the function producing $z$: a linear
+predictor in papers 1, 2a and 2b, a gradient-boosted tree ensemble in paper
+3, and a neural scorer here. The loss is implemented directly in `{torch}`
+and verified against paper 3's analytic gradient, so this paper descends the
+same surface paper 3 did; @sec-appx-a gives the verification.
+
+Weights are shared across horses. The scorer maps one runner's features to
+one number, and runners are coupled only through the per-race denominator.
+
+## A ladder, one change at a rung
+
+The paper is built as a ladder. Each rung changes exactly one thing about
+how a horse's history reaches the scorer and is compared with the rung
+below it, so that a difference in ranking can be attributed to that change
+and not to a bundle of them.
+
+| rung | the one change | comparator |
+|---|---|---|
+| 1 | linear scorer → multi-layer perceptron, identical features | paper 2b's linear predictor |
+| 2 | three strike rates → embeddings for trainer, jockey and sire | rung 1 |
+| 3 | eight history summaries → sequence encoder | rung 1 |
+
+The difference between two models is stated and asserted in code before
+either is fitted, rather than left to prose.
+
+Two further rungs were specified and not run. Adding embeddings
+**alongside** the strike rates rather than in place of them would only test
+whether they help where the strike rate is already most reliable, since an
+embedding can only be learned for entities that appear often enough in the
+fitting data. A Deep Sets encoder over today's field — a summary of the
+other runners rather than of the horse's own past — would be fitted at race
+grain: `r p5_comma(n_train_races)` races against `r p5_comma(n_train_rows)`
+runner-rows, an order of magnitude less data than every other rung, and a
+new architecture at the same time.
+
+## Selection, and what it was allowed to see
+
+Nine configurations per model, declared in full before any of them was
+scored. Selection saw validation Plackett–Luce loss and nothing else: never
+a ranking metric, never a betting return, never a test row.
+
+In every rung the best epoch arrived within about three passes over the
+training data, and the validation loss rose steadily afterwards. Early
+stopping therefore does real work, and it is done the same way for every
+model — the parameters kept are those from the best validation epoch.
+
+## The two models that reach the test split
+
+The hand-built model scores 26 features. The encoder model scores 18 of
+those 26 — the eight history summaries of @sec-data are the ones removed —
+plus `career_runs_prior` and the sequence encoder's output. The downstream
+scorer, the objective, the races, the validation slice and the seed are
+identical.
+
+Both are refitted on the **full** training split — the validation slice
+folded back in — at the configuration the slice selected, then score the
+test split once. Both train for the same number of epochs, the epoch each
+selected on validation, and there is no per-epoch evaluation at that stage:
+with no held-out set left, scoring the test split each epoch would put it
+inside the selection loop.
+
+One consequence is worth stating plainly. The full training split is about
+43% larger than the fitting partition used for selection, so an epoch is 43%
+more gradient steps than it was during selection. Both models take that
+change identically, so the contrast between them is unaffected by it.

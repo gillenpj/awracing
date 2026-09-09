@@ -1,0 +1,25 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p5_configs_remediation dispatched
+
+✔ p5_configs_remediation completed [5s, 385 B]
+
++ p5_mlp_runs_remediation dispatched
+
+✔ p5_mlp_runs_remediation completed [12m 38.6s, 637.19 kB]
+
++ p5_mlp_selected dispatched
+
+✔ p5_mlp_selected completed [0ms, 104.99 kB]
+
++ p5_remediation_scores dispatched
+
+✔ p5_remediation_scores completed [20ms, 385 B]
+
+✔ ended pipeline [12m 50.3s, 4 completed, 24 skipped]
+
+Warning messages:
+
+1: package 'torch' was built under R version 4.6.1 
+
+2: 1 targets produced warnings. Run targets::tar_meta(fields = warnings, complete_only = TRUE) for the messages. 
+

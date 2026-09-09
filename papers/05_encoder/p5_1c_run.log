@@ -1,0 +1,65 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p5_control_terms dispatched
+
+✔ p5_control_terms completed [5.1s, 300 B]
+
++ p5_control_data dispatched
+
+✔ p5_control_data completed [380ms, 2.05 MB]
+
++ p5_linear_v3 dispatched
+
+✔ p5_linear_v3 completed [1m 18.6s, 106.35 kB]
+
++ p5_mlp_runs_v2 dispatched
+
+✔ p5_mlp_runs_v2 completed [10m 49.2s, 946.62 kB]
+
++ p5_scored_v3 dispatched
+
+✔ p5_scored_v3 completed [150ms, 267.66 kB]
+
++ p5_mlp_selected_v2 dispatched
+
+✔ p5_mlp_selected_v2 completed [0ms, 105.35 kB]
+
++ p5_config_scores_v2 dispatched
+
+✔ p5_config_scores_v2 completed [30ms, 439 B]
+
++ p5_scored_v2 dispatched
+
+✔ p5_scored_v2 completed [190ms, 535.14 kB]
+
++ p5_per_race_v2 dispatched
+
+✔ p5_per_race_v2 completed [3.9s, 58.02 kB]
+
++ p5_per_race_v3 dispatched
+
+✔ p5_per_race_v3 completed [1.5s, 29.14 kB]
+
++ p5_rung1_comparison_v2 dispatched
+
+✔ p5_rung1_comparison_v2 completed [670ms, 382 B]
+
++ p5_mlp_vs_linear dispatched
+
+✔ p5_mlp_vs_linear completed [600ms, 381 B]
+
++ p5_rung1_reading_v2 dispatched
+
+✔ p5_rung1_reading_v2 completed [10ms, 487 B]
+
++ p5_control_claim dispatched
+
+✔ p5_control_claim completed [0ms, 522 B]
+
+✔ ended pipeline [12m 28.5s, 14 completed, 30 skipped]
+
+Warning messages:
+
+1: package 'torch' was built under R version 4.6.1 
+
+2: 1 targets produced warnings. Run targets::tar_meta(fields = warnings, complete_only = TRUE) for the messages. 
+

@@ -1,0 +1,61 @@
+# Appendix A — The Plackett–Luce objective in torch {#sec-appx-a}
+
+Paper 3 implements the depth-$k$ Plackett–Luce likelihood as a custom
+XGBoost objective with an analytic gradient. This paper needs the same
+likelihood as a differentiable loss over variable-length races. It is
+verified against paper 3's implementation rather than trusted.
+
+## Verification against paper 3
+
+`scripts/verify_p5_pl_torch.R` asserts agreement with the function paper 3
+was fitted with, on identical inputs: random scores at mixed field sizes;
+the edge cases, meaning two-runner races, races at exactly $k+1$ runners,
+and ragged and single-race batches; depths $k = 1$ to 4; shift invariance;
+and score vectors spread widely enough that a naive `exp()` overflows.
+
+Agreement is about 1e-9 relative. The gradient matches finite differences to
+2.9e-8, and matches paper 3's analytic gradient to 2.9e-8, so this paper
+descends the same surface paper 3 did. The check was run in two fresh R
+processes rather than twice within one, since state held at the process
+level can make a broken setting look verified on a second call.
+
+## The two-optimiser check
+
+Agreement on a loss value does not establish that an optimiser reaches the
+same place. A linear scorer was therefore fitted in torch on paper 2b's
+seventeen features and its validation loss compared with paper 2b's own
+`{mlogit}` fit on the same rows — gradient descent against iteratively
+reweighted least squares, on the same objective and the same data.
+
+```{r}
+#| label: tbl-two-optim
+#| tbl-cap: "Two optimisers on the same objective and the same 17 features, validation Plackett–Luce loss per race."
+tibble::tibble(
+  Fit = c("paper 2b, `{mlogit}`, closed form",
+          "linear scorer, torch, Adam"),
+  `Val PL loss` = c(fmt_loss(loss_2b),
+                    fmt_loss(p5_diag_linear$best_val_pl_loss)),
+  `Best epoch` = c("—", as.character(p5_diag_linear$best_epoch))
+) |>
+  kable(align = "lrr")
+```
+
+The two agree to
+`r formatC(abs(loss_2b - p5_diag_linear$best_val_pl_loss), format = "e", digits = 1)`
+per race, with the torch fit marginally the lower — which is what a
+first-order method run to convergence should produce against a closed-form
+fit with a different convergence tolerance.
+
+## A bug a check on the loss value would have passed
+
+Entries that pad a race out to a common width must not contribute to its
+denominator. Writing that condition as `torch_where(mask, value, fallback)`
+returns the value of one branch but computes derivatives for both, and the
+discarded branch here contained $\log 0$.
+
+The forward loss was therefore exactly correct — agreeing with paper 3's
+implementation to 1e-9 — while the gradient was `NaN`. A check on the loss
+value alone would have passed it and left every fit broken. The fix makes
+the denominator finite before the condition is applied rather than relying
+on the condition to remove an infinity, and the gate now asserts a finite
+gradient as well as a correct value.

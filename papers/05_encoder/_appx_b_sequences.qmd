@@ -1,0 +1,88 @@
+# Appendix B — Sequence construction {#sec-appx-b}
+
+## Schema
+
+For each runner-race the builder produces a fixed-shape array plus two
+counts:
+
+| object | shape | what it is |
+|---|---|---|
+| `x` | `r p5_comma(dim(p5_sequences$x)[1])` × `r dim(p5_sequences$x)[2]` × `r dim(p5_sequences$x)[3]` | prior runs × values per run, most recent first |
+| `seq_len` | `r p5_comma(dim(p5_sequences$x)[1])` | real runs in that row, capped |
+| `career_runs_prior` | `r p5_comma(dim(p5_sequences$x)[1])` | untruncated career length |
+
+Prior runs come from the series' cached cross-surface career history — every
+race code and every surface, not All-Weather alone — under the series'
+temporal rule: strictly before the meeting date of the race being predicted.
+Declared non-runners are dropped, matching the treatment the going features
+already give them: a declared non-runner did not run, so it is not a prior
+run.
+
+## The cap, and why nothing is lost at it
+
+The array is capped at `r p5_sequences$max_len` runs. Career length is
+counted **before** the cap and carried separately as `career_runs_prior`, so
+a horse with fifty prior runs is not presented as one with twenty. On the
+training split
+`r sprintf("%.1f%%", p5_sequence_summary$truncated$share_pct)` of
+observations exceed the cap.
+
+The cap was set wide so that its value would not become another setting
+requiring selection. @tbl-seqlen-sens confirms it never did: the encoder's
+advantage is essentially complete by five runs.
+
+## Cleaning
+
+Two treatments, chosen by whether the reading is on its own scale.
+
+**Read as unavailable, taking −1**, when the value is not on the scale at
+all, so its magnitude would be meaningless:
+
+- `class` outside 1–7. The 2006 restructuring replaced multi-digit codes
+  whose meaning is not comparable with the current scheme, and those values
+  are entirely pre-2006.
+- `finish_pos` beyond 40. Values of 98 and 99 are sentinels, not placings.
+
+**Capped**, when the value is on the scale but its exact magnitude stops
+being informative, so the ordering is worth keeping: `field_size` at 40, the
+largest legitimate British field; `days_since_prev` at 1,000, past which the
+exact gap carries nothing and against which the largest observed value of
+37,918 days is plainly not a real layoff; and `beaten_dist` at
+`r p5_beaten_audit$bound` lengths.
+
+−1 rather than 0 marks an unavailable reading because zero is legitimate for
+several of these values — a winner is zero lengths behind the winner, which
+is definitional rather than imputed.
+
+### The beaten-distance cap
+
+`beaten_dist` is the only cap that touches an appreciable share of rows, so
+it is documented rather than asserted. Over
+`r p5_comma(p5_beaten_audit$n_rows)` career-run rows,
+`r p5_comma(p5_beaten_audit$n_missing)`
+(`r sprintf("%.3f%%", p5_beaten_audit$pct_missing)`) have no reading at all.
+
+```{r}
+#| label: tbl-beaten-thresholds
+#| tbl-cap: "Rows above each beaten-distance threshold, whole career-run universe."
+p5_beaten_audit$thresholds |>
+  kable(align = "rrr")
+```
+
+The tail is real data, not a sentinel: the value is cumulative lengths
+behind the winner, and the long tail is jumps racing.
+
+```{r}
+#| label: tbl-beaten-racetype
+#| tbl-cap: "Beaten distance by race type."
+p5_beaten_audit$by_race_type |>
+  kable(align = "lrrrrr")
+```
+
+A tailed-off horse in a hurdle race genuinely finishes hundreds of lengths
+adrift, so the reading is capped rather than discarded — the ordering still
+means "beaten a very long way", and −1 would misreport a real result as
+absent. Beyond `r p5_beaten_audit$bound` lengths the exact figure adds
+nothing. The cap also does the most for the scale the encoder sees: before
+it, the largest value sits about 23 standard deviations above the mean;
+after it, about 6.
