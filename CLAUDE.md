@@ -25,7 +25,7 @@ Verification gates are not a reason to stop; they are the reason not to.
 Where a gate exists — `scripts/verify_pl_objective.R`,
 `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
 `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
-`scripts/verify_p5_pl_torch.R` — proceed
+`scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R` — proceed
 and let the gate catch you. If a gate fails, fix it and report. Do not
 ask permission to fix it.
 
@@ -94,56 +94,41 @@ below has five entries for four numbered papers.
   store (`_targets_p4.R` / `_targets_p4`). Pre-registration:
   `papers/04_market_blend/PRE_REGISTRATION.md`.
   Live: <https://gillenpj.github.io/awracing/paper4/>.
-- **Paper 5 — Sequence encoding of run histories. ACTIVE, unpublished,
-  on branch `paper5-encoder`.** The neural encoder ladder: each rung
-  changes one thing about how a horse's run history reaches the scorer,
-  under papers 2b/3's Plackett-Luce objective at k = 3. Own pipeline and
-  store (`_targets_p5.R` / `_targets_p5`), following paper 4, so nothing
-  it does can touch papers 1-4. Fitting is `{torch}` directly, not
-  `{tidymodels}`. Model selection runs on a validation slice carved out
-  of the training split at 2010-12-15 (70% of training races before,
-  3,517 fitting / 1,505 validation). **Rungs 1, 2 and 3 are all closed on
-  validation**; every number below is validation, and each rung's stage
-  report is in `papers/05_encoder/`.
-  - **Rung 1 — the MLP control, closed** (`P5_1d_REPORT.md`, 3bf41be). On
-    identical 26 terms and an equal selection budget — 9 configurations x
-    200 epochs per arm — the MLP beats a linear scorer on both P1_rank
-    (+3.829e-05, 90% CI [+1.042e-05, +6.579e-05]) and Brier_place
-    (−5.430e-04, [−1.001e-03, −6.284e-05]), both intervals excluding
-    zero. **The control claim does not hold**, so later rungs are judged
-    against the rung-1 MLP (val PL loss 5.798597), not paper 2b
-    (5.814307). This sits in tension with paper 3's "the function class
-    was not the binding constraint" and the write-up has to say so.
-  - **Rung 2 — entity embeddings, closed as a LOSS** (`P5_2_REPORT.md`,
-    48f0927). `trainerSR`/`jockeySR`/`sireSR` out, learned embeddings on
-    `trainer_id`/`jockey_id`/`sire_id` in, 26 terms to 23. The
-    embeddings lose on both metrics — P1_rank −1.262e-04 [−1.728e-04,
-    −7.981e-05], Brier_place +1.936e-03 [+1.143e-03, +2.722e-03], both
-    intervals excluding zero — and val PL loss 5.841117 against
-    5.798597, so the swap costs 0.042520 per race, 3.3x what the
-    nonlinearity bought. **Complete grid separation:** the best of nine
-    embedding fits is worse than the worst of nine strike-rate fits. The
-    pre-registered reading fired as "worse — report and stop, do not
-    remediate" and **no remediation was attempted**. Two structural
-    reasons, both in the report: a strike rate is time-varying and
-    computed over the whole archive where an embedding is static and
-    partition-local, and under a chronological split 49.5% of validation
-    rows have an entity in the shared rare bucket. **The strike rates
-    stay in every later rung.**
-  - **Rung 3 — the sequence encoder, closed as a WIN** (`P5_3_REPORT.md`,
-    bc7252d). Nine hand-summarised history terms out (the two position
-    lags and their indicators, `days_LTO_log`, the three going-affinity
-    terms, `has_wins`), a GRU over the 20 most recent prior runs in, 26
-    terms to 18. The encoder beats rung 1 on both metrics — P1_rank
-    +1.774e-04 [+1.160e-04, +2.399e-04], Brier_place −2.656e-03
-    [−3.662e-03, −1.706e-03], both intervals excluding zero — at **val PL
-    loss 5.741720 against 5.798597**, a gain of 0.056878 per race on
-    **nine fewer hand-built features**. Largest effect in the paper: 4.5x
-    the nonlinearity, 19x the nine extra features. Complete grid
-    separation the other way — all nine encoder configurations at 60
-    epochs beat rung 1's best of nine at 200. Selection budget 9 x 60
-    with the winner refitted at 200, which reproduced the 60-epoch trace
-    exactly and did not improve on it.
+- **Paper 5 — Sequence encoding of run histories.** Changes how a horse's
+  own run history reaches the model. Eight of the 26 features — the two
+  position lags and their indicators, `has_wins` and the three
+  going-affinity terms — are replaced by a GRU encoder reading the 20 most
+  recent prior runs directly, eight values a run, with the raw finishing
+  position instead of a top-four code. The other 18 features, the races,
+  the depth-3 Plackett-Luce objective and the downstream MLP scorer are
+  unchanged. On the test split the encoder beats the hand-built summaries
+  on all three ranking measures — P1_rank +2.586e-04, Brier_place
+  −3.204e-03, pseudo-R² +1.059e-02, every 90% interval excluding zero —
+  and beats paper 3 by more, so three models order strictly: **paper 3 <
+  MLP on hand-built summaries < encoder**, nine contrasts and nine
+  exclusions of zero, on a split where papers 1-3 could not be told apart.
+  The market still ranks ahead of all of them, and **no ROI improvement is
+  distinguishable from zero** (win ROI −12.2%, the best in the series, but
+  the difference from paper 3 is +10.1 points with a 90% interval of
+  [−4.0, +23.3]; eight of nine ROI intervals contain zero).
+  Two findings from the ladder that got there: an MLP beat a linear scorer
+  on identical 26 features, which paper 3's conclusion about function class
+  did not anticipate; and embeddings for trainer, jockey and sire lost to
+  the strike rates they replaced, both intervals excluding zero, because a
+  hand-built feature computed from a wider information set than the model
+  can be fitted on is hard for an embedding to beat.
+  Own pipeline and store (`_targets_p5.R` / `_targets_p5`), following
+  paper 4's arrangement, so nothing it does can touch papers 1-4; its qmd
+  setup chunk passes `store =` to each `tar_load()` rather than calling
+  `tar_config_set()`, so the root `_targets.yaml` papers 1-3 share is never
+  written. Fitting is `{torch}` directly, not `{tidymodels}`. Standing
+  gates: `scripts/verify_p5_pl_torch.R` and `scripts/verify_p5_gru_mask.R`.
+  Model selection ran on a validation slice carved out of the training
+  split at 2010-12-15 (3,517 fitting / 1,505 validation races); the test
+  split was scored once. Per-rung stage reports are in
+  `papers/05_encoder/`, and the supplementary theory note is in
+  `papers/05_encoder/supplement/`.
+  Live: <https://gillenpj.github.io/awracing/paper5/>.
 
 ## Standing conventions
 
@@ -151,7 +136,7 @@ below has five entries for four numbered papers.
   Where a gate exists (`scripts/verify_pl_objective.R`,
   `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
   `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
-  `scripts/verify_p5_pl_torch.R`),
+  `scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R`),
   proceed and let it catch mistakes; fix and report, don't ask first
   (see "Default to proceeding" above).
 - **Reproducibility checks need two fresh processes, not two calls in
@@ -369,19 +354,28 @@ below has five entries for four numbered papers.
     `scripts/p4_audit_forecast_price.R`, because
     `scripts/verify_p4_data_targets.R` and the paper-4 report target both
     read the `.rds` it writes.
-  - `papers/05_encoder/` — **paper 5, ACTIVE and unpublished**, on branch
-    `paper5-encoder`. No `.qmd` yet: the folder currently holds the
-    per-rung stage reports (`P5_1_REPORT.md`, `P5_1b_REPORT.md`,
-    `P5_1c_REPORT.md`, `P5_1d_REPORT.md`) and their `tar_make()` run
-    logs. Built by its own pipeline, `_targets_p5.R`, into its own store,
-    `_targets_p5` — NOT by `_targets.R`. Run it with
+  - `papers/05_encoder/` — **paper 5, complete and published.** Sequence
+    encoding of run histories. Built by its own pipeline, `_targets_p5.R`,
+    into its own store, `_targets_p5` — NOT by `_targets.R`. Run it with
     `Rscript scripts/run_p5_pipeline.R`, or
     `targets::tar_make(script = "_targets_p5.R", store = "_targets_p5")`.
+    Rendered by `tar_quarto(paper_5_encoder)` inside that pipeline.
     Upstream targets are read from the main store **read-only**, with
     their content hashes recorded in `p5_upstream_fingerprint` so an
     upstream change invalidates downstream work rather than going stale.
-    `tar_config_set()` is never called anywhere in paper 5, so the root
-    `_targets.yaml` papers 1-3 share is never written.
+    `tar_config_set()` is never called anywhere in paper 5 — the qmd setup
+    chunk passes `store =` to each `tar_load()` — so the root
+    `_targets.yaml` papers 1-3 share is never written. Alongside the paper
+    the folder keeps the per-rung stage reports (`P5_1_REPORT.md` through
+    `P5_3b_REPORT.md`, `P5_TEST_REPORT.md`, `P5_DIAGNOSTICS_REPORT.md`)
+    and their `tar_make()` run logs.
+  - `papers/05_encoder/supplement/` — paper 5's supplementary theory note,
+    *Notes on Neural Scorers and Sequence Encoders*, a tutorial following
+    the precedent of paper 3's tree notes. Its own tiny Quarto project,
+    PDF only, and **not** on the `{targets}` graph: it has no executable
+    chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
+    that folder needs neither renv nor the targets store. `publish_docs.R`
+    copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -391,9 +385,10 @@ below has five entries for four numbered papers.
   - `docs/index.html` — landing page, one entry per paper; each entry
     links the HTML and a "— PDF" link to `paperN/index.pdf`.
   - `docs/paper1/`, `docs/paper2a/`, `docs/paper2b/`, `docs/paper3/`,
-    `docs/paper4/` —
+    `docs/paper4/`, `docs/paper5/` —
     rendered `index.html` + `index.pdf`, copied from the matching
-    `papers/*/_output/` after each render.
+    `papers/*/_output/` after each render. `docs/paper3/` and
+    `docs/paper5/` also carry a supplementary PDF each.
   - Pages source is set to `main` branch, `/docs` folder. There is
     **no GitHub Actions workflow** — Pages serves the committed
     `/docs` files directly and runs its own build on push, so
@@ -462,6 +457,17 @@ below has five entries for four numbered papers.
     loss-value-only check would not have: `torch_where()` selects one
     branch but differentiates both, so padded slots carrying `log(0)`
     gave an exactly correct forward loss and a NaN gradient.
+  - `verify_p5_gru_mask.R` — standing gate on paper 5's sequence encoder
+    (`R/p5_gru.R`): asserts the GRU never reads padding and reads the
+    correct slot. Sequences are right-padded and the encoder output is the
+    hidden state at `seq_len`. Three seeds, four checks — padding width
+    inert, padding content inert, a zero-length row giving the zero
+    vector, and the output matching the same encoder run on the unpadded
+    sequence. That last one is the check that earns its place: an
+    off-by-one in the gather index passes both invariance checks while
+    summarising the wrong run. Also on the graph as `p5_gru_mask_check`.
+    Run after any change to `R/p5_gru.R` — but see the recompute trap in
+    "Standing conventions" first.
   - `run_p5_pipeline.R` — the paper-5 driver. Exists because `Rscript -e`
     does not activate renv on this machine and because the script/store
     pair must be passed explicitly on every call.
@@ -847,19 +853,12 @@ observations are documented in §4.3 of paper 1.
   positive as plausibly indistinguishable from zero, and ours as a
   confident null on the larger sample.
 
-## Paper 5 — sequence encoding of run histories (ACTIVE)
+## Paper 5 — sequence encoding of run histories (COMPLETE)
 
-The neural encoder ladder, on branch `paper5-encoder`. Full concept,
-ladder structure, pre-registered stopping rules and revised priors live
-in Google Tasks, not here. **In scope and under way** — see the Papers
-list above for the summary and `papers/05_encoder/` for the stage
-reports.
-
-**Rungs 1, 2 and 3 are closed on validation** — see the Papers list above
-for each rung's numbers, and `papers/05_encoder/` for the stage reports.
-Rung 1 established the comparator, rung 2 lost, rung 3 won. What follows
-is what each rung left behind for later work, not a restatement of the
-results.
+Published. See the Papers list above for the result and the pipeline
+details, and `papers/05_encoder/` for the per-rung stage reports. What
+follows is what the work left behind for later — the lessons and the
+built inputs — not a restatement of the results.
 
 **Rung 1 (the MLP control) is closed, at 3bf41be.** It took four
 attempts, and three of them were wasted on the same mistake: an arm that
