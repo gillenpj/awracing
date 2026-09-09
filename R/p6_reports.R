@@ -4,9 +4,9 @@
 # What the search set looks like before any rule is searched on it: what
 # prices exist and when, what margin the book carries at each field size, how
 # many races are small enough that paper 5's flat each-way terms are wrong,
-# where the incumbent rule's absolute thresholds sit in the training
-# distribution, and what the incumbent itself returns on the training split at
-# the real price and at a zero-margin book.
+# where the incumbent rule's absolute thresholds sit in the validation-slice
+# distribution and in the test split's, and what the incumbent itself returns
+# on the search set at the real price and at a zero-margin book.
 #
 # Descriptive only. Nothing here selects anything.
 
@@ -115,33 +115,57 @@ p6_field_size_report <- function(frame) {
   )
 }
 
-#' Deciles of the two quantities S1 filters on, and where its cuts sit
+#' Deciles of the two filtered quantities on both splits, side by side
 #'
-#' Owen's thresholds are absolute numbers inherited from a different dataset.
-#' This locates them in this training split: the decile grid of the model win
-#' probability and of the model/market ratio over the top-rated horse in each
-#' race, and the empirical quantile at which 0.15 and 1.3 fall.
+#' The search set and the test split are scored by different fits of the same
+#' architecture, on different amounts of data, so their score distributions
+#' differ in scale. This is the evidence for that claim, and the reason every
+#' candidate threshold in the paper is a within-split quantile rather than an
+#' absolute number.
 #'
-#' @param frame Output of `p6_build_bet_frame()`.
-#' @return A list: `deciles` (tibble) and `s1_position` (tibble).
-p6_threshold_position <- function(frame) {
-  top <- p6_top_rated(frame)
+#' @param val_frame,test_frame The two `p6_build_bet_frame()` outputs.
+#' @return A list: `deciles` (long, both splits), `s1_position` (where Owen's
+#'   absolute cuts fall on each split), and `summary` (medians and pass rates).
+p6_threshold_position_both <- function(val_frame, test_frame) {
   probs <- seq(0.1, 0.9, by = 0.1)
 
-  deciles <- tibble::tibble(
-    decile = probs,
-    p_mod = stats::quantile(top$win_model, probs, names = FALSE),
-    ratio = stats::quantile(top$ratio, probs, names = FALSE)
-  )
+  one_dec <- function(frame, split) {
+    top <- p6_top_rated(frame)
+    tibble::tibble(
+      split = split, decile = probs,
+      p_mod = stats::quantile(top$win_model, probs, names = FALSE),
+      ratio = stats::quantile(top$ratio, probs, names = FALSE)
+    )
+  }
+  one_pos <- function(frame, split) {
+    top <- p6_top_rated(frame)
+    tibble::tibble(
+      split = split,
+      quantity = c("P_mod", "P_mod / P_mkt"),
+      s1_threshold = c(0.15, 1.3),
+      quantile_of_top_rated = c(mean(top$win_model <= 0.15),
+                                mean(top$ratio <= 1.3)),
+      share_passing = c(mean(top$win_model > 0.15), mean(top$ratio > 1.3))
+    )
+  }
+  one_sum <- function(frame, split) {
+    top <- p6_top_rated(frame)
+    tibble::tibble(
+      split = split, n_races = nrow(top),
+      median_p_mod = stats::median(top$win_model),
+      median_ratio = stats::median(top$ratio),
+      median_sp = stats::median(top$starting_price_decimal),
+      share_positive_kelly_edge =
+        mean(top$win_model > 1 / top$starting_price_decimal)
+    )
+  }
 
-  s1_position <- tibble::tibble(
-    quantity = c("P_mod", "P_mod / P_mkt"),
-    s1_threshold = c(0.15, 1.3),
-    quantile_of_top_rated = c(mean(top$win_model <= 0.15),
-                              mean(top$ratio <= 1.3)),
-    share_top_rated_passing = c(mean(top$win_model > 0.15),
-                                mean(top$ratio > 1.3))
+  list(
+    deciles = dplyr::bind_rows(one_dec(val_frame, "validation"),
+                               one_dec(test_frame, "test")),
+    s1_position = dplyr::bind_rows(one_pos(val_frame, "validation"),
+                                   one_pos(test_frame, "test")),
+    summary = dplyr::bind_rows(one_sum(val_frame, "validation"),
+                               one_sum(test_frame, "test"))
   )
-
-  list(deciles = deciles, s1_position = s1_position)
 }

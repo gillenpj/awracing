@@ -8,16 +8,23 @@
 # chunks own:
 #
 #   targets::tar_make(script = "_targets_p6.R", store = "_targets_p6")
-#   targets::tar_read(p6_stage1_grid, store = "_targets_p6")
+#   targets::tar_read(p6_stage_a_grid, store = "_targets_p6")
 #
-# or, from the project root, `Rscript scripts/run_p6_pipeline.R`.
+# or, from the project root, `Rscript scripts/run_p6_pipeline.R`, optionally
+# naming a target to build up to.
 #
 # `tar_config_set()` is never called anywhere in paper 6.
 #
 # WHAT THIS PAPER CHANGES: the bet selection and staking rule, and nothing
-# else. The model is paper 5's rung-3b encoder, refit from paper 5's own
-# stored configuration with paper 5's own function and asserted bit-identical
-# to paper 5's stored test scores before anything is read off it.
+# else. Paper 6 fits no model and refits nothing. Both prediction sets are
+# paper 5's own stored targets:
+#
+#   SEARCH SET   the validation slice, 1,505 races scored by the
+#                FITTING-PARTITION fit, which never saw them.
+#   TEST SPLIT   2,183 races scored by the FULL-TRAINING-SPLIT refit, the
+#                model paper 5 published.
+#
+# The 3,517 fitting races are not used anywhere: the model memorised them.
 #
 # Upstream inputs come from the PAPER-5 and MAIN stores, READ-ONLY, with their
 # content hashes recorded in `p6_upstream_fingerprint` so an upstream change
@@ -40,7 +47,7 @@ library(tarchetypes)
 
 tar_option_set(
   packages = c("dplyr", "tidyr", "tibble", "purrr", "stringr", "readr",
-               "lubridate", "ggplot2", "DBI", "RMariaDB", "torch"),
+               "lubridate", "ggplot2", "DBI", "RMariaDB"),
   format   = "rds"
 )
 
@@ -54,36 +61,30 @@ tar_source("R/p6_test_report.R")
 tar_source("R/p6_plots.R")
 
 # Read-only reuse. Paper 6 adds no variant of any of these: the settlement is
-# paper 2b's, the market probability construction paper 1's, the encoder fit
-# paper 5's, the price query paper 4's.
+# paper 2b's, the market-probability construction paper 1's, the price query
+# paper 4's, the softmax paper 3's.
 tar_source("R/db.R")
 tar_source("R/pl_objective.R")
 tar_source("R/gbt_data.R")
 tar_source("R/scoring.R")
 tar_source("R/ranking_eval_p2b.R")
-tar_source("R/build_going_features.R")
 tar_source("R/value_bets_p2b.R")
 tar_source("R/model_fitting_p2.R")
 tar_source("R/gbt_results.R")
 tar_source("R/market_blend_p4.R")
-tar_source("R/p5_backend.R")
-tar_source("R/p5_torch.R")
-tar_source("R/p5_mlp.R")
-tar_source("R/p5_embed.R")
-tar_source("R/p5_sequences.R")
-tar_source("R/p5_gru.R")
-tar_source("R/p5_final.R")
-tar_source("R/p5_diagnostics.R")
 
 MAIN_STORE <- "_targets"
 P5_STORE   <- "_targets_p5"
 
 # The three bet types, mapped to their settlement tables. `eachway` is paper
 # 5's flat 1/5-top-3 terms; `eachway_corrected` the industry handicap ladder.
-# Section 2 decides from the field-size distribution whether the corrected
-# column is reported, and the answer on this universe is yes.
+# Both are reported everywhere; only the corrected column declares anything.
 P6_BETS <- c(win = "win", place = "place", eachway = "eachway",
              eachway_corrected = "eachway_corrected")
+
+# Paper 5's published rung-3b validation PL loss. A blocker: the search set is
+# only attributable to that fit if the stored loss matches.
+P6_P5_VAL_LOSS <- 5.718496
 
 list(
 
@@ -100,9 +101,9 @@ list(
         fields = c("name", "data"), store = MAIN_STORE
       ) |> dplyr::mutate(store = "main"),
       targets::tar_meta(
-        names = c("p5_test_data", "p5_test_predictions", "p5_test_fit_rung3b",
-                  "p5_configs_v7", "p5_rung3b_selected", "p5_test_backtests",
-                  "p5_backend"),
+        names = c("p5_scored_v7", "p5_rung3b_selected", "p5_arm_data",
+                  "p5_slice", "p5_test_predictions", "p5_test_fit_rung3b",
+                  "p5_test_backtests", "p5_backend"),
         fields = c("name", "data"), store = P5_STORE
       ) |> dplyr::mutate(store = "paper5")
     )
@@ -117,33 +118,37 @@ list(
     targets::tar_read(runners_interactions, store = MAIN_STORE) |>
       dplyr::distinct(race_id, race_date, split)
   }),
-  tar_target(p6_gbt_train_data, {
-    p6_upstream_fingerprint
-    targets::tar_read(gbt_train_data, store = MAIN_STORE)
-  }),
   tar_target(p6_gbt_test_data, {
     p6_upstream_fingerprint
     targets::tar_read(gbt_test_data, store = MAIN_STORE)
   }),
-  tar_target(p6_p5_test_data, {
+
+  # -- Paper 5, read-only --------------------------------------------------
+  tar_target(p6_p5_scored_val, {
     p6_upstream_fingerprint
-    targets::tar_read(p5_test_data, store = P5_STORE)
+    targets::tar_read(p5_scored_v7, store = P5_STORE)
+  }),
+  tar_target(p6_p5_rung3b_selected, {
+    p6_upstream_fingerprint
+    targets::tar_read(p5_rung3b_selected, store = P5_STORE)
+  }),
+  tar_target(p6_p5_val_key, {
+    p6_upstream_fingerprint
+    targets::tar_read(p5_arm_data, store = P5_STORE)$val$key
+  }),
+  tar_target(p6_p5_slice, {
+    p6_upstream_fingerprint
+    targets::tar_read(p5_slice, store = P5_STORE)
   }),
   tar_target(p6_p5_test_predictions, {
     p6_upstream_fingerprint
     targets::tar_read(p5_test_predictions, store = P5_STORE)$rung3b
   }),
-  tar_target(p6_p5_test_scores, {
+  tar_target(p6_p5_test_fit, {
     p6_upstream_fingerprint
-    targets::tar_read(p5_test_fit_rung3b, store = P5_STORE)$scores
-  }),
-  tar_target(p6_p5_configs, {
-    p6_upstream_fingerprint
-    targets::tar_read(p5_configs_v7, store = P5_STORE)
-  }),
-  tar_target(p6_p5_selected, {
-    p6_upstream_fingerprint
-    targets::tar_read(p5_rung3b_selected, store = P5_STORE)
+    tf <- targets::tar_read(p5_test_fit_rung3b, store = P5_STORE)
+    tf$scores <- NULL   # metadata only; paper 6 reads the stored predictions
+    tf
   }),
   tar_target(p6_p5_backtests, {
     p6_upstream_fingerprint
@@ -151,31 +156,21 @@ list(
   }),
 
   # =======================================================================
-  # STAGE 0 — the search set, and the gate
+  # STAGE 0 — the two frames, the gate, and the descriptive reports
   # =======================================================================
 
-  # -- The one refit, and the reproduction assertion inside it -------------
+  # The search set, with paper 5's published validation loss asserted before
+  # anything is read off it. BLOCKER if it does not match.
   tar_target(
-    p6_rung3b_scores,
-    p6_refit_rung3b_both_splits(p6_p5_test_data, p6_p5_configs,
-                                p6_p5_selected, p6_p5_test_scores)
+    p6_val_predictions,
+    p6_validation_predictions(p6_p5_scored_val, p6_p5_rung3b_selected,
+                              p6_p5_val_key,
+                              published_val_loss = P6_P5_VAL_LOSS)
   ),
 
-  # -- The training-split predictions, in test-predictions shape ----------
   tar_target(
-    p6_train_market_side,
-    p6_train_market(p6_gbt_train_data$key, p6_qualifying_runners)
-  ),
-  tar_target(
-    p6_train_predictions,
-    build_test_predictions_3(p6_rung3b_scores$train_scores, p6_gbt_train_data,
-                             p6_train_market_side)
-  ),
-
-  # -- The two frames every rule reads ------------------------------------
-  tar_target(
-    p6_train_frame,
-    p6_build_bet_frame(p6_train_predictions, p6_qualifying_runners,
+    p6_val_frame,
+    p6_build_bet_frame(p6_val_predictions, p6_qualifying_runners,
                        dplyr::select(p6_race_dates, race_id, race_date))
   ),
   tar_target(
@@ -183,16 +178,34 @@ list(
     p6_build_bet_frame(p6_p5_test_predictions, p6_qualifying_runners,
                        dplyr::select(p6_race_dates, race_id, race_date))
   ),
+
   tar_target(
     p6_search_set_check,
-    p6_assert_search_set(p6_train_frame, p6_gbt_train_data$key,
-                         p6_gbt_test_data$key)
+    p6_assert_search_set(p6_val_frame, p6_p5_val_key,
+                         p6_p5_slice$fit_race_ids, p6_gbt_test_data$key)
+  ),
+
+  tar_target(
+    p6_fit_provenance_tbl,
+    p6_fit_provenance(p6_p5_rung3b_selected, p6_p5_test_fit, p6_p5_slice)
+  ),
+
+  tar_target(
+    p6_universe,
+    tibble::tibble(
+      n_val_races  = dplyr::n_distinct(p6_val_frame$race_id),
+      n_val_rows   = nrow(p6_val_frame),
+      n_test_races = dplyr::n_distinct(p6_test_frame$race_id),
+      n_test_rows  = nrow(p6_test_frame),
+      projection   = dplyr::n_distinct(p6_test_frame$race_id) /
+        dplyr::n_distinct(p6_val_frame$race_id)
+    )
   ),
 
   # -- Settlement ---------------------------------------------------------
   tar_target(
-    p6_train_settle,
-    p6_settlement_tables(p6_train_frame, p6_train_predictions,
+    p6_val_settle,
+    p6_settlement_tables(p6_val_frame, p6_val_predictions,
                          p6_qualifying_runners)
   ),
   tar_target(
@@ -204,11 +217,11 @@ list(
   # -- THE GATE: rebuild paper 5's test ledger through p6_ledger() ---------
   # S1/K0, paper 5's each-way terms, asserted against the encoder rows of
   # paper 5's own `p5_test_backtests`. A blocker in the brief, so it is an
-  # assertion and not a report.
+  # assertion and not a report. Unchanged from the first attempt.
   tar_target(
     p6_ledger_gate,
     {
-      sels <- p6_selection_rules(p6_thresholds(p6_train_frame))
+      sels <- p6_selection_rules(p6_thresholds(p6_test_frame))
       stks <- p6_staking_rules()
       got <- purrr::imap(c(win = "win", place = "place", eachway = "eachway"),
                          function(tbl, nm) {
@@ -242,162 +255,195 @@ list(
     }
   ),
 
-  # -- Stage-0 reports ----------------------------------------------------
+  # -- Descriptive reports -------------------------------------------------
 
-  # (a) price coverage by year — the one target that touches the database
+  # Price coverage by year — the one target that touches the database.
   tar_target(
-    p6_train_raw_prices,
-    read_p4_price_sources(sort(unique(p6_gbt_train_data$key$race_id)))
+    p6_val_raw_prices,
+    read_p4_price_sources(sort(unique(p6_val_frame$race_id)))
   ),
   tar_target(
-    p6_price_coverage_train,
-    p6_price_coverage(p6_gbt_train_data$key,
+    p6_price_coverage_val,
+    p6_price_coverage(dplyr::select(p6_val_frame, race_id, runner_id),
                       dplyr::select(p6_race_dates, race_id, race_date),
-                      p6_train_raw_prices)
+                      p6_val_raw_prices)
   ),
 
-  # (b) over-round by field size
-  tar_target(p6_overround_train, p6_overround_by_field(p6_train_frame)),
+  tar_target(p6_overround_val, p6_overround_by_field(p6_val_frame)),
 
-  # (c) field sizes, and whether paper 5's each-way terms need correcting
-  tar_target(p6_field_sizes_train, p6_field_size_report(p6_train_frame)),
+  tar_target(p6_field_sizes_val, p6_field_size_report(p6_val_frame)),
   tar_target(p6_field_sizes_test, p6_field_size_report(p6_test_frame)),
   tar_target(
     p6_eachway_terms_decision,
     tibble::tibble(
-      share_4_to_7_train = p6_field_sizes_train$share_4_to_7,
-      share_4_to_7_test  = p6_field_sizes_test$share_4_to_7,
-      share_mispriced_train = p6_field_sizes_train$share_wrong,
-      share_mispriced_test  = p6_field_sizes_test$share_wrong,
+      share_4_to_7_val = p6_field_sizes_val$share_4_to_7,
+      share_4_to_7_test = p6_field_sizes_test$share_4_to_7,
+      share_mispriced_val = p6_field_sizes_val$share_wrong,
+      share_mispriced_test = p6_field_sizes_test$share_wrong,
       threshold = 0.10,
-      correct_terms = p6_field_sizes_train$share_4_to_7 > 0.10
+      correct_terms = p6_field_sizes_val$share_4_to_7 > 0.10
     )
   ),
 
-  # (f) deciles, and where S1's absolute cuts sit
-  tar_target(p6_threshold_position_train,
-             p6_threshold_position(p6_train_frame)),
-
-  # -- The incumbent on the training split, with intervals -----------------
-  # (d) at the real starting price, (e) at a zero-margin fair book.
-  tar_target(
-    p6_incumbent_train,
-    {
-      sels <- p6_selection_rules(p6_thresholds(p6_train_frame))
-      stks <- p6_staking_rules()
-      races <- sort(unique(p6_train_frame$race_id))
-      purrr::imap(P6_BETS, function(tbl, nm) {
-        led <- p6_ledger(p6_train_frame, p6_train_settle, sels$S1$fn,
-                         stks$K0$fn, tbl)
-        s <- p6_summarise_ledger(led)
-        bs <- p6_bootstrap_roi(led, races, n_boot = 2000L, seed = 42L)
-        dplyr::mutate(s, bet = nm, ci_lo = bs$ci_lo, ci_hi = bs$ci_hi,
-                      .before = 1)
-      }) |> purrr::list_rbind()
-    }
-  ),
+  # The two-fit mismatch, quantified: deciles and Owen's cuts on both splits.
+  tar_target(p6_positions,
+             p6_threshold_position_both(p6_val_frame, p6_test_frame)),
 
   # =======================================================================
-  # STAGE 1 — the search, on the training split only
+  # STAGE A — selection, at a flat stake, on the validation slice
   # =======================================================================
 
-  tar_target(p6_thresholds_train, p6_thresholds(p6_train_frame)),
-  tar_target(p6_selections, p6_selection_rules(p6_thresholds_train)),
+  tar_target(p6_thresholds_val, p6_thresholds(p6_val_frame)),
+  tar_target(p6_thresholds_test, p6_thresholds(p6_test_frame)),
+  tar_target(p6_selections_val, p6_selection_rules(p6_thresholds_val)),
+  tar_target(p6_selections_test, p6_selection_rules(p6_thresholds_test)),
   tar_target(p6_stakings, p6_staking_rules()),
 
-  # The standing rule from paper 5's rung 1, enforced before anything is
-  # scored: every pair this paper compares must differ in exactly one term.
+  tar_target(
+    p6_stage_a_arms,
+    tibble::tibble(selection = names(p6_selections_val), staking = "K0")
+  ),
+
+  # Paper 5's rung-1 rule, enforced before anything is scored: every pair the
+  # paper reads differs in exactly one term. Stage A varies selection at fixed
+  # K0; stage B varies staking at a fixed selection.
   tar_target(
     p6_contrast_check,
     {
-      combos <- tidyr::expand_grid(selection = names(p6_selections),
-                                   staking = names(p6_stakings))
-      # Every candidate is compared against S1/K0, and a comparison that
-      # differs in both terms is not a contrast. The check is therefore run
-      # over the two families of one-term contrasts the paper actually reads:
-      # a selection swap at K0, and a staking swap at a fixed selection.
-      sel_pairs <- combos |>
-        dplyr::filter(staking == "K0", selection != "S1") |>
-        dplyr::mutate(a1 = selection, a2 = staking, b1 = "S1", b2 = "K0")
-      stk_pairs <- combos |>
-        dplyr::filter(staking != "K0") |>
-        dplyr::mutate(a1 = selection, a2 = staking, b1 = selection, b2 = "K0")
-      pairs <- dplyr::bind_rows(sel_pairs, stk_pairs)
-      purrr::pwalk(list(pairs$a1, pairs$a2, pairs$b1, pairs$b2),
-                   function(a1, a2, b1, b2)
-                     p6_assert_one_difference(c(a1, a2), c(b1, b2)))
-      dplyr::mutate(pairs, ok = TRUE) |>
-        dplyr::select(a_selection = a1, a_staking = a2,
-                      b_selection = b1, b_staking = b2, ok)
+      a_pairs <- p6_stage_a_arms |>
+        dplyr::filter(selection != "S1") |>
+        dplyr::transmute(a_selection = selection, a_staking = staking,
+                         b_selection = "S1", b_staking = "K0", stage = "A")
+      b_pairs <- tibble::tibble(
+        a_selection = "<declared>", a_staking = c("K1", "K2"),
+        b_selection = "<declared>", b_staking = "K0", stage = "B"
+      )
+      walk_pairs <- function(d) {
+        purrr::pwalk(
+          list(d$a_selection, d$a_staking, d$b_selection, d$b_staking),
+          function(a1, a2, b1, b2)
+            p6_assert_one_difference(c(a1, a2), c(b1, b2))
+        )
+      }
+      walk_pairs(a_pairs)
+      walk_pairs(b_pairs)
+      dplyr::mutate(dplyr::bind_rows(a_pairs, b_pairs), ok = TRUE)
     }
   ),
 
   tar_target(
-    p6_train_ledgers,
-    p6_build_ledgers(p6_train_frame, p6_train_settle, p6_selections,
-                     p6_stakings, P6_BETS)
+    p6_stage_a_ledgers,
+    p6_build_ledgers(p6_val_frame, p6_val_settle, p6_stage_a_arms,
+                     p6_selections_val, p6_stakings, P6_BETS)
   ),
   tar_target(
-    p6_stage1_grid,
-    p6_score_grid(p6_train_frame, p6_train_settle, p6_selections,
-                  p6_stakings, P6_BETS)
+    p6_stage_a_grid,
+    p6_apply_eligibility(
+      p6_score_arms(p6_val_frame, p6_val_settle, p6_stage_a_arms,
+                    p6_selections_val, p6_stakings, P6_BETS),
+      n_val = p6_universe$n_val_races, n_test = p6_universe$n_test_races
+    )
   ),
 
-  # Every candidate against S1/K0 on their COMMON races, alongside the
-  # full-universe ROI the grid reports. Arms bet different numbers of races,
-  # so the restricted contrast is the only paired one.
   tar_target(
-    p6_stage1_contrasts,
+    p6_stage_a_contrasts,
     {
-      keys <- tidyr::expand_grid(selection = names(p6_selections),
-                                 staking = names(p6_stakings),
+      keys <- tidyr::expand_grid(selection = p6_stage_a_arms$selection,
                                  bet = names(P6_BETS))
-      purrr::pmap(keys, function(selection, staking, bet) {
-        a <- p6_train_ledgers[[paste(selection, staking, bet, sep = "|")]]
-        b <- p6_train_ledgers[[paste("S1", "K0", bet, sep = "|")]]
+      purrr::pmap(keys, function(selection, bet) {
+        a <- p6_stage_a_ledgers[[paste(selection, "K0", bet, sep = "|")]]
+        b <- p6_stage_a_ledgers[[paste("S1", "K0", bet, sep = "|")]]
         races <- intersect(unique(a$race_id), unique(b$race_id))
         if (length(races) == 0L || nrow(a) == 0L) {
-          return(tibble::tibble(selection = selection, staking = staking,
-                                bet = bet, diff_point = NA_real_,
-                                se = NA_real_, ci_lo = NA_real_,
-                                ci_hi = NA_real_, n_races = 0L))
+          return(tibble::tibble(selection = selection, bet = bet,
+                                diff_point = NA_real_, se = NA_real_,
+                                ci_lo = NA_real_, ci_hi = NA_real_,
+                                n_races = 0L))
         }
         dplyr::mutate(
           p6_paired_roi_se(p6_units(a), p6_units(b), races,
                            n_boot = 2000L, seed = 42L),
-          selection = selection, staking = staking, bet = bet, .before = 1
+          selection = selection, bet = bet, .before = 1
         )
       }) |> purrr::list_rbind()
     }
   ),
 
-  # =======================================================================
-  # DECLARATION — mechanical, no judgement
-  # =======================================================================
+  # -- Does the gate have teeth? A diagnostic, declaring nothing -----------
+  # Stage A runs at K0, where every selected race is staked by construction,
+  # and stage B runs on whatever stage A declared. The gate can therefore
+  # strike nothing in either pool without that meaning it is inert. This
+  # scores the full nine-by-three cross-product on the VALIDATION SLICE and
+  # applies the same gate to it, purely to show what it would strike. Nothing
+  # in the declaration reads this target: `p6_declare_step()` is passed the
+  # stage grids, never this one.
+  tar_target(
+    p6_gate_demo_arms,
+    tidyr::expand_grid(selection = names(p6_selections_val),
+                       staking = names(p6_stakings))
+  ),
+  tar_target(
+    p6_gate_demonstration,
+    p6_apply_eligibility(
+      p6_score_arms(p6_val_frame, p6_val_settle, p6_gate_demo_arms,
+                    p6_selections_val, p6_stakings, P6_BETS),
+      n_val = p6_universe$n_val_races, n_test = p6_universe$n_test_races
+    )
+  ),
 
-  # One rule per BET TYPE, and there are three. The each-way declaration runs
-  # on the corrected terms, not paper 5's: those are the terms a bet actually
-  # settles on, and its comparator is S1/K0 recomputed on the same terms, so
-  # the contrast is like for like. Paper 5's terms are reported alongside
-  # everywhere but declare nothing.
+  # The three bet types a rule is declared for. Each-way declares on the
+  # corrected terms — those are the terms a bet settles on — and its
+  # comparator is recomputed on the same terms.
   tar_target(p6_declared_bets, c("win", "place", "eachway_corrected")),
 
   tar_target(
-    p6_declaration,
+    p6_declaration_a,
     purrr::map(p6_declared_bets, function(b)
-      p6_declare(p6_stage1_grid, p6_train_ledgers, b,
-                 n_boot = 2000L, seed = 42L)) |>
+      p6_declare_step(p6_stage_a_grid, p6_stage_a_ledgers, b,
+                      comparator = c("S1", "K0"), stage = "A",
+                      n_boot = 2000L, seed = 42L)) |>
       purrr::list_rbind()
   ),
 
-  # Blocker in the brief: a declared rule placing fewer than 200 bets on the
-  # training split stops the paper.
+  # =======================================================================
+  # STAGE B — staking, on the declared selection only
+  # =======================================================================
+
   tar_target(
-    p6_declaration_check,
-    {
-      stopifnot(all(p6_declaration$n_bets >= 200L))
-      dplyr::select(p6_declaration, bet, selection, staking, n_bets)
-    }
+    p6_stage_b_arms,
+    tidyr::expand_grid(
+      selection = unique(p6_declaration_a$selection),
+      staking = names(p6_stakings)
+    )
+  ),
+  tar_target(
+    p6_stage_b_ledgers,
+    p6_build_ledgers(p6_val_frame, p6_val_settle, p6_stage_b_arms,
+                     p6_selections_val, p6_stakings, P6_BETS)
+  ),
+  tar_target(
+    p6_stage_b_grid,
+    p6_apply_eligibility(
+      p6_score_arms(p6_val_frame, p6_val_settle, p6_stage_b_arms,
+                    p6_selections_val, p6_stakings, P6_BETS),
+      n_val = p6_universe$n_val_races, n_test = p6_universe$n_test_races
+    )
+  ),
+
+  tar_target(
+    p6_declaration_b,
+    purrr::map(p6_declared_bets, function(b) {
+      sel <- p6_declaration_a$selection[p6_declaration_a$bet == b]
+      stopifnot(length(sel) == 1L)
+      g <- dplyr::filter(p6_stage_b_grid, selection == sel)
+      p6_declare_step(g, p6_stage_b_ledgers, b, comparator = c(sel, "K0"),
+                      stage = "B", n_boot = 2000L, seed = 42L)
+    }) |> purrr::list_rbind()
+  ),
+
+  tar_target(
+    p6_declaration,
+    dplyr::bind_rows(p6_declaration_a, p6_declaration_b)
   ),
 
   tar_target(
@@ -405,249 +451,19 @@ list(
     p6_write_declared_rules(
       path = "papers/06_betting_strategy/DECLARED_RULES.md",
       declaration = p6_declaration,
-      grid = p6_stage1_grid,
-      contrasts = p6_stage1_contrasts,
-      thresholds = p6_thresholds_train,
-      selections = p6_selections,
+      grid_a = p6_stage_a_grid,
+      grid_b = p6_stage_b_grid,
+      contrasts_a = p6_stage_a_contrasts,
+      thresholds = p6_thresholds_val,
+      selections = p6_selections_val,
       stakings = p6_stakings,
       terms_decision = p6_eachway_terms_decision,
       gate = p6_ledger_gate,
-      search_set = p6_search_set_check
+      search_set = p6_search_set_check,
+      provenance = p6_fit_provenance_tbl,
+      positions = p6_positions,
+      gate_demo = p6_gate_demonstration
     ),
     format = "file"
-  ),
-
-  # =======================================================================
-  # STAGE 2 — the test split, scored once
-  #
-  # FIVE rules reach the test split and no others: the three declared in
-  # `DECLARED_RULES.md`, S1/K0 (paper 5's incumbent, the comparator for
-  # every headline number) and S4/K0 (the market-only control). The
-  # declaration file is committed before any target below exists, and
-  # `p6_declaration_frozen` re-reads it from disk and matches it against the
-  # declaration target, so a later change to either is caught rather than
-  # absorbed.
-  # =======================================================================
-
-  tar_target(
-    p6_declaration_frozen,
-    {
-      txt <- readLines(p6_declared_rules_file, warn = FALSE)
-      # Section 1's table only: later sections carry a `bet` column too, and
-      # matching across the whole file would pick up the gate table as well.
-      from <- grep("^## 1[.] The declaration", txt)
-      to   <- grep("^## 2[.] ", txt)
-      stopifnot(length(from) == 1L, length(to) == 1L, to > from)
-      txt <- txt[seq(from, to)]
-      row <- function(bet) {
-        pat <- switch(
-          bet,
-          win = "^[|] win [|]",
-          place = "^[|] place [|]",
-          eachway_corrected = "^[|] each-way [(]corrected terms[)] [|]"
-        )
-        line <- grep(pat, txt, value = TRUE)
-        stopifnot(length(line) == 1L)
-        cells <- trimws(strsplit(line, "|", fixed = TRUE)[[1]])
-        cells <- cells[nzchar(cells)]
-        tibble::tibble(bet = bet, selection = cells[2], staking = cells[3])
-      }
-      from_file <- purrr::map(p6_declared_bets, row) |> purrr::list_rbind()
-      from_target <- p6_declaration |> dplyr::select(bet, selection, staking)
-      stopifnot(identical(as.data.frame(from_file), as.data.frame(from_target)))
-      from_file
-    }
-  ),
-
-  # The entire test contact, enumerated. Anything not on this list is not
-  # scored on test.
-  tar_target(
-    p6_test_arms,
-    {
-      declared <- p6_declaration_frozen |>
-        dplyr::mutate(arm = paste0("declared (", selection, "/", staking, ")"))
-      dplyr::bind_rows(
-        declared,
-        tidyr::expand_grid(bet = p6_declared_bets, selection = "S1",
-                           staking = "K0") |>
-          dplyr::mutate(arm = "S1/K0 (paper 5 incumbent)"),
-        tidyr::expand_grid(bet = p6_declared_bets, selection = "S4",
-                           staking = "K0") |>
-          dplyr::mutate(arm = "S4/K0 (market-only control)")
-      )
-    }
-  ),
-
-  # The four settlement columns are reported for every arm: the each-way
-  # rules are declared on the corrected terms and read on both.
-  tar_target(
-    p6_test_ledgers,
-    {
-      bet_for <- function(b) if (b == "eachway_corrected")
-        c("eachway", "eachway_corrected") else b
-      rows <- p6_test_arms |>
-        dplyr::mutate(id = dplyr::row_number()) |>
-        dplyr::rowwise() |>
-        dplyr::mutate(cols = list(bet_for(bet))) |>
-        dplyr::ungroup() |>
-        tidyr::unnest(cols)
-      out <- list()
-      for (i in seq_len(nrow(rows))) {
-        r <- rows[i, ]
-        key <- paste(r$arm, r$cols, sep = "|")
-        out[[key]] <- p6_ledger(p6_test_frame, p6_test_settle,
-                                p6_selections[[r$selection]]$fn,
-                                p6_stakings[[r$staking]]$fn, r$cols)
-      }
-      out
-    }
-  ),
-
-  tar_target(
-    p6_test_results,
-    {
-      races <- sort(unique(p6_test_frame$race_id))
-      purrr::imap(p6_test_ledgers, function(led, key) {
-        parts <- strsplit(key, "|", fixed = TRUE)[[1]]
-        s <- p6_summarise_ledger(led)
-        bs <- p6_bootstrap_roi(led, races, n_boot = 2000L, seed = 42L)
-        dplyr::mutate(s, arm = parts[1], bet = parts[2],
-                      ci_lo = bs$ci_lo, ci_hi = bs$ci_hi, .before = 1)
-      }) |> purrr::list_rbind()
-    }
-  ),
-
-  # Paired bootstraps on common races: declared against the incumbent, and
-  # declared against the market-only control. The second is the paper's
-  # central result.
-  tar_target(
-    p6_test_contrasts,
-    {
-      arms <- p6_test_arms
-      declared <- arms |> dplyr::filter(grepl("^declared", arm))
-      cols <- c(win = "win", place = "place",
-                eachway = "eachway", eachway_corrected = "eachway_corrected")
-      pairs <- tidyr::expand_grid(
-        bet_col = names(cols),
-        against = c("S1/K0 (paper 5 incumbent)", "S4/K0 (market-only control)")
-      )
-      purrr::pmap(pairs, function(bet_col, against) {
-        dkey <- declared$arm[declared$bet ==
-                               (if (grepl("^eachway", bet_col))
-                                 "eachway_corrected" else bet_col)]
-        a <- p6_test_ledgers[[paste(dkey, bet_col, sep = "|")]]
-        b <- p6_test_ledgers[[paste(against, bet_col, sep = "|")]]
-        races <- intersect(unique(a$race_id), unique(b$race_id))
-        dplyr::mutate(
-          p6_paired_roi_se(p6_units(a), p6_units(b), races,
-                           n_boot = 2000L, seed = 42L),
-          bet = bet_col, declared = dkey, against = against, .before = 1
-        )
-      }) |> purrr::list_rbind()
-    }
-  ),
-
-  # The margin decomposition, made explicit: what each arm returns at the
-  # real starting price, at a zero-margin fair book, and the gap between
-  # them — the margin that arm pays. A rule that improves ROI by betting
-  # shorter prices has reduced the margin it pays, not demonstrated skill.
-  tar_target(
-    p6_margin_decomposition,
-    p6_test_results |>
-      dplyr::transmute(arm, bet, n_bets, roi, roi_fair,
-                       margin_paid = roi_fair - roi,
-                       mean_stake, sd_unit_return, max_drawdown)
-  ),
-
-  # How many races each declared selection picks BEFORE staking is applied.
-  # Not another combination scored on test: the same declared selection, its
-  # bet set counted, so the paper can say how much of the thinness of a
-  # declared arm is staking rather than selection.
-  tar_target(
-    p6_declared_selection_sizes,
-    p6_declaration_frozen |>
-      dplyr::rowwise() |>
-      dplyr::mutate(
-        n_races_selected = nrow(p6_selections[[selection]]$fn(p6_test_frame))
-      ) |>
-      dplyr::ungroup()
-  ),
-
-  # The share of top-rated horses carrying a positive Kelly edge, by split.
-  # Descriptive: it is why K1 and K2 bet so much more thinly out of sample
-  # than in it, and it selects nothing.
-  tar_target(
-    p6_kelly_edge_share,
-    {
-      one <- function(frame) {
-        top <- p6_top_rated(frame)
-        tibble::tibble(
-          n_races = nrow(top),
-          share_positive_edge =
-            mean(top$win_model > 1 / top$starting_price_decimal),
-          median_p_mod = stats::median(top$win_model),
-          median_ratio = stats::median(top$ratio),
-          median_sp = stats::median(top$starting_price_decimal)
-        )
-      }
-      dplyr::bind_rows(
-        dplyr::mutate(one(p6_train_frame), split = "train", .before = 1),
-        dplyr::mutate(one(p6_test_frame), split = "test", .before = 1)
-      )
-    }
-  ),
-
-  tar_target(
-    p6_universe,
-    tibble::tibble(
-      n_test_races  = dplyr::n_distinct(p6_test_frame$race_id),
-      n_test_rows   = nrow(p6_test_frame),
-      n_train_races = dplyr::n_distinct(p6_train_frame$race_id),
-      n_train_rows  = nrow(p6_train_frame)
-    )
-  ),
-
-  # -- Figures -------------------------------------------------------------
-  tar_target(p6_fig_cumulative, p6_plot_cumulative_profit(p6_test_ledgers)),
-  tar_target(p6_fig_train_vs_test,
-             p6_plot_train_vs_test(p6_stage1_grid, p6_test_results, "win")),
-
-  tar_target(
-    p6_test_report_file,
-    p6_write_test_report(
-      path = "papers/06_betting_strategy/P6_TEST_REPORT.md",
-      results = p6_test_results,
-      contrasts = p6_test_contrasts,
-      margins = p6_margin_decomposition,
-      declaration = p6_declaration_frozen,
-      arms = p6_test_arms
-    ),
-    format = "file"
-  ),
-
-  # =======================================================================
-  # THE PAPER
-  #
-  # Rendered inside this pipeline, as papers 4 and 5 are. `quiet = FALSE` so
-  # quarto's own error output surfaces instead of a bare "System command
-  # failed". NOT published: `docs/` is untouched by this pipeline and the
-  # site index is not updated.
-  # =======================================================================
-  tar_quarto(
-    paper_6_betting_strategy,
-    path = "papers/06_betting_strategy",
-    quiet = FALSE,
-    extra_files = c(
-      "papers/06_betting_strategy/_01_result.qmd",
-      "papers/06_betting_strategy/_02_method.qmd",
-      "papers/06_betting_strategy/_03_search.qmd",
-      "papers/06_betting_strategy/_04_test.qmd",
-      "papers/06_betting_strategy/_05_discussion.qmd",
-      "papers/06_betting_strategy/_appx_a_settlement.qmd",
-      "papers/06_betting_strategy/_appx_b_software.qmd",
-      "papers/06_betting_strategy/_helpers.R",
-      "papers/06_betting_strategy/references.bib",
-      "papers/06_betting_strategy/_quarto.yml"
-    )
   )
 )

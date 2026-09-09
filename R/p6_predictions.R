@@ -1,145 +1,118 @@
 # p6_predictions.R
-# Paper 6 — the training-split predictions of paper 5's encoder.
+# Paper 6 — the two prediction sets, and the assertions that pin them.
 #
-# Paper 6 changes no model. It needs paper 5's rung-3b encoder scored on the
-# TRAINING split, and paper 5 never stored that: `p5_fit_final_gru()` returns
-# the scores of the one matrix it is handed, and paper 5 handed it the test
-# matrix.
+# TWO FITS OF ONE ARCHITECTURE, AND THEY ARE NOT THE SAME MODEL.
 #
-# The fit is therefore repeated — with paper 5's own function, its own stored
-# configuration, its own epoch count and its own seed — twice: once scoring the
-# test matrix, once scoring the training matrix. Training is fully determined
-# by the seed and the data, and `x_score` is only read after the last gradient
-# step, so both calls train the identical module. The first call's scores are
-# asserted BIT-IDENTICAL to paper 5's stored `p5_test_fit_rung3b$scores`; that
-# assertion is what licenses reading the second call's training scores as
-# coming from the same model.
+#   The SEARCH SET is paper 5's validation slice: 1,505 races carved out of
+#   the training period at 2010-12-15, scored by the fit trained on the 3,517
+#   fitting races only. That fit never saw the validation races, so its
+#   probabilities there are out of sample — which is the whole point, and the
+#   reason this paper's search set is not the training split.
 #
-# Nothing here writes to the paper-5 store, and no paper-5 target is rebuilt.
+#   The TEST SPLIT is scored by paper 5's full-training-split refit, the fit
+#   paper 5 published. That is the model whose betting behaviour anyone would
+#   actually deploy.
+#
+# Both are paper 5's own stored targets, read read-only. Paper 6 refits
+# nothing. The consequence of using two fits is that their score
+# distributions differ in scale, which is why every candidate threshold in
+# this paper is a within-split quantile rather than an absolute number.
+#
+# The 3,517 fitting races are not used anywhere. The model memorised them.
 
-#' Refit paper 5's rung-3b encoder and score both splits
+#' The validation-slice search set, with its provenance asserted
 #'
-#' @param test_data The `p5_test_data` target: matrices, sequences, lengths and
-#'   race-group sizes for both splits, on paper 3's key order.
-#' @param configs The `p5_configs_v7` target.
-#' @param selected The `p5_rung3b_selected` target (config index and epoch).
-#' @param stored_test_scores `p5_test_fit_rung3b$scores`, the reproduction
-#'   target.
-#' @param seed,k Seed and objective depth, paper 5's values.
-#' @return A list: `train_scores`, `test_scores`, `max_abs_test_diff`, the
-#'   configuration echoed back, and the backend both fits ran on.
-p6_refit_rung3b_both_splits <- function(test_data, configs, selected,
-                                        stored_test_scores, seed = 42L,
-                                        k = 3L) {
-  cfg <- configs[selected$config, ]
-  epochs <- selected$best_epoch
-
-  fit_test <- p5_fit_final_gru(
-    test_data$rung3b$train, test_data$seq_train, test_data$len_train,
-    test_data$gs_train,
-    test_data$rung3b$test, test_data$seq_test, test_data$len_test,
-    cfg, epochs = epochs, seed = seed, k = k
-  )
-
-  d <- max(abs(fit_test$scores - stored_test_scores))
-  if (!identical(fit_test$scores, stored_test_scores)) {
+#' `p5_scored_v7` is paper 5's rung-3b arm scored on the validation slice by
+#' the fitting-partition fit, with the series' own market-probability
+#' construction already attached. It is taken as it stands; the assertions
+#' below check it is what it is claimed to be before anything is searched on
+#' it.
+#'
+#' @param scored The `p5_scored_v7` target.
+#' @param selected The `p5_rung3b_selected` target, for the validation loss.
+#' @param val_key The `p5_arm_data$val$key` tibble.
+#' @param published_val_loss Paper 5's published rung-3b validation PL loss.
+#' @param tol Absolute tolerance on that loss.
+#' @return `scored`, renamed into the shape `p6_build_bet_frame()` expects.
+p6_validation_predictions <- function(scored, selected, val_key,
+                                      published_val_loss = 5.718496,
+                                      tol = 5e-7) {
+  d <- abs(selected$best_val_loss - published_val_loss)
+  if (d > tol) {
     stop(sprintf(
-      paste("Paper 6's refit of rung 3b did not reproduce paper 5's stored",
-            "test scores (max |diff| = %.3e). The training scores cannot be",
-            "attributed to paper 5's model; stop."),
-      d
+      paste("Paper 5's stored rung-3b validation loss is %.6f, not the",
+            "published %.6f (|diff| = %.3e). The search set cannot be",
+            "attributed to the fit paper 5 selected; stop."),
+      selected$best_val_loss, published_val_loss, d
     ))
   }
 
-  fit_train <- p5_fit_final_gru(
-    test_data$rung3b$train, test_data$seq_train, test_data$len_train,
-    test_data$gs_train,
-    test_data$rung3b$train, test_data$seq_train, test_data$len_train,
-    cfg, epochs = epochs, seed = seed, k = k
+  stopifnot(
+    nrow(scored) == nrow(val_key),
+    identical(scored$race_id, val_key$race_id),
+    identical(scored$runner_id, val_key$runner_id),
+    length(selected$val_scores) == nrow(val_key)
   )
 
-  list(
-    train_scores = fit_train$scores,
-    test_scores = fit_test$scores,
-    max_abs_test_diff = d,
-    config = selected$config,
-    label = cfg$label,
-    epochs = epochs,
-    n_train_rows = nrow(test_data$rung3b$train),
-    n_train_races = length(test_data$gs_train),
-    backend = fit_train$backend
-  )
-}
-
-#' The market side of the training split
-#'
-#' The same construction `build_test_predictions()` uses on the test split:
-#' the raw starting-price-implied probability renormalised within race over the
-#' runners the pipeline actually uses. A runner with no usable price gets NA
-#' and is dropped downstream by `p6_build_bet_frame()`; the rest of its race
-#' is renormalised over the prices that are there, exactly as on test.
-#'
-#' `horse_ref` is a within-race index over the frame's own key order. It is a
-#' join key only — every consumer (the Harville place recursion included)
-#' works on the rows of a race, not on the labels — so it need only be a
-#' bijection within a race, which `row_number()` guarantees.
-#'
-#' @param key The `p5_gbt_train_data$key` tibble: `race_id`, `runner_id`.
-#' @param qualifying_runners The series' runner table.
-#' @return A `test_predictions_2b`-shaped tibble without the model column.
-p6_train_market <- function(key, qualifying_runners) {
-  # `won` is the series' own column, not a re-derivation: it already encodes
-  # the promoted-winner coalesce and treats a non-finisher as a loser rather
-  # than as missing.
-  lookup <- qualifying_runners |>
-    dplyr::transmute(race_id, runner_id, starting_price_decimal,
-                     won = as.integer(won))
-
-  out <- key |>
-    dplyr::left_join(lookup, by = c("race_id", "runner_id")) |>
-    dplyr::group_by(race_id) |>
-    dplyr::mutate(
-      horse_ref = dplyr::row_number(),
-      implied_raw = dplyr::if_else(
-        !is.na(starting_price_decimal) & starting_price_decimal > 1,
-        1 / starting_price_decimal, NA_real_
-      ),
-      win_market = implied_raw / sum(implied_raw, na.rm = TRUE)
-    ) |>
-    dplyr::ungroup() |>
-    dplyr::select(race_id, runner_id, horse_ref, won, win_market,
+  scored |>
+    dplyr::select(race_id, runner_id, horse_ref, won, win_model, win_market,
                   starting_price_decimal)
-
-  stopifnot(nrow(out) == nrow(key), !anyNA(out$won))
-  out
 }
 
-#' Assert the search set is the training split and nothing else
+#' Assert the search set is the validation slice and nothing else
 #'
-#' Row identity as a sorted set on (race_id, runner_id) against paper 5's own
-#' training frame, and zero overlap with the test race ids. A blocker in the
-#' paper-6 brief, so it is an assertion rather than a report.
+#' Three blockers from the brief, as assertions rather than reports: row
+#' identity against paper 5's validation key, zero overlap with the test
+#' split, zero overlap with the 3,517 fitting races the model memorised.
 #'
-#' @param frame The training-split `p6_build_bet_frame()` output.
-#' @param train_key,test_key Paper 5's stored key tibbles.
+#' @param frame The validation-slice `p6_build_bet_frame()` output.
+#' @param val_key Paper 5's validation key.
+#' @param fit_race_ids The 3,517 fitting race ids (`p5_slice$fit_race_ids`).
+#' @param test_key Paper 3's test key.
 #' @return A one-row tibble of the counts checked.
-p6_assert_search_set <- function(frame, train_key, test_key) {
+p6_assert_search_set <- function(frame, val_key, fit_race_ids, test_key) {
   fk <- sort(paste(frame$race_id, frame$runner_id))
-  tk <- sort(paste(train_key$race_id, train_key$runner_id))
-  dropped <- setdiff(tk, fk)
-  overlap <- intersect(unique(frame$race_id), unique(test_key$race_id))
+  vk <- sort(paste(val_key$race_id, val_key$runner_id))
+  dropped <- setdiff(vk, fk)
+  overlap_test <- intersect(unique(frame$race_id), unique(test_key$race_id))
+  overlap_fit <- intersect(unique(frame$race_id), fit_race_ids)
 
   stopifnot(
-    length(setdiff(fk, tk)) == 0L,   # nothing outside paper 5's training frame
-    length(overlap) == 0L            # nothing from the test split
+    length(setdiff(fk, vk)) == 0L,   # nothing outside paper 5's val frame
+    length(overlap_test) == 0L,      # nothing from the test split
+    length(overlap_fit) == 0L        # nothing the model was fitted on
   )
 
   tibble::tibble(
-    n_rows_p5_train   = nrow(train_key),
-    n_races_p5_train  = dplyr::n_distinct(train_key$race_id),
-    n_rows_frame      = nrow(frame),
-    n_races_frame     = dplyr::n_distinct(frame$race_id),
-    n_rows_dropped    = length(dropped),
-    n_test_overlap    = length(overlap)
+    n_rows_p5_val    = nrow(val_key),
+    n_races_p5_val   = dplyr::n_distinct(val_key$race_id),
+    n_rows_frame     = nrow(frame),
+    n_races_frame    = dplyr::n_distinct(frame$race_id),
+    n_rows_dropped   = length(dropped),
+    n_races_fit      = length(fit_race_ids),
+    n_test_overlap   = length(overlap_test),
+    n_fit_overlap    = length(overlap_fit)
+  )
+}
+
+#' The two fits, side by side, for the paper's method section
+#'
+#' Descriptive. Records that the search set and the test split are scored by
+#' different fits of the same architecture, and how much data each saw.
+#'
+#' @param selected The `p5_rung3b_selected` target (fitting-partition fit).
+#' @param test_fit The `p5_test_fit_rung3b` target (full-training refit).
+#' @param slice The `p5_slice` target.
+#' @return A two-row tibble.
+p6_fit_provenance <- function(selected, test_fit, slice) {
+  tibble::tibble(
+    fit = c("fitting partition", "full training split"),
+    scores = c("validation slice (the search set)", "test split"),
+    n_train_races = c(slice$n_races_fit, test_fit$n_train_races),
+    n_train_rows = c(NA_integer_, test_fit$n_train_rows),
+    config = c(selected$config, test_fit$config),
+    epochs = c(selected$best_epoch, test_fit$epochs),
+    val_pl_loss = c(selected$best_val_loss, NA_real_),
+    source = c("p5_scored_v7 / p5_rung3b_selected", "p5_test_predictions")
   )
 }
