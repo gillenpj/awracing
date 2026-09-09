@@ -1,0 +1,35 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_declaration_frozen dispatched
+
+✔ p6_declaration_frozen completed [30ms, 214 B]
+
++ p6_test_arms dispatched
+
+✔ p6_test_arms completed [10ms, 248 B]
+
++ p6_test_ledgers dispatched
+
+✔ p6_test_ledgers completed [950ms, 202.72 kB]
+
++ p6_test_selection_sizes dispatched
+
+✔ p6_test_selection_sizes completed [190ms, 270 B]
+
++ p6_test_contrasts dispatched
+
+✔ p6_test_contrasts completed [2.9s, 563 B]
+
++ p6_test_results dispatched
+
+✔ p6_test_results completed [4s, 1.09 kB]
+
++ p6_margin_decomposition dispatched
+
+✔ p6_margin_decomposition completed [10ms, 652 B]
+
++ p6_test_report_file dispatched
+
+✔ p6_test_report_file completed [100ms, 5.56 kB]
+
+✔ ended pipeline [16.5s, 8 completed, 43 skipped]
+

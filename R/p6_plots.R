@@ -21,11 +21,11 @@ p6_plot_cumulative_profit <- function(ledgers,
 
   d <- purrr::imap(ledgers, function(led, key) {
     parts <- strsplit(key, "|", fixed = TRUE)[[1]]
-    if (!parts[2] %in% bets || nrow(led) == 0L) return(NULL)
+    if (!parts[3] %in% bets || nrow(led) == 0L) return(NULL)
     led |>
       dplyr::arrange(race_date, race_id) |>
-      dplyr::mutate(arm = parts[1], bet = parts[2],
-                    cum_profit = cumsum(profit))
+      dplyr::mutate(arm = paste(parts[1], parts[2], sep = "/"),
+                    bet = parts[3], cum_profit = cumsum(profit))
   }) |>
     purrr::compact() |>
     purrr::list_rbind() |>
@@ -43,23 +43,23 @@ p6_plot_cumulative_profit <- function(ledgers,
                    panel.grid.minor = ggplot2::element_blank())
 }
 
-#' Training-split ROI against test-split ROI, every candidate
+#' Validation-slice ROI against test-split ROI
 #'
-#' Only the five arms that reached the test split can be drawn on both axes,
-#' so this plots the twenty-seven training ROIs as a rug against the five test
-#' points: what the search saw, and what survived it.
+#' The nine stage-A selection rules on the validation slice as a rug, against
+#' the arms that reached the test split with their 90% intervals. What the
+#' search saw, and what survived it. Both axes are out of sample.
 #'
-#' @param grid The `p6_stage1_grid` target.
+#' @param grid_a The `p6_stage_a_grid` target.
 #' @param results The `p6_test_results` target.
 #' @param bet Settlement column to draw.
 #' @return A ggplot object.
-p6_plot_train_vs_test <- function(grid, results, bet = "win") {
-  tr <- grid |>
+p6_plot_val_vs_test <- function(grid_a, results, bet = "win") {
+  va <- grid_a |>
     dplyr::filter(bet == !!bet) |>
     dplyr::mutate(combo = paste0(selection, "/", staking))
   te <- results |> dplyr::filter(bet == !!bet)
 
-  ggplot2::ggplot(tr, ggplot2::aes(x = roi, y = 0)) +
+  ggplot2::ggplot(va, ggplot2::aes(x = roi, y = 0)) +
     ggplot2::geom_vline(xintercept = 0, linewidth = 0.3, colour = "grey50") +
     ggplot2::geom_point(shape = 124, size = 5, colour = "grey40") +
     ggplot2::geom_point(
@@ -71,10 +71,12 @@ p6_plot_train_vs_test <- function(grid, results, bet = "win") {
       orientation = "y", width = 0.12, linewidth = 0.4
     ) +
     ggplot2::scale_x_continuous(labels = scales::percent) +
-    ggplot2::scale_y_continuous(breaks = c(0, 0.4),
-                                labels = c("training (27 candidates)",
-                                           "test (5 arms)"),
-                                limits = c(-0.15, 0.6)) +
+    ggplot2::scale_y_continuous(
+      breaks = c(0, 0.4),
+      labels = c("validation slice\n(9 selection rules, flat stake)",
+                 "test split\n(the arms that reached it)"),
+      limits = c(-0.15, 0.6)
+    ) +
     ggplot2::scale_colour_brewer(palette = "Dark2") +
     ggplot2::labs(x = "ROI at the real starting price", y = NULL,
                   colour = NULL) +

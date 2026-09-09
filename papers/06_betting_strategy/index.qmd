@@ -1,0 +1,12 @@
+---
+title: "Bet selection and staking"
+format: html
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(targets)
+```
+
+{{< include _01_result.qmd >}}

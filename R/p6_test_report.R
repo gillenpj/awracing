@@ -13,20 +13,17 @@
 #' @param margins The `p6_margin_decomposition` target.
 #' @param declaration The `p6_declaration_frozen` target.
 #' @param arms The `p6_test_arms` target.
+#' @param selection_sizes The `p6_test_selection_sizes` target.
 #' @return `path`.
 p6_write_test_report <- function(path, results, contrasts, margins,
-                                 declaration, arms) {
+                                 declaration, arms, selection_sizes) {
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
 
-  bet_label <- c(win = "win", place = "place",
-                 eachway = "each-way (paper 5 terms)",
-                 eachway_corrected = "each-way (corrected terms)")
-
   res_tbl <- results |>
-    dplyr::arrange(match(bet, names(bet_label)), arm) |>
+    dplyr::arrange(match(bet, names(P6_BET_LABEL_MD)), arm) |>
     dplyr::transmute(
-      bet = bet_label[bet], arm, bets = n_bets, wins = n_wins,
-      `total stake` = sprintf("%.0f", total_stake),
+      bet = P6_BET_LABEL_MD[bet], arm, bets = n_bets, wins = n_wins,
+      staked = sprintf("%.0f", total_stake),
       profit = sprintf("%.2f", profit),
       `ROI (SP)` = p6_pct(roi),
       `ROI (fair book)` = p6_pct(roi_fair),
@@ -35,20 +32,29 @@ p6_write_test_report <- function(path, results, contrasts, margins,
     )
 
   con_tbl <- contrasts |>
-    dplyr::arrange(match(bet, names(bet_label)), against) |>
+    dplyr::arrange(match(bet, names(P6_BET_LABEL_MD)), question) |>
     dplyr::transmute(
-      bet = bet_label[bet], declared, against,
-      difference = p6_pct(diff_point), `bootstrap SE` = p6_pct(se),
-      `90% interval` = sprintf("[%s, %s]", p6_pct(ci_lo), p6_pct(ci_hi)),
-      `excludes zero` = ifelse((ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0),
-                               "yes", "no"),
+      bet = P6_BET_LABEL_MD[bet], question,
+      contrast = paste(a_arm, "-", b_arm),
+      `ROI a (common)` = ifelse(degenerate, "—", p6_pct(roi_a)),
+      `ROI b (common)` = ifelse(degenerate, "—", p6_pct(roi_b)),
+      difference = ifelse(degenerate, "0 (same arm)", p6_pct(diff_point)),
+      `bootstrap SE` = ifelse(degenerate, "—", p6_pct(se)),
+      `90% interval` = ifelse(degenerate, "—",
+                              sprintf("[%s, %s]", p6_pct(ci_lo),
+                                      p6_pct(ci_hi))),
+      `excludes zero` = dplyr::case_when(
+        degenerate ~ "—",
+        (ci_lo > 0 & ci_hi > 0) | (ci_lo < 0 & ci_hi < 0) ~ "yes",
+        TRUE ~ "no"
+      ),
       `common races` = n_races
     )
 
   mar_tbl <- margins |>
-    dplyr::arrange(match(bet, names(bet_label)), arm) |>
+    dplyr::arrange(match(bet, names(P6_BET_LABEL_MD)), arm) |>
     dplyr::transmute(
-      bet = bet_label[bet], arm, bets = n_bets,
+      bet = P6_BET_LABEL_MD[bet], arm, bets = n_bets,
       `ROI (SP)` = p6_pct(roi), `ROI (fair book)` = p6_pct(roi_fair),
       `margin paid` = p6_pct(margin_paid),
       `mean stake` = sprintf("%.3f", mean_stake),
@@ -57,37 +63,52 @@ p6_write_test_report <- function(path, results, contrasts, margins,
     )
 
   decl_tbl <- declaration |>
-    dplyr::transmute(`bet type` = bet_label[bet], selection, staking)
+    dplyr::transmute(stage, `bet type` = P6_BET_LABEL_MD[bet],
+                     declared = paste0(selection, "/", staking))
+
+  arm_tbl <- arms |>
+    dplyr::left_join(dplyr::select(selection_sizes, arm, n_races_selected),
+                     by = "arm") |>
+    dplyr::transmute(arm, `races selected on test` = n_races_selected, roles)
 
   lines <- c(
     "# Paper 6 — the test split, scored once",
     "",
-    "Five rules reached the test split and no others: the three declared in",
-    "`DECLARED_RULES.md`, S1/K0 (paper 5's incumbent) and S4/K0 (the",
-    "market-only control). The declaration was committed before any target in",
-    "this report existed, and `p6_declaration_frozen` re-reads the file from",
-    "disk and matches it against the declaration target on every build.",
+    "The arms below are the entire test contact. The declaration was",
+    "committed before any target in this report existed, and",
+    "`p6_declaration_frozen` re-reads the file from disk and matches it",
+    "against the declaration target on every build.",
     "",
     "The comparator for every headline number is paper 5's encoder under",
     "Owen's rule on the same 2,183 test races: win -12.19%, place -10.20%,",
     "each-way -5.96% (paper 5's terms).",
     "",
-    "## 1. The declared rules",
+    "## 1. What was declared",
     "",
     p6_md_table(decl_tbl),
     "",
-    "## 2. Results",
+    "Both stages declared the incumbent for every bet type. The declared",
+    "selection at a flat stake is therefore the same rule as S1/K0, and the",
+    "declared stake is the same rule again, so the arms coincide and two of",
+    "the four contrasts below are identically zero by construction. That is",
+    "reported rather than hidden.",
+    "",
+    "## 2. The arms",
+    "",
+    p6_md_table(arm_tbl),
+    "",
+    "## 3. Results",
     "",
     p6_md_table(res_tbl),
     "",
-    "## 3. Paired contrasts on common races",
+    "## 4. Contrasts on common races",
     "",
     "B = 2000, seed 42, resampling races rather than bets so an arm that did",
     "not bet a drawn race contributes zero to that draw.",
     "",
     p6_md_table(con_tbl),
     "",
-    "## 4. Margin decomposition",
+    "## 5. Margin decomposition",
     "",
     "`margin paid` is the fair-book ROI less the real-SP ROI: the share of",
     "stake the over-round takes on the horses that arm actually backs. A rule",

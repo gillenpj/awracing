@@ -15,10 +15,16 @@
 
 source("renv/activate.R")
 
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) == 0L) {
+target_names <- commandArgs(trailingOnly = TRUE)
+if (length(target_names) == 0L) {
   targets::tar_make(script = "_targets_p6.R", store = "_targets_p6")
 } else {
-  targets::tar_make(names = tidyselect::any_of(args),
-                    script = "_targets_p6.R", store = "_targets_p6")
+  # `names` is a tidyselect expression evaluated inside the pipeline's own
+  # environment, so a local has to be unquoted into it rather than referred
+  # to by name. (Referring to it by name also risks resolving to a base R
+  # function: `any_of(args)` picks up `base::args`.)
+  rlang::inject(
+    targets::tar_make(names = tidyselect::all_of(!!target_names),
+                      script = "_targets_p6.R", store = "_targets_p6")
+  )
 }

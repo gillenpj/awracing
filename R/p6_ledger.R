@@ -344,7 +344,10 @@ p6_bootstrap_roi <- function(led, races, n_boot = 2000L, seed = 42L) {
 #' @param units_a,units_b Per-race unit tibbles (`p6_units()` output).
 #' @param races Common race universe.
 #' @param n_boot,seed Replicates and RNG seed.
-#' @return A one-row tibble: `diff_point`, `se`, `ci_lo`, `ci_hi`, `n_races`.
+#' @return A one-row tibble: `diff_point`, `se`, `ci_lo`, `ci_hi`, `n_races`,
+#'   and `roi_a` / `roi_b`, each arm's ROI RESTRICTED to the common races.
+#'   Those two are what the difference is a difference of, and they are not
+#'   generally the arms' full-universe ROIs, so both are reported.
 p6_paired_roi_se <- function(units_a, units_b, races, n_boot = 2000L,
                              seed = 42L) {
   fill <- function(u) {
@@ -369,6 +372,8 @@ p6_paired_roi_se <- function(units_a, units_b, races, n_boot = 2000L,
 
   tibble::tibble(
     diff_point = roi(a$stake, a$ret) - roi(b$stake, b$ret),
+    roi_a      = roi(a$stake, a$ret),
+    roi_b      = roi(b$stake, b$ret),
     se         = stats::sd(diffs, na.rm = TRUE),
     ci_lo      = stats::quantile(diffs, 0.05, na.rm = TRUE, names = FALSE),
     ci_hi      = stats::quantile(diffs, 0.95, na.rm = TRUE, names = FALSE),
