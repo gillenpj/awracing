@@ -2,7 +2,7 @@
 title: "Notes on Neural Scorers and Sequence Encoders"
 subtitle: "Supplementary material to Paper 5, *Sequence encoding of run histories*"
 author: "Patrick Gillen"
-date: "2026-09-08"
+date: "2026-09-09"
 ---
 
 # Purpose {.unnumbered}
@@ -240,12 +240,26 @@ for $j \in R_{r,s}$, and $p_{rj}^{(s)} = 0$ once $j$ has been placed and
 removed. The quantity is "predicted probability minus what happened",
 accumulated over the stages the runner survives to.
 
-This is the entire interface between the likelihood and the model. The
-likelihood produces one number per runner-row; backpropagation carries that
-number into $f_\theta$ by the chain rule. Nothing in the derivation depends
-on $f_\theta$ being linear, which is why the same objective serves paper 2b's
-linear predictor, paper 3's tree ensemble and paper 5's network without
-modification.
+This is the entire interface between the likelihood and the model. What the
+optimiser needs is not this derivative but the gradient with respect to the
+parameters, and the chain rule writes that as a product accumulated over
+runner-rows:
+
+$$
+\frac{\partial L}{\partial \theta} \;=\; \sum_{r}\sum_{j}
+\frac{\partial \ell_r}{\partial z_{rj}} \cdot
+\frac{\partial z_{rj}}{\partial \theta}.
+$$
+
+The likelihood supplies the first factor and knows nothing about $\theta$.
+The network supplies the second — how its output moves when its weights move
+— and knows nothing about the likelihood. Backpropagation multiplies them
+and accumulates over rows.
+
+That product is also the precise sense in which the same objective serves
+paper 2b's linear predictor, paper 3's tree ensemble and paper 5's network:
+the first factor is identical in all three, and only the second changes with
+the model class.
 
 ## Race as the grouping unit
 
