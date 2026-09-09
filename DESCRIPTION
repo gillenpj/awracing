@@ -3,8 +3,7 @@ Title: All Weather Racing Analysis
 Version: 0.0.1
 Description: Analysis pipeline for UK All Weather flat racing using the
     Smartform database. Implements a targets-based reproducible pipeline.
-Authors@R: person("First", "Last", role = c("aut", "cre"),
-    email = "your@email.com")
+Authors@R: person("Patrick", "Gillen", role = c("aut", "cre"))
 License: MIT
 Depends: R (>= 4.6.0)
 Imports:
@@ -12,11 +11,24 @@ Imports:
     tarchetypes,
     tidyverse,
     tidymodels,
+    conflicted,
     DBI,
     RMariaDB,
     dotenv,
+    data.table,
     glue,
     here,
+    knitr,
     lubridate,
-    quarto
+    mlogit,
+    numDeriv,
+    quarto,
+    rmarkdown,
+    rprojroot,
+    scales,
+    torch,
+    xgboost
+Suggests:
+    luz,
+    coro
 Encoding: UTF-8
