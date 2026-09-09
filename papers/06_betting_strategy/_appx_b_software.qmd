@@ -1,0 +1,99 @@
+# Appendix B — Software and reproducibility {#sec-appx-b}
+
+## The series pattern
+
+The analysis is a `{targets}` pipeline [@targetsr] in R, with `{renv}`
+pinning package versions and one function per target. Paper 6 has its own
+pipeline script and its own store, `_targets_p6.R` and `_targets_p6`,
+following papers 4 and 5, so nothing it does can invalidate or overwrite the
+published work of papers 1 to 5. `tar_config_set()` is never called anywhere
+in paper 6: the setup chunk passes `store =` to each `tar_load()`, leaving
+the project-root `_targets.yaml` that papers 1 to 3 share untouched.
+
+Upstream objects — the runner table, paper 3's fitting and test matrices,
+paper 5's test data, fitted rung-3b arm, stored configuration and published
+backtests — are read from the main and paper-5 stores **read-only**, with
+their content hashes recorded in `p6_upstream_fingerprint`. An upstream
+change therefore invalidates this paper's downstream work rather than leaving
+it silently stale.
+
+Every number in this document is read from a target at render time via
+`tar_read()` or `tar_load()`. None is transcribed.
+
+## The one refit
+
+Paper 6 changes no model, but it needed one thing paper 5 did not store: the
+encoder's scores on the training split. `p5_fit_final_gru()` returns the
+scores of the matrix it is handed, and paper 5 handed it the test matrix.
+
+That function is therefore called twice, with paper 5's own configuration,
+epoch count and seed, once scoring each split. Training is fully determined
+by the seed and the data, and the scored matrix is read only after the last
+gradient step, so both calls train the identical network. The first call's
+test scores are asserted **bit-identical** to paper 5's stored
+`p5_test_fit_rung3b$scores` — the observed maximum absolute difference is
+`r sprintf("%.0f", p6_rung3b_scores$max_abs_test_diff)` — and the function
+stops rather than continuing if they are not. Nothing in paper 5's store is
+written.
+
+```{r}
+#| label: tbl-backend
+#| tbl-cap: "Fitting environment, captured at fit time from inside the fitting function."
+tibble::as_tibble(p6_rung3b_scores$backend) |>
+  dplyr::transmute(
+    torch = torch_version, libtorch = libtorch_version,
+    R = r_version, Platform = platform,
+    Device = device, `CUDA available` = cuda_is_available
+  ) |>
+  kable(align = "llllll")
+```
+
+The backend is the CPU build in double precision, the frozen parameter of
+paper 5. Results do not reproduce across backends, so reproducing this
+environment needs `CUDA = "cpu"` set before `{torch}` [@torchr] installs its
+runtime; the lockfile pins R packages, not the C++ runtime underneath them.
+
+## Gates
+
+Three standing checks run on the pipeline graph, not as afterthoughts:
+
+`scripts/verify_p6_ledger.R` — six assertions on the ledger. Three that it
+rebuilds paper 5's published test backtest exactly under S1/K0, both against
+the stored targets and against the printed figures; one that the corrected
+each-way payout reproduces paper 2b's when given paper 2b's terms; one that
+the corrected terms move exactly the rows the field-size ladder marks; one
+that a staking rule changes stakes and not the bet set. Also on the graph as
+`p6_ledger_gate`.
+
+`p6_search_set_check` — row identity of the search set as a sorted set on
+race and runner against paper 5's training frame, and zero overlap with test
+race identifiers.
+
+`p6_contrast_check` — paper 5's rung-1 rule, that a compared pair differs in
+exactly one term, asserted over every contrast the paper reads before
+anything is scored.
+
+`p6_declaration_frozen` re-reads `DECLARED_RULES.md` from disk on every build
+and matches it against the declaration target, so the committed artefact and
+the pipeline cannot drift apart. `p6_declaration_check` fails the build if any
+declared rule places fewer than 200 bets on the training split.
+
+## Order of operations
+
+The declaration was committed before any test target existed. The git history
+records it: the commit introducing `DECLARED_RULES.md` contains no stage-2
+target, and the stage-2 targets were added in the following commit. That is
+the only mechanism available for a claim of this kind — a pre-registration
+that lives in the same repository as the analysis is only as good as the
+history that timestamps it.
+
+## Running it
+
+```
+"C:/Program Files/R/R-4.6.0/bin/Rscript.exe" scripts/run_p6_pipeline.R
+```
+
+from the project root, via PowerShell — `{torch}` and the database connection
+both fail under the Git Bash environment on the development machine. An
+optional argument names a target to build up to, which is how the declaration
+was frozen before the test targets were written.

@@ -25,9 +25,9 @@ Verification gates are not a reason to stop; they are the reason not to.
 Where a gate exists — `scripts/verify_pl_objective.R`,
 `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
 `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
-`scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R` — proceed
-and let the gate catch you. If a gate fails, fix it and report. Do not
-ask permission to fix it.
+`scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R`,
+`scripts/verify_p6_ledger.R` — proceed and let the gate catch you. If a
+gate fails, fix it and report. Do not ask permission to fix it.
 
 Two calibration examples (2026-08-20):
 - **The tuning-grid stop was CORRECT.** A 37-hour projection (before the
@@ -129,6 +129,24 @@ below has five entries for four numbered papers.
   `papers/05_encoder/`, and the supplementary theory note is in
   `papers/05_encoder/supplement/`.
   Live: <https://gillenpj.github.io/awracing/paper5/>.
+- **Paper 6 — Bet selection and staking. DRAFTED, NOT PUBLISHED.**
+  Changes the betting rule and nothing else; the model is held fixed at
+  paper 5's rung-3b encoder. Nine selection rules and three staking rules
+  searched on the 5,022 training races, one rule per bet type declared by a
+  mechanical rule and frozen in `papers/06_betting_strategy/DECLARED_RULES.md`
+  before any test contact, test split scored once. **Nothing wins.** All three
+  declared rules lose more than the incumbent and every paired interval
+  against it contains zero. The result that matters is the control: on the
+  win market S4/K0 — back the market favourite flat, no model input at all —
+  returns −6.36% against the incumbent's −12.19%, its 90% interval excluding
+  zero, so the model's contribution to bet selection is not visible on this
+  data (consistent with paper 4). The place market is the one exception and
+  goes the other way, which is a fact about a synthetic top-3 place market
+  that prices favourites hardest, not about the model. Priced at a zero-margin
+  book the incumbent returns +0.84% on win, so the whole of its loss is the
+  over-round. Own pipeline and store (`_targets_p6.R` / `_targets_p6`).
+  Standing gate: `scripts/verify_p6_ledger.R`. **`docs/` is untouched and the
+  site index is not updated** — publishing is a separate, unstarted task.
 
 ## Standing conventions
 
@@ -136,9 +154,9 @@ below has five entries for four numbered papers.
   Where a gate exists (`scripts/verify_pl_objective.R`,
   `scripts/verify_going_features.R`, `scripts/verify_rebuild.R`,
   `scripts/verify_p4_market_probs.R`, `scripts/verify_p4_data_targets.R`,
-  `scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R`),
-  proceed and let it catch mistakes; fix and report, don't ask first
-  (see "Default to proceeding" above).
+  `scripts/verify_p5_pl_torch.R`, `scripts/verify_p5_gru_mask.R`,
+  `scripts/verify_p6_ledger.R`), proceed and let it catch mistakes; fix
+  and report, don't ask first (see "Default to proceeding" above).
 - **Reproducibility checks need two fresh processes, not two calls in
   one session.** Process-constant state — a library's own un-seeded
   internal RNG, or anything else cached at the process level — can make
@@ -376,6 +394,17 @@ below has five entries for four numbered papers.
     chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
     that folder needs neither renv nor the targets store. `publish_docs.R`
     copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
+  - `papers/06_betting_strategy/` — **paper 6, drafted, NOT published.** Bet
+    selection and staking. Built by its own pipeline, `_targets_p6.R`, into
+    its own store, `_targets_p6` — NOT by `_targets.R`. Run it with
+    `Rscript scripts/run_p6_pipeline.R`, optionally naming a target to build
+    up to. Rendered by `tar_quarto(paper_6_betting_strategy)` inside that
+    pipeline. `tar_config_set()` is never called; the qmd setup chunk passes
+    `store =` to each `tar_load()`. Upstream targets are read from the MAIN
+    and PAPER-5 stores read-only, hashes in `p6_upstream_fingerprint`.
+    Alongside the paper: the frozen `DECLARED_RULES.md` (committed before any
+    test target existed — do not alter it), `P6_TEST_REPORT.md`, and the
+    `tar_make()` run logs.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -468,6 +497,17 @@ below has five entries for four numbered papers.
     summarising the wrong run. Also on the graph as `p5_gru_mask_check`.
     Run after any change to `R/p5_gru.R` — but see the recompute trap in
     "Standing conventions" first.
+  - `verify_p6_ledger.R` — standing gate on paper 6's betting ledger
+    (`R/p6_ledger.R`, `R/p6_rules.R`). Six assertions: three that the ledger
+    rebuilds paper 5's published test backtest exactly under S1/K0 (against
+    the stored targets AND against the printed figures), one that
+    `p6_eachway_returns()` reproduces `build_eachway_value_bets()` when given
+    paper 5's terms, one that the corrected each-way terms move exactly the
+    rows the field-size ladder marks, one that a staking rule changes stakes
+    and not the bet set. Read-only; also on the graph as `p6_ledger_gate`.
+  - `run_p6_pipeline.R` — the paper-6 driver, same reasons as paper 5's. An
+    optional argument names a target to build up to; that is how the
+    declaration was frozen before the test targets were written.
   - `run_p5_pipeline.R` — the paper-5 driver. Exists because `Rscript -e`
     does not activate renv on this machine and because the script/store
     pair must be passed explicitly on every call.
@@ -483,7 +523,7 @@ below has five entries for four numbered papers.
     how to reproduce and check it).
 - `_targets/` — pipeline cache (gitignored).
 - `_targets_p5/` — paper 5's own pipeline store (gitignored, alongside
-  paper 4's `_targets_p4/`).
+  paper 4's `_targets_p4/` and paper 6's `_targets_p6/`).
 - `renv/`, `renv.lock` — package state.
 - `.env` — DB credentials (gitignored). Read at runtime by
   `R/db.R::connect_smartform()` via `dotenv::load_dot_env()`.

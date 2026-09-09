@@ -1,0 +1,177 @@
+# The test split, scored once {#sec-test}
+
+```{r}
+#| label: test-numbers
+#| include: false
+
+t_inc_win <- p6_res(p6_test_results, "incumbent", "win")
+t_mkt_win <- p6_res(p6_test_results, "market-only", "win")
+t_dec_win <- p6_res(p6_test_results, "^declared", "win")
+t_inc_plc <- p6_res(p6_test_results, "incumbent", "place")
+t_mkt_plc <- p6_res(p6_test_results, "market-only", "place")
+t_dec_plc <- p6_res(p6_test_results, "^declared", "place")
+t_inc_ewc <- p6_res(p6_test_results, "incumbent", "eachway_corrected")
+t_mkt_ewc <- p6_res(p6_test_results, "market-only", "eachway_corrected")
+t_dec_ewc <- p6_res(p6_test_results, "^declared", "eachway_corrected")
+t_inc_ew5 <- p6_res(p6_test_results, "incumbent", "eachway")
+t_mkt_ew5 <- p6_res(p6_test_results, "market-only", "eachway")
+
+c_win_s1 <- p6_con(p6_test_contrasts, "win", "incumbent")
+c_win_s4 <- p6_con(p6_test_contrasts, "win", "market-only")
+c_plc_s1 <- p6_con(p6_test_contrasts, "place", "incumbent")
+c_plc_s4 <- p6_con(p6_test_contrasts, "place", "market-only")
+c_ewc_s1 <- p6_con(p6_test_contrasts, "eachway_corrected", "incumbent")
+c_ewc_s4 <- p6_con(p6_test_contrasts, "eachway_corrected", "market-only")
+
+sels <- p6_declared_selection_sizes
+kelly_tr <- p6_kelly_edge_share$share_positive_edge[
+  p6_kelly_edge_share$split == "train"]
+kelly_te <- p6_kelly_edge_share$share_positive_edge[
+  p6_kelly_edge_share$split == "test"]
+drop_move <- abs(p6_test_results$roi_drop_top1 - p6_test_results$roi)
+```
+
+Five rules reached the test split and no others: the three declared, S1/K0
+(paper 5's incumbent, the comparator for every headline number) and S4/K0
+(the market-only control). Each was read on all four settlement columns. That
+is the entire test contact.
+
+## Results
+
+```{r}
+#| label: tbl-test
+#| tbl-cap: "The test split. `ROI, fair book` prices the same bets at starting prices renormalised within race to sum to one; `ROI less top winner` drops the single largest return. Intervals are 90% race-level bootstrap, B = 2000, seed 42."
+p6_results_table(p6_test_results) |> kable(align = "llrrrrrrrl")
+```
+
+Every arm loses money on every market, with one qualification: nothing here
+is distinguishable from a small loss on the win market for the incumbent,
+whose interval `r p6_fmt_pct_ci(t_inc_win$ci_lo, t_inc_win$ci_hi)` reaches
+just above zero.
+
+The declared rules are thin. The declared win rule, S3b/K2, selects
+`r p6_comma(sels$n_races_selected[sels$bet == "win"])` of the
+`r p6_comma(n_test_races)` test races but stakes a positive amount in only
+`r t_dec_win$n_bets`, totalling `r sprintf("%.0f", t_dec_win$total_stake)`
+units. The declared each-way rule, S4/K2, selects every race and stakes in
+`r t_dec_ewc$n_bets`. This is the staking rules selecting: K1 and K2 both
+stake zero where the model's probability does not exceed the price, and out
+of sample it rarely does — the model's top-rated horse carries a positive
+Kelly edge in `r p6_fmt_pct(kelly_tr, 1)` of training races but only
+`r p6_fmt_pct(kelly_te, 1)` of test races, and inside the short-priced band
+S3b selects, less again.
+
+Whether the thinness comes from S3b or from K2 cannot be settled here. It
+would take scoring S3b/K0 on the test split, and the design forbids a second
+contact.
+
+## The contrasts
+
+```{r}
+#| label: tbl-contrasts
+#| tbl-cap: "Paired race-level bootstrap of the ROI difference, declared rule minus comparator, on the races both arms bet. B = 2000, seed 42. Differences are in percentage points."
+p6_contrast_table(p6_test_contrasts) |> kable(align = "lllrrllr")
+```
+
+Seven of the eight intervals contain zero. The one that does not is the
+declared place rule against the market-only control:
+`r p6_fmt_pts(c_plc_s4$diff_point)` points,
+`r p6_fmt_pts_ci(c_plc_s4$ci_lo, c_plc_s4$ci_hi)`, over
+`r p6_comma(c_plc_s4$n_races)` common races. Against the incumbent the same
+rule is `r p6_fmt_pts(c_plc_s1$diff_point)` points,
+`r p6_fmt_pts_ci(c_plc_s1$ci_lo, c_plc_s1$ci_hi)` — indistinguishable, which
+is what it should be, since the declared place rule is the incumbent's own
+selection with a different stake.
+
+**No declared rule beats the rule it was declared to beat.** All three point
+differences against S1/K0 are negative. The search found nothing.
+
+## The control {#sec-control}
+
+S4/K0 backs the market favourite in every test race at a flat stake. It reads
+no model output. It is the paper's central comparison, not a footnote: if a
+rule containing no model does as well as the declared rule, the model adds
+nothing to bet selection.
+
+On the win market it does better than every model rule tested.
+
+| | ROI | 90% interval | Bets |
+|---|---|---|---|
+| S4/K0, market favourite | `r p6_fmt_pct(t_mkt_win$roi)` | `r p6_fmt_pct_ci(t_mkt_win$ci_lo, t_mkt_win$ci_hi)` | `r p6_comma(t_mkt_win$n_bets)` |
+| S1/K0, paper 5's incumbent | `r p6_fmt_pct(t_inc_win$roi)` | `r p6_fmt_pct_ci(t_inc_win$ci_lo, t_inc_win$ci_hi)` | `r p6_comma(t_inc_win$n_bets)` |
+| declared, S3b/K2 | `r p6_fmt_pct(t_dec_win$roi)` | `r p6_fmt_pct_ci(t_dec_win$ci_lo, t_dec_win$ci_hi)` | `r p6_comma(t_dec_win$n_bets)` |
+
+The favourite rule's interval excludes zero and the incumbent's does not, but
+the two are not directly contrasted here — the declared rule is what the
+design put against the control, and that contrast,
+`r p6_fmt_pts(c_win_s4$diff_point)` points
+`r p6_fmt_pts_ci(c_win_s4$ci_lo, c_win_s4$ci_hi)`, contains zero on
+`r p6_comma(c_win_s4$n_races)` common races. What can be said is the weaker
+and still uncomfortable statement: **on the win market, nothing the model
+contributes to bet selection is visible against a rule that ignores it.**
+
+On each-way at the corrected terms the same pattern holds, more starkly: the
+favourite returns `r p6_fmt_pct(t_mkt_ewc$roi)` against the incumbent's
+`r p6_fmt_pct(t_inc_ewc$roi)`.
+
+The place market is the exception, and it goes the other way: the favourite
+returns `r p6_fmt_pct(t_mkt_plc$roi)` against the incumbent's
+`r p6_fmt_pct(t_inc_plc$roi)`. Backing favourites to place is a poor bet
+because a synthetic place market built from the starting-price book prices
+short horses hardest — the favourite's place probability is high, so its
+place price is short, and the margin sits on top of a small number. That is a
+property of the place market's shape, not evidence about the model.
+
+## Margin paid, and horses picked {#sec-margin}
+
+A rule can improve its ROI two ways: by picking better horses, or by betting
+where the book takes less. The second is not skill, and separating them is
+what the fair-book column is for.
+
+```{r}
+#| label: tbl-margin
+#| tbl-cap: "The margin decomposition. `Margin paid` is the fair-book ROI less the real-SP ROI: the share of stake the over-round takes on the horses that arm actually backs."
+p6_margin_table(p6_margin_decomposition) |> kable(align = "llrrrrrr")
+```
+
+At a zero-margin book the win-market picture inverts. The incumbent returns
+`r p6_fmt_pct(t_inc_win$roi_fair)` and the favourite rule
+`r p6_fmt_pct(t_mkt_win$roi_fair)` — both positive, the favourite rule by
+more. A positive fair-book return on favourites is the favourite–longshot
+bias, long documented and not a finding of this paper [@snowberg2010]:
+favourites win more often than the renormalised book implies, and longshots
+less. It is also not exploitable here, because the margin removed to produce
+that number is the bookmaker's and there is no counterparty offering it.
+
+**The declared win rule improves nothing but the margin it pays.** It pays
+`r p6_fmt_pct(t_dec_win$roi_fair - t_dec_win$roi)`, against the incumbent's
+`r p6_fmt_pct(t_inc_win$roi_fair - t_inc_win$roi)`, because a price cut
+concentrates the bet in smaller fields and shorter prices where the book is
+thinner. Its fair-book ROI, `r p6_fmt_pct(t_dec_win$roi_fair)`, is the worst
+of the three win arms. Label it correctly: the rule reduced the margin it
+paid and picked worse horses, and the two roughly cancel.
+
+## Figures
+
+```{r}
+#| label: fig-cumulative
+#| fig-cap: "Cumulative profit in stake units on the test split, in race-date order. Arms staking different amounts are not comparable in level; the shape is the point."
+#| fig-height: 7
+p6_fig_cumulative
+```
+
+The losses accumulate steadily. No arm's result rests on a small number of
+outcomes: dropping the single largest winner moves every ROI in
+@tbl-test by between `r sprintf("%.1f", 100 * min(drop_move))` and
+`r sprintf("%.1f", 100 * max(drop_move))` points, the larger moves belonging
+entirely to the arms with a few dozen bets.
+
+```{r}
+#| label: fig-train-vs-test
+#| fig-cap: "The win market. Twenty-seven training-split ROIs as a rug, against the five arms that reached the test split with their 90% intervals. The training axis is in sample; see @sec-insample."
+#| fig-height: 3.2
+p6_fig_train_vs_test
+```
+
+@fig-train-vs-test is the honest summary of the search: a wide spread of
+in-sample returns, none of which located anything that survived.

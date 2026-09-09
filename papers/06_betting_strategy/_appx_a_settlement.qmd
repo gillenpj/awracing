@@ -1,0 +1,113 @@
+# Appendix A — Settlement {#sec-appx-a}
+
+The arithmetic every number in this paper rests on. Nothing here is new to
+paper 6 except the corrected each-way terms, and those are asserted against
+paper 2b's own function rather than trusted.
+
+## Win
+
+A win bet of $s$ units on a horse at decimal starting price $P$ returns $sP$
+if the horse wins and nothing otherwise. Profit is $sP\mathbb{1}[\text{won}]
+- s$.
+
+The fair-book counterpart replaces $P$ with $1/p_{\text{mkt}}$, where
+$p_{\text{mkt}}$ is the starting-price-implied probability renormalised
+within race to sum to one:
+
+$$
+p_{\text{mkt},i} = \frac{1/P_i}{\sum_j 1/P_j}.
+$$
+
+This is the series' own market probability, used unchanged since paper 1 and
+gated by `scripts/verify_p4_market_probs.R`.
+
+## Place
+
+The place market here is synthetic: British bookmakers price a place bet as a
+fraction of the win odds rather than quoting an independent place price, and
+the dataset holds no place dividends. Paper 2b constructs one and paper 6
+uses it unchanged.
+
+The place price is the pure Harville [@harville1973] top-three probability
+computed from the **raw** starting-price-implied probabilities $1/P_i$,
+without renormalising, so it inherits the win book's real margin. A one-unit
+place bet returns $1/\pi_i$ on a top-three finish, where $\pi_i$ is that
+probability. The fair-book counterpart computes the same Harville quantity
+from the renormalised $p_{\text{mkt}}$.
+
+Selection inside paper 2b's builder uses discounted-Harville probabilities
+[@lobaconshone1994] with $\alpha_2 = 0.80$, $\alpha_3 = 0.65$; that affects
+only which bets a value-bet rule would place, not the payout, and paper 6's
+selection rules do not read it.
+
+Races without a clean three-horse place set are dropped from the place
+universe, as they are in paper 2b. On both splits of this dataset that
+condition holds for every race, so the place universe differs from the win
+universe only by the complete-price condition.
+
+## Each-way {#sec-appx-ew}
+
+An each-way bet is two bets: a win bet and a place bet at a fraction of the
+win odds. Staking $s$ units on each leg, total stake $2s$, the return is
+
+$$
+s P \mathbb{1}[\text{won}] +
+s \bigl(1 + (P - 1)f\bigr) \mathbb{1}[\text{finished in the first } m],
+$$
+
+with $f$ the odds fraction and $m$ the number of places.
+
+Paper 5 sets $f = 1/5$ and $m = 3$ for every race. The real industry terms
+for a handicap depend on field size $n$:
+
+| Field size | Places $m$ | Fraction $f$ |
+|---|---|---|
+| 4 | win only | — |
+| 5–7 | 2 | 1/4 |
+| 8–11 | 3 | 1/5 |
+| 12–15 | 3 | 1/4 |
+| 16+ | 4 | 1/4 |
+
+At four runners no place bet is offered, so an each-way bet is a win bet:
+total stake $s$, not $2s$.
+
+```{r}
+#| label: tbl-terms
+#| tbl-cap: "Field-size distribution and where paper 5's flat terms are wrong, training split."
+p6_field_sizes_train$by_field_size |>
+  dplyr::transmute(
+    `Field size` = field_size, Races = p6_comma(n_races),
+    Share = p6_fmt_pct(share, 1),
+    Places = dplyr::if_else(n_places == 0L, "win only",
+                            as.character(n_places)),
+    Fraction = dplyr::if_else(is.na(place_fraction), "—",
+                              sprintf("1/%.0f", 1 / place_fraction)),
+    `Paper 5 terms correct` = dplyr::if_else(p5_matches, "yes", "no")
+  ) |>
+  kable(align = "rrrrrl")
+```
+
+`p6_eachway_returns()` computes the return for any $(m, f)$ pair. Given
+paper 5's flat terms it reproduces `build_eachway_value_bets()`'s real-SP and
+fair-book returns to machine precision on every row of the test universe —
+assertion 4 of `scripts/verify_p6_ledger.R` — so the corrected column is a
+generalisation of paper 2b's payout rather than a second implementation of
+it. Assertion 5 checks the corrected terms move exactly the rows the ladder
+marks and no others.
+
+The place market is **not** corrected. The same criticism applies to it — a
+synthetic top-three place market in a five-runner race is not a bet anyone
+can place — but correcting it means redefining the market, not repricing a
+bet, and that is a different change from the one this paper makes. Where it
+matters, it makes the place numbers here optimistic for small fields in a way
+that is common to every arm and so cancels in the contrasts.
+
+## Field size and the frame
+
+Field size throughout is the number of runners **in the modelling frame**
+with a usable price, not the number that went to post. The two differ for the
+handful of races where a runner has no starting price: the training frame
+holds two races whose usable field is three, below the series' four-runner
+floor. They are left in rather than dropped, because dropping them would
+change the race universe the series shares, and at two races out of
+`r p6_comma(n_train_races)` nothing turns on it.

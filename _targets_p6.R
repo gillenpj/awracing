@@ -559,6 +559,54 @@ list(
                        mean_stake, sd_unit_return, max_drawdown)
   ),
 
+  # How many races each declared selection picks BEFORE staking is applied.
+  # Not another combination scored on test: the same declared selection, its
+  # bet set counted, so the paper can say how much of the thinness of a
+  # declared arm is staking rather than selection.
+  tar_target(
+    p6_declared_selection_sizes,
+    p6_declaration_frozen |>
+      dplyr::rowwise() |>
+      dplyr::mutate(
+        n_races_selected = nrow(p6_selections[[selection]]$fn(p6_test_frame))
+      ) |>
+      dplyr::ungroup()
+  ),
+
+  # The share of top-rated horses carrying a positive Kelly edge, by split.
+  # Descriptive: it is why K1 and K2 bet so much more thinly out of sample
+  # than in it, and it selects nothing.
+  tar_target(
+    p6_kelly_edge_share,
+    {
+      one <- function(frame) {
+        top <- p6_top_rated(frame)
+        tibble::tibble(
+          n_races = nrow(top),
+          share_positive_edge =
+            mean(top$win_model > 1 / top$starting_price_decimal),
+          median_p_mod = stats::median(top$win_model),
+          median_ratio = stats::median(top$ratio),
+          median_sp = stats::median(top$starting_price_decimal)
+        )
+      }
+      dplyr::bind_rows(
+        dplyr::mutate(one(p6_train_frame), split = "train", .before = 1),
+        dplyr::mutate(one(p6_test_frame), split = "test", .before = 1)
+      )
+    }
+  ),
+
+  tar_target(
+    p6_universe,
+    tibble::tibble(
+      n_test_races  = dplyr::n_distinct(p6_test_frame$race_id),
+      n_test_rows   = nrow(p6_test_frame),
+      n_train_races = dplyr::n_distinct(p6_train_frame$race_id),
+      n_train_rows  = nrow(p6_train_frame)
+    )
+  ),
+
   # -- Figures -------------------------------------------------------------
   tar_target(p6_fig_cumulative, p6_plot_cumulative_profit(p6_test_ledgers)),
   tar_target(p6_fig_train_vs_test,
@@ -575,5 +623,31 @@ list(
       arms = p6_test_arms
     ),
     format = "file"
+  ),
+
+  # =======================================================================
+  # THE PAPER
+  #
+  # Rendered inside this pipeline, as papers 4 and 5 are. `quiet = FALSE` so
+  # quarto's own error output surfaces instead of a bare "System command
+  # failed". NOT published: `docs/` is untouched by this pipeline and the
+  # site index is not updated.
+  # =======================================================================
+  tar_quarto(
+    paper_6_betting_strategy,
+    path = "papers/06_betting_strategy",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/06_betting_strategy/_01_result.qmd",
+      "papers/06_betting_strategy/_02_method.qmd",
+      "papers/06_betting_strategy/_03_search.qmd",
+      "papers/06_betting_strategy/_04_test.qmd",
+      "papers/06_betting_strategy/_05_discussion.qmd",
+      "papers/06_betting_strategy/_appx_a_settlement.qmd",
+      "papers/06_betting_strategy/_appx_b_software.qmd",
+      "papers/06_betting_strategy/_helpers.R",
+      "papers/06_betting_strategy/references.bib",
+      "papers/06_betting_strategy/_quarto.yml"
+    )
   )
 )

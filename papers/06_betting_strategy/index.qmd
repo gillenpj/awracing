@@ -1,0 +1,93 @@
+---
+title: "Bet selection and staking"
+subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-09"
+abstract: |
+  Papers 1 to 5 changed the model and left the betting rule alone: back the
+  horse whose model win probability clears 0.15 and whose model-to-market
+  ratio clears 1.3, one unit a bet. That rule is Owen's, inherited from a
+  different dataset, and it has never been examined. This paper changes it
+  and nothing else. The model is held fixed at paper 5's encoder — the same
+  predictions paper 5 scored the test split with — while nine selection rules
+  and three staking rules are searched on the 5,022 training races. One rule
+  per bet type was declared by a mechanical rule and frozen before any test
+  contact; the test split was then scored once.
+  Nothing wins. Every declared rule loses money and every interval against
+  the incumbent contains zero. The finding that matters is the control: on
+  the win market, backing the market favourite flat — a rule with no model in
+  it at all — returns
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); r <- targets::tar_read(p6_test_results, store = S); sprintf("%.2f%%", 100 * r$roi[r$arm == "S4/K0 (market-only control)" & r$bet == "win"]) })`
+  against the model rule's
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); r <- targets::tar_read(p6_test_results, store = S); sprintf("%.2f%%", 100 * r$roi[r$arm == "S1/K0 (paper 5 incumbent)" & r$bet == "win"]) })`,
+  its 90% interval excluding zero. The model's contribution to bet selection
+  is not visible on this data. Priced at a zero-margin book the incumbent is
+  roughly break-even, so the whole of its loss is the over-round — which puts
+  a number on how much better a price would have to be, and that number
+  cannot be checked without exchange price history the dataset does not hold.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+
+# Paper 6 reads the paper-6 store. Like papers 4 and 5 and unlike papers 1-3
+# this does NOT call tar_config_set(): that writes the project-root
+# `_targets.yaml`, which papers 1-3's own setup chunks also write, and
+# pointing it at `_targets_p6` would send their next render at the wrong
+# store. Passing `store =` per call leaves `_targets.yaml` untouched.
+P6_ROOT  <- rprojroot::find_root(rprojroot::has_file("awracing.Rproj"))
+P6_STORE <- file.path(P6_ROOT, "_targets_p6")
+
+# Sourced robustly across the cwd tar_quarto() sets (project root) and the
+# one a direct render would set (this folder).
+source(file.path(P6_ROOT, "papers", "06_betting_strategy", "_helpers.R"))
+
+# Every target the section files read is loaded here, centrally, so
+# tar_quarto()'s dependency detection sees them: files pulled in with
+# {{< include >}} are not scanned.
+tar_load(c(p6_search_set_check, p6_ledger_gate, p6_rung3b_scores,
+           p6_price_coverage_train, p6_overround_train,
+           p6_field_sizes_train, p6_field_sizes_test,
+           p6_eachway_terms_decision, p6_threshold_position_train,
+           p6_incumbent_train, p6_thresholds_train, p6_contrast_check,
+           p6_stage1_grid, p6_stage1_contrasts, p6_declaration,
+           p6_declaration_frozen, p6_declared_rules_file,
+           p6_test_arms, p6_test_results, p6_test_contrasts,
+           p6_margin_decomposition, p6_fig_cumulative, p6_fig_train_vs_test,
+           p6_test_report_file, p6_declared_selection_sizes, p6_universe,
+           p6_kelly_edge_share),
+         store = P6_STORE)
+
+n_train_races <- p6_universe$n_train_races
+n_test_races  <- p6_universe$n_test_races
+```
+
+{{< include _01_result.qmd >}}
+
+{{< include _02_method.qmd >}}
+
+{{< include _03_search.qmd >}}
+
+{{< include _04_test.qmd >}}
+
+{{< include _05_discussion.qmd >}}
+
+{{< include _appx_a_settlement.qmd >}}
+
+{{< include _appx_b_software.qmd >}}
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

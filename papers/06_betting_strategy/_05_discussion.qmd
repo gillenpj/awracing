@@ -1,0 +1,121 @@
+# Discussion {#sec-discussion}
+
+```{r}
+#| label: disc-numbers
+#| include: false
+
+d_inc_win <- p6_res(p6_test_results, "incumbent", "win")
+d_mkt_win <- p6_res(p6_test_results, "market-only", "win")
+d_inc_ew5 <- p6_res(p6_test_results, "incumbent", "eachway")
+gap_win <- -d_inc_win$roi
+```
+
+## What this paper found
+
+The betting rule was not the binding constraint either.
+
+Paper 3 concluded that the linear predictor was not what limited the series,
+because a tree ensemble tied it. Paper 5 found the feature encoding was worth
+something on ranking but nothing on ROI. This paper adds the third: the
+selection and staking rule was not it either. Nine selection rules and three
+staking rules, searched on five thousand races, produced three declarations,
+and all three lost to the rule they were declared to beat.
+
+The uncomfortable part is the control. On the win market a rule that reads no
+model output returns `r p6_fmt_pct(d_mkt_win$roi)` against
+`r p6_fmt_pct(d_inc_win$roi)` for the model rule, and the paired contrast
+between the declared rule and the control contains zero. The model's
+contribution to bet selection is not visible on this data. That is consistent
+with paper 4, which asked the same question in a different form — what does
+the model add *given* the price — and found that against the settled starting
+price it adds nothing distinguishable. Two papers, two designs, the same
+answer.
+
+## What it did not find
+
+It did not find that the model is worthless. Papers 2b, 3 and 5 measured
+ranking, and there the encoder is distinguishably better than every earlier
+arm in the series, on nine contrasts with nine intervals excluding zero. A
+model can rank better and still not turn that into a bet, because the bet has
+to beat a price and the price already contains most of what the ranking
+knows.
+
+It did not find that the place result means anything about the model. The
+declared place rule beats the market-only control by
+`r p6_fmt_pts(p6_con(p6_test_contrasts, "place", "market-only")$diff_point)`
+points on an interval excluding zero, and that is the only such interval in
+the paper. It is a statement about a synthetic place market that prices
+favourites hardest, not about model skill: the same rule is
+indistinguishable from the incumbent it was declared to beat.
+
+## Limitations {#sec-limitations}
+
+**The rules were searched on in-sample predictions.** The model was fitted on
+the training races, so its probabilities there are sharper than anything it
+produces out of sample, and every training ROI that reads a model probability
+is inflated (@sec-insample). The ranking the declaration rule read is
+therefore a ranking under contamination, and it plausibly favoured the arms
+that lean hardest on the model's in-sample sharpness — which is exactly the
+class of rule that then bet almost nothing on test. A search set built from
+out-of-fold predictions, or from a nested split inside the training half,
+would be a better search set and is the first change to make if this is taken
+further.
+
+**The model was selected with knowledge of these test races.** The betting
+rule was not — it was declared and committed before any test target existed —
+but five papers of model development have looked at this test split, and the
+encoder that scores it here is the one those five papers arrived at. The
+model side of every number in this paper carries that history. Only the
+betting-rule side is clean.
+
+**The intervals are wide.** The declared win rule stakes
+`r sprintf("%.0f", p6_res(p6_test_results, "^declared", "win")$total_stake)`
+units across `r p6_comma(n_test_races)` races and its interval is
+`r p6_fmt_pct_ci(p6_res(p6_test_results, "^declared", "win")$ci_lo, p6_res(p6_test_results, "^declared", "win")$ci_hi)`.
+No conclusion rests on it, and none should. The comparisons that carry weight
+are the ones on full-universe arms: S1/K0 and S4/K0, both betting a thousand
+races or more.
+
+**Two thousand test races is not many for a betting question.** A rule with a
+true edge of two points would need far more races than this to separate from
+zero at a 90% interval. The right reading of "no interval excludes zero" is
+that this design cannot see an edge of the size worth having, not that no
+such edge exists.
+
+**Every rule loses money.** That is the result, and it is stated without
+qualification: on the test split, at real starting prices, no rule tested in
+this paper returns a profit on any of the three markets.
+
+## Break-even, and what would settle it {#sec-breakeven}
+
+The margin decomposition (@sec-margin) puts a number on the gap. The
+incumbent loses `r p6_fmt_pct(gap_win)` on the win market at the starting
+price and returns `r p6_fmt_pct(d_inc_win$roi_fair)` at a book with the
+over-round taken out. Its each-way ROI at paper 5's terms is
+`r p6_fmt_pct(d_inc_ew5$roi)`, the closest to break-even in the series. So
+the question is not whether the model is a long way from profitable — it is
+whether it is roughly one bookmaker's margin away.
+
+The direction that would answer it is prices better than the starting price.
+The starting price is the settled price, after the market has absorbed
+everything it is going to absorb; paper 4 found the model adds nothing
+against it, but adds substantially against the pre-race racecard forecast
+published the night before. If a price closer to the forecast than to the
+settled price were available at bet time — an exchange price early in the
+market, before liquidity builds — the same selection could face a materially
+smaller margin, and possibly a positive one.
+
+**This dataset cannot settle that.** Smartform holds the overnight forecast
+price and the settled starting price, and nothing in between. There is no
+exchange price history: no series of Betfair prices from market open to the
+off, no record of what was actually available at any moment, and no depth
+alongside it. A rule that looks break-even against a hypothetical fair book
+is not evidence that a real counterparty would have taken the bet at that
+price, in that size.
+
+What it would take is exchange price and volume history for these races,
+timestamped, and a repeat of exactly this design against prices taken at a
+declared time before the off rather than at the off. Until that exists, the
+honest statement is the one the numbers support: the model does not beat the
+settled market, the gap on the best market tested is about the size of the
+over-round, and whether an earlier price closes that gap is untested.

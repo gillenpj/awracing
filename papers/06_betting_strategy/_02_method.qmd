@@ -1,0 +1,154 @@
+# What changes {#sec-method}
+
+The bet selection and staking rule, and nothing else.
+
+The model is paper 5's rung-3b encoder, held fixed. Its test-split
+predictions are the ones paper 5 published; the training-split predictions
+come from one repetition of paper 5's own final fit, using paper 5's
+function, configuration, epoch count and seed, scoring the training matrix
+instead of the test matrix. Training is fully determined by the seed and the
+data and the scored matrix is only read after the last gradient step, so both
+fits train the identical network. The repetition's test scores are asserted
+bit-identical to paper 5's stored ones — the observed difference is
+`r sprintf("%.0f", p6_rung3b_scores$max_abs_test_diff)` — and that assertion
+is what licenses reading its training scores as the same model's.
+
+No feature changes, no objective changes, no hyperparameter changes, and the
+races are the same races.
+
+## Three things wrong with the incumbent rule
+
+Owen's rule [@owen2019], carried unchanged through papers 1 to 5, backs a
+horse when its model win probability exceeds 0.15 and its ratio of model to
+market probability exceeds 1.3. Papers 2a onwards back the single highest
+model probability among the qualifiers. Three properties of that rule are
+worth testing.
+
+**Flat staking discards the size of the disagreement.** A horse the model
+makes a 40% chance at a price implying 20% and a horse it makes 16% at a
+price implying 15% attract the same one unit. If the model has any
+information the first is worth more than the second, and a flat stake throws
+that away. Two staking rules are tried against it: one proportional to the
+probability difference, one a quarter-Kelly fraction [@kelly1956;
+@maclean2011].
+
+**The thresholds are inherited, not derived.** 0.15 and 1.3 come from Owen's
+turf dataset. On this training split they sit at the
+`r sprintf("%.0f", 100 * p6_threshold_position_train$s1_position$quantile_of_top_rated[1])`th
+and
+`r sprintf("%.0f", 100 * p6_threshold_position_train$s1_position$quantile_of_top_rated[2])`th
+percentiles of the distributions they filter, taken over the model's
+top-rated horse in each race (@sec-thresholds). Nothing about this dataset
+put them there. Every threshold this paper searches is instead a **quantile**
+of the training-split distribution of the quantity filtered on, so a declared
+rule selects the same fraction of races on test rather than the same absolute
+cut. S1 is the exception and keeps its published absolute form: it is the
+incumbent being tested, not a candidate being tuned.
+
+**The ratio filter selects for disagreement.** A model-to-market ratio above
+1.3 means the model and the settled market disagree, sharply, about a horse.
+Paper 4 asked directly what the model adds *given* the price and found that
+against the settled starting price it adds nothing distinguishable — pooled
+`b_mod` of 0.068 and 0.039, intervals reaching no higher than 0.204. If that
+is right, then races where the two disagree are mostly races where the model
+is wrong, and a filter that selects them is selecting for the model's own
+errors. Three candidate rules invert the filter, keeping the top-rated horse
+only when its ratio sits in a **middle** band rather than a high one, and
+three more replace the ratio with a price cut.
+
+## The ledger
+
+Papers 1 to 5 wired the rule into the backtest: the functions that computed
+ROI also decided which horse to back and how much. No other rule could be
+priced on the same footing, which is one reason the rule was never examined.
+
+Paper 6 replaces that with one function. Given per-runner model
+probabilities, starting prices, finishing positions and field sizes, plus a
+selection rule and a staking rule as arguments, it returns one row per bet
+with the race, the runner, the stake, the return and the profit. Nothing is
+hard-coded.
+
+Settlement is not re-derived. Place and each-way bets settle through paper
+2b's own payout functions, called unchanged: the place price is the pure
+Harville [@harville1973] top-three probability of the raw starting-price
+book, so it carries the real margin, and the each-way place leg pays a
+fraction of the starting price on a placed finish. The one addition is a
+second each-way payout under corrected place terms (@sec-terms), and that
+function is asserted equal to paper 2b's when given paper 2b's terms rather
+than trusted to agree.
+
+The first thing the ledger does is rebuild paper 5's published test backtest.
+
+```{r}
+#| label: tbl-gate
+#| tbl-cap: "The reproduction gate. Paper 5's encoder rows, rebuilt through the paper-6 ledger under S1/K0 and paper 5's each-way terms."
+p6_ledger_gate |>
+  dplyr::transmute(
+    Bet = dplyr::recode(bet, win = "win", place = "place",
+                        eachway = "each-way"),
+    `Bets (p6)` = n_bets_p6, `Bets (p5)` = n_bets_p5,
+    `Wins (p6)` = n_wins_p6, `Wins (p5)` = n_wins_p5,
+    `Profit (p6)` = sprintf("%.2f", profit_p6),
+    `Profit (p5)` = sprintf("%.2f", profit_p5),
+    `ROI difference` = sprintf("%.1e", d_roi)
+  ) |>
+  kable(align = "lrrrrrrr")
+```
+
+Every column agrees exactly. The gate is a standing script,
+`scripts/verify_p6_ledger.R`, and a target on the pipeline graph, so a later
+change to the ledger that moved any of these numbers fails rather than
+quietly reprices the comparator.
+
+## The candidates
+
+Nine selection rules and three staking rules, twenty-seven combinations,
+scored for each of win, place and each-way.
+
+| | Selection |
+|---|---|
+| S0 | the model's top-rated horse, every race, no filter |
+| S1 | Owen's rule: $P_{\text{mod}} > 0.15$ and $P_{\text{mod}}/P_{\text{mkt}} > 1.3$, back the highest $P_{\text{mod}}$ (the incumbent, in its published absolute form) |
+| S2a/b/c | the top-rated horse where its ratio falls in a middle band: $[q_{25}, q_{75}]$, $[q_{30}, q_{60}]$, $[q_{40}, q_{70}]$ |
+| S3a/b/c | the top-rated horse where its starting price is at or below the $q_{25}$, $q_{50}$, $q_{75}$ cut |
+| S4 | the market favourite, every race, no model input |
+
+| | Staking, per leg |
+|---|---|
+| K0 | flat, one unit |
+| K1 | $(P_{\text{mod}} - P_{\text{mkt}})/0.05$, capped at three units |
+| K2 | quarter-Kelly at $P_{\text{mod}}$ against the starting price, divided by 0.05, capped at three units |
+
+Both staking constants are round numbers fixed in advance: a five-point
+probability edge stakes one unit under K1, and a quarter-Kelly fraction of
+five per cent of bankroll stakes one unit under K2. ROI is invariant to that
+scale except through the cap, so the constants matter only in where the cap
+bites. Both rules read the selected runner's win-side quantities whatever the
+bet type being settled, so staking is one rule across the three markets
+rather than three.
+
+Paper 5's rung-1 lesson — an arm differing from its comparator in two
+respects at once cannot test what the contrast exists to test — is enforced
+in code rather than by inspection. Before anything is scored,
+`p6_assert_one_difference()` checks every pair the paper reads: a selection
+swap at fixed staking, or a staking swap at fixed selection. All
+`r nrow(p6_contrast_check)` pass.
+
+## The declaration {#sec-declaration}
+
+For each bet type independently, and with no judgement at any step:
+
+1. Take the candidate with the highest training-split ROI at the real
+   starting price.
+2. Paired race-level bootstrap of its ROI difference against S1/K0 on their
+   common races, B = 2000, seed 42.
+3. Declare that candidate only if the point difference exceeds one bootstrap
+   standard error of the difference. Otherwise declare S1/K0.
+4. Ties on ROI to four decimal places prefer the lower-numbered selection
+   arm, then K0 over K1 over K2.
+
+The three rules and the training-split numbers that produced them were
+written to `papers/06_betting_strategy/DECLARED_RULES.md` and committed
+before any test target existed. The pipeline re-reads that file from disk on
+every build and matches it against the declaration target, so neither can
+drift from the other.
