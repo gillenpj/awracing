@@ -38,17 +38,17 @@ and not to a bundle of them.
 | rung | the one change | comparator |
 |---|---|---|
 | 1 | linear scorer → multi-layer perceptron, identical features | paper 2b's linear predictor |
-| 2 | three strike rates → learned entity representations | rung 1 |
+| 2 | three strike rates → embeddings for trainer, jockey and sire | rung 1 |
 | 3 | eight history summaries → sequence encoder | rung 1 |
 
 The difference between two models is stated and asserted in code before
 either is fitted, rather than left to prose.
 
-Two further rungs were specified and not run. Adding entity representations
+Two further rungs were specified and not run. Adding embeddings
 **alongside** the strike rates rather than in place of them would only test
-whether they help where the strike rate is already most reliable, since a
-representation can only be learned for entities that appear often enough in
-the fitting data. A Deep Sets encoder over today's field — a summary of the
+whether they help where the strike rate is already most reliable, since an
+embedding can only be learned for entities that appear often enough in the
+fitting data. A Deep Sets encoder over today's field — a summary of the
 other runners rather than of the horse's own past — would be fitted at race
 grain: `r p5_comma(n_train_races)` races against `r p5_comma(n_train_rows)`
 runner-rows, an order of magnitude less data than every other rung, and a
@@ -67,11 +67,11 @@ model — the parameters kept are those from the best validation epoch.
 
 ## The two models that reach the test split
 
-The hand-built model scores 26 features. The encoder model scores 19 of them
-plus the sequence encoder's output, the difference being the eight history
-summaries of @sec-data replaced by the encoder, and `career_runs_prior`
-added alongside it. The downstream scorer, the objective, the races, the
-validation slice and the seed are identical.
+The hand-built model scores 26 features. The encoder model scores 18 of
+those 26 — the eight history summaries of @sec-data are the ones removed —
+plus `career_runs_prior` and the sequence encoder's output. The downstream
+scorer, the objective, the races, the validation slice and the seed are
+identical.
 
 Both are refitted on the **full** training split — the validation slice
 folded back in — at the configuration the slice selected, then score the

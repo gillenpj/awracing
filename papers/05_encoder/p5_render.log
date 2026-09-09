@@ -1890,3 +1890,603 @@ Warning message:
 
 package 'torch' was built under R version 4.6.1 
 
+=== four-fix render 2026-09-09 09:38:29 ===
+- The project is out-of-sync -- use `renv::status()` for details.
++ paper_5_encoder dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/51                        
+
+
+2/51 [setup]                
+
+
+3/51                        
+
+
+4/51 [example-setup]        
+
+
+5/51                        
+
+
+6/51 [tbl-example-form]     
+
+
+7/51                        
+
+
+8/51 [tbl-headline]         
+
+
+9/51                        
+
+
+10/51 [tbl-identity]         
+
+
+11/51                        
+
+
+12/51 [tbl-seqlen]           
+
+
+13/51                        
+
+
+14/51 [tbl-run-values]       
+
+
+15/51                        
+
+
+16/51 [tbl-rung1]            
+
+
+17/51                        
+
+
+18/51 [tbl-budget-decomp]    
+
+
+19/51                        
+
+
+20/51 [tbl-rung2]            
+
+
+21/51                        
+
+
+22/51 [tbl-vocab]            
+
+
+23/51                        
+
+
+24/51 [tbl-rung3b-grid]      
+
+
+25/51                        
+
+
+26/51 [tbl-rung3b]           
+
+
+27/51                        
+
+
+28/51 [tbl-ladder]           
+
+
+29/51                        
+
+
+30/51 [tbl-test-enc-hand]    
+
+
+31/51                        
+
+
+32/51 [tbl-test-enc-p3]      
+
+
+33/51                        
+
+
+34/51 [tbl-test-hand-p3]     
+
+
+35/51                        
+
+
+36/51 [tbl-backtest]         
+
+
+37/51                        
+
+
+38/51 [tbl-roi-ci]           
+
+
+39/51                        
+
+
+40/51 [tbl-seqlen-sens]      
+
+
+41/51                        
+
+
+42/51 [tbl-recovery]         
+
+
+43/51                        
+
+
+44/51 [tbl-two-optim]        
+
+
+45/51                        
+
+
+46/51 [tbl-beaten-thresholds]
+
+
+47/51                        
+
+
+48/51 [tbl-beaten-racetype]  
+
+
+49/51                        
+
+
+50/51 [tbl-versions]         
+
+
+51/51                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    The models in this series score a horse on 26 features. Eight of them
+
+    describe the horse's own run history, and papers 1 to 3 gave those eight
+
+    as hand-built summaries: last time out's finishing position if it was in
+
+    the first four, the position two runs back on the same rule, whether the
+
+    horse had ever won, and a small going-affinity block. This paper replaces
+
+    those eight with a gated recurrent encoder that reads the horse's twenty
+
+    most recent prior runs directly, eight values a run, with the raw
+
+    finishing position rather than a top-four code. The other eighteen
+
+    features — official rating, weight, age, sex, headgear, draw, course,
+
+    going, the layoff since the last run, and the trainer, jockey and sire
+
+    strike rates — are unchanged, as are the races, the depth-three
+
+    Plackett–Luce likelihood and the downstream scorer. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built features on every
+
+    ranking measure, every interval excluding zero, and beats paper 3's
+
+    gradient-boosted trees by more; Section 1 gives the figures. Three models
+
+    now separate cleanly on a test split where papers 1 to 3 could not be told
+
+    apart. Two further findings: a multi-layer perceptron on identical
+
+    features beat a linear scorer, which paper 3's conclusion about function
+
+    class did not anticipate; and embeddings — a short list of numbers the
+
+    model learns for each trainer, jockey and sire — lost to the strike rates
+
+    they replaced, both intervals excluding zero. The market still ranks better than any of these models.
+
+    The single-bet win backtest improves to
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); b <- targets::tar_read(p5_test_backtests, store = S); sprintf("%.1f%%", 100 * b$roi[b$arm == "rung3b" & b$bet == "win"]) })`,
+
+    the best in the series, but the difference from paper 3 cannot be
+
+    distinguished from zero.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/51                        
+
+
+2/51 [setup]                
+
+
+3/51                        
+
+
+4/51 [example-setup]        
+
+
+5/51                        
+
+
+6/51 [tbl-example-form]     
+
+
+7/51                        
+
+
+8/51 [tbl-headline]         
+
+
+9/51                        
+
+
+10/51 [tbl-identity]         
+
+
+11/51                        
+
+
+12/51 [tbl-seqlen]           
+
+
+13/51                        
+
+
+14/51 [tbl-run-values]       
+
+
+15/51                        
+
+
+16/51 [tbl-rung1]            
+
+
+17/51                        
+
+
+18/51 [tbl-budget-decomp]    
+
+
+19/51                        
+
+
+20/51 [tbl-rung2]            
+
+
+21/51                        
+
+
+22/51 [tbl-vocab]            
+
+
+23/51                        
+
+
+24/51 [tbl-rung3b-grid]      
+
+
+25/51                        
+
+
+26/51 [tbl-rung3b]           
+
+
+27/51                        
+
+
+28/51 [tbl-ladder]           
+
+
+29/51                        
+
+
+30/51 [tbl-test-enc-hand]    
+
+
+31/51                        
+
+
+32/51 [tbl-test-enc-p3]      
+
+
+33/51                        
+
+
+34/51 [tbl-test-hand-p3]     
+
+
+35/51                        
+
+
+36/51 [tbl-backtest]         
+
+
+37/51                        
+
+
+38/51 [tbl-roi-ci]           
+
+
+39/51                        
+
+
+40/51 [tbl-seqlen-sens]      
+
+
+41/51                        
+
+
+42/51 [tbl-recovery]         
+
+
+43/51                        
+
+
+44/51 [tbl-two-optim]        
+
+
+45/51                        
+
+
+46/51 [tbl-beaten-thresholds]
+
+
+47/51                        
+
+
+48/51 [tbl-beaten-racetype]  
+
+
+49/51                        
+
+
+50/51 [tbl-versions]         
+
+
+51/51                        
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: Sequence encoding of run histories
+
+  subtitle: Paper 5 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-08'
+
+  abstract: |
+
+    The models in this series score a horse on 26 features. Eight of them
+
+    describe the horse's own run history, and papers 1 to 3 gave those eight
+
+    as hand-built summaries: last time out's finishing position if it was in
+
+    the first four, the position two runs back on the same rule, whether the
+
+    horse had ever won, and a small going-affinity block. This paper replaces
+
+    those eight with a gated recurrent encoder that reads the horse's twenty
+
+    most recent prior runs directly, eight values a run, with the raw
+
+    finishing position rather than a top-four code. The other eighteen
+
+    features — official rating, weight, age, sex, headgear, draw, course,
+
+    going, the layoff since the last run, and the trainer, jockey and sire
+
+    strike rates — are unchanged, as are the races, the depth-three
+
+    Plackett–Luce likelihood and the downstream scorer. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); u <- targets::tar_read(p5_test_race_universe, store = S); format(u$n_races[u$source == "common"], big.mark = ",") })`
+
+    held-out test races the encoder beats the hand-built features on every
+
+    ranking measure, every interval excluding zero, and beats paper 3's
+
+    gradient-boosted trees by more; Section 1 gives the figures. Three models
+
+    now separate cleanly on a test split where papers 1 to 3 could not be told
+
+    apart. Two further findings: a multi-layer perceptron on identical
+
+    features beat a linear scorer, which paper 3's conclusion about function
+
+    class did not anticipate; and embeddings — a short list of numbers the
+
+    model learns for each trainer, jockey and sire — lost to the strike rates
+
+    they replaced, both intervals excluding zero. The market still ranks better than any of these models.
+
+    The single-bet win backtest improves to
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p5"); b <- targets::tar_read(p5_test_backtests, store = S); sprintf("%.1f%%", 100 * b$roi[b$arm == "rung3b" & b$bet == "win"]) })`,
+
+    the best in the series, but the difference from paper 3 cannot be
+
+    distinguished from zero.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_5_encoder completed [46.1s, 2.29 MB]
+
+✔ ended pipeline [59s, 1 completed, 134 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+

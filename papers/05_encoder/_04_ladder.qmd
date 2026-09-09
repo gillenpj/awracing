@@ -61,31 +61,36 @@ contrast was scored on the test split while this one is on a validation
 slice, and paper 3's trees route missing values natively where this model
 imputes them. Neither changes the direction of the finding.
 
-## Rung 2: learned representations for trainer, jockey and sire
+## Rung 2: embeddings for trainer, jockey and sire
 
 An embedding is a short list of numbers the model learns for each trainer,
 jockey and sire, used in place of a single strike rate. Because the model
 fits those numbers itself, they can carry more than a win rate can — the
 supplementary note accompanying this paper gives the construction.
 
+They do not update. Each trainer gets one vector, learned during fitting and
+fixed thereafter. A strike rate is recomputed before every race from the
+archive, so it tracks a trainer improving or declining across the period;
+an embedding cannot.
+
 Rung 2 makes the swap. The three strike rates `trainerSR`, `jockeySR` and
-`sireSR` come out, leaving 23 features, and a four-number representation of
-the trainer, of the jockey and of the sire goes in. Those representations
-are learned only from the fitting rows, and an entity with fewer than twenty
+`sireSR` come out, leaving 23 features, and a four-number embedding of the
+trainer, of the jockey and of the sire goes in. The embeddings are learned
+only from the fitting rows, and an entity with fewer than twenty
 runs there is pooled into a shared bucket rather than given its own.
 
 ```{r}
 #| label: tbl-rung2
-#| tbl-cap: "Learned representations against the strike rates they replaced, validation slice."
+#| tbl-cap: "Embeddings against the strike rates they replaced, validation slice."
 p5_rung2_vs_rung1 |>
-  p5_contrast_table("Representations", "Strike rates") |>
+  p5_contrast_table("Embeddings", "Strike rates") |>
   kable(align = "lrrrrl")
 ```
 
-Both intervals exclude zero, against the representations. The swap costs
+Both intervals exclude zero, against the embeddings. The swap costs
 `r fmt_gain(cost_embeddings)` per race on validation loss, and the
 separation is complete: the best of the nine configurations with
-representations, `r fmt_loss(min(p5_rung2_scores$best_val_pl_loss))`, is
+embeddings, `r fmt_loss(min(p5_rung2_scores$best_val_pl_loss))`, is
 worse than the worst of the nine with strike rates,
 `r fmt_loss(max(p5_mlp_scores_v4$best_val_pl_loss))`. The reading was fixed
 before the fit and it fired as *worse — report and stop, do not remediate*.
@@ -98,19 +103,19 @@ latest meeting date before this race, computed over the whole 1.72M-row
 archive. It updates after every race the trainer has, and it is defined for
 trainers the model has never been fitted on.
 
-A learned representation is neither. It is one fixed vector per entity,
+An embedding is neither. It is one fixed vector per entity,
 learned only from the
 `r p5_comma(nrow(p5_arm_data$fit$key))` in-scope fitting rows, and it exists
 only for entities that appear there often enough to be worth one.
 
 ```{r}
 #| label: tbl-vocab
-#| tbl-cap: "Which entities got their own representation, frozen on the fitting partition."
+#| tbl-cap: "Which entities got their own embedding, frozen on the fitting partition."
 p5_entity_indices$summary |>
   dplyr::transmute(
     Entity = entity,
     `Distinct in fitting` = p5_comma(n_distinct_fit),
-    `Given a representation` = p5_comma(vocab_size),
+    `Given an embedding` = p5_comma(vocab_size),
     `% fitting rows pooled` = pct_fit_bucket,
     `% validation rows pooled` = pct_val_bucket,
     `% validation rows unseen` = pct_val_unseen
@@ -124,7 +129,7 @@ fitting rows, and on those rows the model reads a generic vector where the
 strike rate it replaced was a real number — `trainerSR`, `jockeySR` and
 `sireSR` are missing on no row of either partition.
 
-Stated generally: **a learned representation loses to a hand-built feature
+Stated generally: **an embedding loses to a hand-built feature
 when the hand-built feature is computed from a wider information set than
 the model can be fitted on.**
 

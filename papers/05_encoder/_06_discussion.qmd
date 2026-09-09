@@ -71,8 +71,9 @@ re-encoding of the features it replaced.
 
 # Conclusion {#sec-conclusion}
 
-Replacing hand-built summaries of a horse's recent form with a sequence
-encoder that reads the runs themselves improves ranking on held-out data,
+Replacing eight of the model's 26 features — the hand-built summaries of a
+horse's own run history — with a sequence encoder that reads the runs
+themselves improves ranking on held-out data,
 by margins whose intervals exclude zero on every measure tested, and by more
 than the switch from trees to a neural scorer buys. After four papers in
 which no model could be distinguished from another on this test split, three
@@ -81,10 +82,10 @@ now order strictly.
 Two other things were found along the way. A multi-layer perceptron beat a
 linear scorer on identical features, which paper 3's conclusion about
 function class did not anticipate and which that paper's evidence did not
-cover. And learned entity representations lost to the strike rates they
+cover. And embeddings for trainer, jockey and sire lost to the strike rates they
 replaced, cleanly and without remediation, because a hand-built feature
 computed from a wider information set than the model can be fitted on is a
-hard thing for a learned representation to beat.
+hard thing for an embedding to beat.
 
 Two limitations bound the result. `or_relative` — the horse's official
 rating relative to its race — stays in both models, and an official rating

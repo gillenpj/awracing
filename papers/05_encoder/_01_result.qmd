@@ -42,24 +42,26 @@ ex_tbl <- tibble::tibble(
 ex_name <- ex$name
 ```
 
-## What changed
+The models in this series score a horse on 26 features. Most of them
+describe the horse and the race rather than its recent form: the official
+rating, the weight carried, age, sex, headgear, the draw, the course,
+today's going, the days since the horse last ran, and strike rates for the
+trainer, the jockey and the sire. Eight of the 26 describe the horse's own
+run history, and those eight are the only ones this paper changes.
 
-Every model in this series has been given a horse's recent form as eight
-hand-built features. Four of the eight are position lags: last time out's
-finishing position, recorded only if the horse finished in the first four
-and zero otherwise, with a companion indicator for the zero case, and the
-same pair for the run before that. Alongside them sit an ever-won flag and
-three going-affinity terms.
+Four of the eight are position lags: last time out's finishing position,
+recorded only if the horse finished in the first four and zero otherwise,
+with a companion indicator for the zero case, and the same pair for the run
+before that. The other four are an ever-won flag and three going-affinity
+terms.
 
-This paper removes those eight features and gives the model the runs
-themselves. A gated recurrent encoder reads up to the twenty most recent
-prior runs, cross-surface, with eight values describing each run: the
-**raw** finishing position, how far the horse was beaten, the going, the
-class, the field size, the race distance, and the gap to the run before.
-Everything downstream is unchanged — the same races, the same likelihood,
-the same scorer.
-
-## What one horse looks like to each model
+This paper replaces those eight with the runs themselves. A gated recurrent
+encoder reads up to the twenty most recent prior runs, cross-surface, with
+eight values describing each run: the **raw** finishing position, how far
+the horse was beaten and whether that reading exists, the going, the class,
+the field size, the race distance, and the gap to the run before. The other
+eighteen features stay in both models, as do the races, the likelihood and
+the scorer.
 
 Take `r ex_name`, running at
 `r format(p5_frame$race_date[p5_frame$race_id == ex$race_id & p5_frame$runner_id == ex$runner_id][1], "%d %B %Y")`
@@ -94,9 +96,7 @@ The rest of the table — the six earlier runs, the beaten distances, the
 class and distance of each race, the `r ex_tbl[["Days since previous"]][3]`-day
 gap before the third-last run — is not in paper 3's feature set at all.
 
-## What happened
-
-Both models use the same MLP scorer and differ only in how the horse's
+Both models use the same MLP scorer and differ only in how the horse's run
 history reaches it: the eight hand-built summary features in one, the
 encoder in the other. Both were fixed before any test race was scored. On
 `r p5_comma(n_test_races)` held-out test races:
@@ -125,10 +125,8 @@ paper 2b contained zero, and the only contrast in that paper whose interval
 excluded zero was the market beating both models. Three models now separate
 cleanly.
 
-## What did not change
-
-**The market still ranks better than any of them.** The encoder reaches
-P1_rank
+Three things did not change. **The market still ranks better than any of
+them.** The encoder reaches P1_rank
 `r fmt_metric(p5_ct(p5_test_contrasts, "P1_rank", "rung 3b.*rung 1")$point_a)`
 and Brier_place
 `r fmt_metric(p5_ct(p5_test_contrasts, "Brier_place", "rung 3b.*rung 1")$point_a)`
