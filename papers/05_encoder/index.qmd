@@ -2,7 +2,7 @@
 title: "Sequence encoding of run histories"
 subtitle: "Paper 5 in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: "2026-09-08"
+date: "2026-09-09"
 abstract: |
   The models in this series score a horse on 26 features. Eight of them
   describe the horse's own run history, and papers 1 to 3 gave those eight
