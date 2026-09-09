@@ -49,7 +49,7 @@ Replaces the eight hand-built features summarising a horse's own run history
 with a recurrent encoder reading its twenty most recent runs directly. Beats
 those features on every ranking measure on the held-out test split, and three
 models separate cleanly where papers 1–3 could not be told apart. The market
-still ranks ahead, and no betting return improves distinguishably.
+still ranks ahead.
 [Read online](https://gillenpj.github.io/awracing/paper5/) | [PDF](https://gillenpj.github.io/awracing/paper5/index.pdf)
 | [Supplementary: notes on neural scorers and sequence encoders](https://gillenpj.github.io/awracing/paper5/notes-on-neural-scorers.pdf)
 
