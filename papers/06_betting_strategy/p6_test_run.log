@@ -1,0 +1,35 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_declaration_frozen dispatched
+
+✔ p6_declaration_frozen completed [20ms, 196 B]
+
++ p6_test_arms dispatched
+
+✔ p6_test_arms completed [0ms, 303 B]
+
++ p6_test_ledgers dispatched
+
+✔ p6_test_ledgers completed [1.4s, 277.87 kB]
+
++ p6_test_results dispatched
+
+✔ p6_test_results completed [6.3s, 1.45 kB]
+
++ p6_test_contrasts dispatched
+
+✔ p6_test_contrasts completed [3.4s, 607 B]
+
++ p6_margin_decomposition dispatched
+
+✔ p6_margin_decomposition completed [10ms, 933 B]
+
++ p6_test_report_file dispatched
+
+✔ p6_test_report_file completed [90ms, 5.34 kB]
+
+✔ ended pipeline [19.7s, 7 completed, 39 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+

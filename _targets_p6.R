@@ -50,6 +50,8 @@ tar_source("R/p6_rules.R")
 tar_source("R/p6_predictions.R")
 tar_source("R/p6_reports.R")
 tar_source("R/p6_declaration.R")
+tar_source("R/p6_test_report.R")
+tar_source("R/p6_plots.R")
 
 # Read-only reuse. Paper 6 adds no variant of any of these: the settlement is
 # paper 2b's, the market probability construction paper 1's, the encoder fit
@@ -411,6 +413,166 @@ list(
       terms_decision = p6_eachway_terms_decision,
       gate = p6_ledger_gate,
       search_set = p6_search_set_check
+    ),
+    format = "file"
+  ),
+
+  # =======================================================================
+  # STAGE 2 — the test split, scored once
+  #
+  # FIVE rules reach the test split and no others: the three declared in
+  # `DECLARED_RULES.md`, S1/K0 (paper 5's incumbent, the comparator for
+  # every headline number) and S4/K0 (the market-only control). The
+  # declaration file is committed before any target below exists, and
+  # `p6_declaration_frozen` re-reads it from disk and matches it against the
+  # declaration target, so a later change to either is caught rather than
+  # absorbed.
+  # =======================================================================
+
+  tar_target(
+    p6_declaration_frozen,
+    {
+      txt <- readLines(p6_declared_rules_file, warn = FALSE)
+      # Section 1's table only: later sections carry a `bet` column too, and
+      # matching across the whole file would pick up the gate table as well.
+      from <- grep("^## 1[.] The declaration", txt)
+      to   <- grep("^## 2[.] ", txt)
+      stopifnot(length(from) == 1L, length(to) == 1L, to > from)
+      txt <- txt[seq(from, to)]
+      row <- function(bet) {
+        pat <- switch(
+          bet,
+          win = "^[|] win [|]",
+          place = "^[|] place [|]",
+          eachway_corrected = "^[|] each-way [(]corrected terms[)] [|]"
+        )
+        line <- grep(pat, txt, value = TRUE)
+        stopifnot(length(line) == 1L)
+        cells <- trimws(strsplit(line, "|", fixed = TRUE)[[1]])
+        cells <- cells[nzchar(cells)]
+        tibble::tibble(bet = bet, selection = cells[2], staking = cells[3])
+      }
+      from_file <- purrr::map(p6_declared_bets, row) |> purrr::list_rbind()
+      from_target <- p6_declaration |> dplyr::select(bet, selection, staking)
+      stopifnot(identical(as.data.frame(from_file), as.data.frame(from_target)))
+      from_file
+    }
+  ),
+
+  # The entire test contact, enumerated. Anything not on this list is not
+  # scored on test.
+  tar_target(
+    p6_test_arms,
+    {
+      declared <- p6_declaration_frozen |>
+        dplyr::mutate(arm = paste0("declared (", selection, "/", staking, ")"))
+      dplyr::bind_rows(
+        declared,
+        tidyr::expand_grid(bet = p6_declared_bets, selection = "S1",
+                           staking = "K0") |>
+          dplyr::mutate(arm = "S1/K0 (paper 5 incumbent)"),
+        tidyr::expand_grid(bet = p6_declared_bets, selection = "S4",
+                           staking = "K0") |>
+          dplyr::mutate(arm = "S4/K0 (market-only control)")
+      )
+    }
+  ),
+
+  # The four settlement columns are reported for every arm: the each-way
+  # rules are declared on the corrected terms and read on both.
+  tar_target(
+    p6_test_ledgers,
+    {
+      bet_for <- function(b) if (b == "eachway_corrected")
+        c("eachway", "eachway_corrected") else b
+      rows <- p6_test_arms |>
+        dplyr::mutate(id = dplyr::row_number()) |>
+        dplyr::rowwise() |>
+        dplyr::mutate(cols = list(bet_for(bet))) |>
+        dplyr::ungroup() |>
+        tidyr::unnest(cols)
+      out <- list()
+      for (i in seq_len(nrow(rows))) {
+        r <- rows[i, ]
+        key <- paste(r$arm, r$cols, sep = "|")
+        out[[key]] <- p6_ledger(p6_test_frame, p6_test_settle,
+                                p6_selections[[r$selection]]$fn,
+                                p6_stakings[[r$staking]]$fn, r$cols)
+      }
+      out
+    }
+  ),
+
+  tar_target(
+    p6_test_results,
+    {
+      races <- sort(unique(p6_test_frame$race_id))
+      purrr::imap(p6_test_ledgers, function(led, key) {
+        parts <- strsplit(key, "|", fixed = TRUE)[[1]]
+        s <- p6_summarise_ledger(led)
+        bs <- p6_bootstrap_roi(led, races, n_boot = 2000L, seed = 42L)
+        dplyr::mutate(s, arm = parts[1], bet = parts[2],
+                      ci_lo = bs$ci_lo, ci_hi = bs$ci_hi, .before = 1)
+      }) |> purrr::list_rbind()
+    }
+  ),
+
+  # Paired bootstraps on common races: declared against the incumbent, and
+  # declared against the market-only control. The second is the paper's
+  # central result.
+  tar_target(
+    p6_test_contrasts,
+    {
+      arms <- p6_test_arms
+      declared <- arms |> dplyr::filter(grepl("^declared", arm))
+      cols <- c(win = "win", place = "place",
+                eachway = "eachway", eachway_corrected = "eachway_corrected")
+      pairs <- tidyr::expand_grid(
+        bet_col = names(cols),
+        against = c("S1/K0 (paper 5 incumbent)", "S4/K0 (market-only control)")
+      )
+      purrr::pmap(pairs, function(bet_col, against) {
+        dkey <- declared$arm[declared$bet ==
+                               (if (grepl("^eachway", bet_col))
+                                 "eachway_corrected" else bet_col)]
+        a <- p6_test_ledgers[[paste(dkey, bet_col, sep = "|")]]
+        b <- p6_test_ledgers[[paste(against, bet_col, sep = "|")]]
+        races <- intersect(unique(a$race_id), unique(b$race_id))
+        dplyr::mutate(
+          p6_paired_roi_se(p6_units(a), p6_units(b), races,
+                           n_boot = 2000L, seed = 42L),
+          bet = bet_col, declared = dkey, against = against, .before = 1
+        )
+      }) |> purrr::list_rbind()
+    }
+  ),
+
+  # The margin decomposition, made explicit: what each arm returns at the
+  # real starting price, at a zero-margin fair book, and the gap between
+  # them — the margin that arm pays. A rule that improves ROI by betting
+  # shorter prices has reduced the margin it pays, not demonstrated skill.
+  tar_target(
+    p6_margin_decomposition,
+    p6_test_results |>
+      dplyr::transmute(arm, bet, n_bets, roi, roi_fair,
+                       margin_paid = roi_fair - roi,
+                       mean_stake, sd_unit_return, max_drawdown)
+  ),
+
+  # -- Figures -------------------------------------------------------------
+  tar_target(p6_fig_cumulative, p6_plot_cumulative_profit(p6_test_ledgers)),
+  tar_target(p6_fig_train_vs_test,
+             p6_plot_train_vs_test(p6_stage1_grid, p6_test_results, "win")),
+
+  tar_target(
+    p6_test_report_file,
+    p6_write_test_report(
+      path = "papers/06_betting_strategy/P6_TEST_REPORT.md",
+      results = p6_test_results,
+      contrasts = p6_test_contrasts,
+      margins = p6_margin_decomposition,
+      declaration = p6_declaration_frozen,
+      arms = p6_test_arms
     ),
     format = "file"
   )
