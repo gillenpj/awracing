@@ -1,1 +1,245 @@
-# stub
+# What changes {#sec-method}
+
+The bet selection and staking rule, and nothing else. The model is paper 5's
+rung-3b encoder, held fixed. Paper 6 fits nothing and refits nothing: both
+prediction sets are paper 5's own stored targets.
+
+No feature changes, no objective changes, no hyperparameter changes, and the
+races are the same races.
+
+## Three things wrong with the incumbent rule
+
+Owen's rule [@owen2019], carried unchanged through papers 1 to 5, backs a
+horse when its model win probability exceeds 0.15 and its ratio of model to
+market probability exceeds 1.3. Papers 2a onwards back the single highest
+model probability among the qualifiers. Three properties of that rule are
+worth testing.
+
+**Flat staking discards the size of the disagreement.** A horse the model
+makes a 40% chance at a price implying 20% and a horse it makes 16% at a
+price implying 15% attract the same one unit. If the model has any
+information the first is worth more than the second, and a flat stake throws
+that away. Two staking rules are tried against it: one proportional to the
+probability difference, one a quarter-Kelly fraction [@kelly1956;
+@maclean2011].
+
+**The thresholds are inherited, not derived.** 0.15 and 1.3 come from Owen's
+turf dataset. On the search set they sit at the
+`r sprintf("%.0f", 100 * p6_positions$s1_position$quantile_of_top_rated[1])`th
+and
+`r sprintf("%.0f", 100 * p6_positions$s1_position$quantile_of_top_rated[2])`th
+percentiles of the distributions they filter (@sec-thresholds). Nothing about
+this dataset put them there. Every threshold this paper searches is instead a
+**quantile** of the within-split distribution of the quantity filtered on, for
+the reason given in @sec-twofits.
+
+**The ratio filter selects for disagreement.** A model-to-market ratio above
+1.3 means the model and the settled market disagree, sharply, about a horse.
+Paper 4 asked directly what the model adds *given* the price, and found that
+against the settled starting price it adds nothing distinguishable — pooled
+`b_mod` of 0.068 and 0.039, intervals reaching no higher than 0.204. If that
+is right, races where the two disagree are mostly races where the model is
+wrong, and a filter that selects them is selecting for the model's own
+errors. Three candidate rules invert the filter, keeping the top-rated horse
+only when its ratio sits in a **middle** band rather than a high one, and
+three more replace the ratio with a price cut.
+
+## The search set {#sec-searchset}
+
+The rules are searched on paper 5's **validation slice**: the
+`r p6_comma(n_val_races)` races carved out of the training period at
+2010-12-15, scored by the fit trained on the `r p6_comma(n_fit_races)`
+fitting races alone. That fit never saw the validation races, so its
+probabilities there are out of sample.
+
+The fitting races themselves are not used. The model was fitted on them and
+its probabilities there are far sharper than anything it produces out of
+sample, which would make a search rank rules by how hard they lean on that
+sharpness rather than by how well they bet.
+
+This is a correction to an earlier attempt at this paper, whose search ran on
+training-split predictions and did exactly that: it preferred staking rules
+that concentrate on the model's most confident calls, and those rules then
+staked almost nothing out of sample. That draft is kept, unrendered, at
+`papers/06_betting_strategy/SUPERSEDED/` with a note of what went wrong. The
+design fact that matters here is the one above — the search set is held out
+from the fit that scores it.
+
+## Two fits, and why the thresholds are quantiles {#sec-twofits}
+
+```{r}
+#| label: tbl-provenance
+#| tbl-cap: "The two fits. Both are paper 5's own stored targets; paper 6 refits neither."
+p6_fit_provenance_tbl |>
+  dplyr::transmute(
+    Fit = fit, Scores = scores,
+    `Training races` = p6_comma(n_train_races),
+    Config = config, Epochs = epochs,
+    `Validation PL loss` = dplyr::if_else(is.na(val_pl_loss), "—",
+                                          sprintf("%.6f", val_pl_loss)),
+    Target = source
+  ) |>
+  kable(align = "lllrrrl")
+```
+
+The search set is scored by the fitting-partition fit; the test split is
+scored by the full-training-split refit, the model paper 5 published. Those
+are two fits of one architecture on different amounts of data, and their
+score distributions differ.
+
+```{r}
+#| label: tbl-splits
+#| tbl-cap: "The two splits, over the model's top-rated horse in each race. The distributions are not the same shape, which is what the quantile parameterisation exists to handle."
+p6_positions$summary |>
+  dplyr::transmute(
+    Split = split, Races = p6_comma(n_races),
+    `Median P_mod` = sprintf("%.4f", median_p_mod),
+    `Median ratio` = sprintf("%.4f", median_ratio),
+    `Median SP` = sprintf("%.2f", median_sp),
+    `Positive Kelly edge` = p6_fmt_pct(share_positive_kelly_edge, 1)
+  ) |>
+  kable(align = "lrrrrr")
+```
+
+The median top-rated ratio is
+`r sprintf("%.3f", p6_pos(p6_positions, "validation")$median_ratio)` on the
+validation slice and
+`r sprintf("%.3f", p6_pos(p6_positions, "test")$median_ratio)` on test, and
+the median starting price of that horse differs too. An absolute cut declared
+on one split would therefore select a different fraction of races on the
+other, and any difference between two arms would be partly a difference in
+how much they bet.
+
+Every candidate threshold in this paper is consequently a **quantile of the
+within-split distribution** of the quantity filtered on, taken over the
+model's top-rated horse in each race, and recomputed on the test split from
+the test split's own distribution. S1 is the exception and keeps its
+published absolute form: it is the incumbent being tested, not a candidate
+being tuned — which also means S1 does not select the same fraction of races
+on both splits, and @sec-thresholds says by how much.
+
+## The ledger
+
+Papers 1 to 5 wired the rule into the backtest: the functions that computed
+ROI also decided which horse to back and how much. No other rule could be
+priced on the same footing, which is one reason the rule was never examined.
+
+Paper 6 replaces that with one function. Given per-runner model
+probabilities, starting prices, finishing positions and field sizes, plus a
+selection rule and a staking rule as arguments, it returns one row per bet
+with the race, the runner, the stake, the return and the profit. Nothing is
+hard-coded.
+
+Settlement is not re-derived. Place and each-way bets settle through paper
+2b's own payout functions, called unchanged: the place price is the pure
+Harville [@harville1973] top-three probability of the raw starting-price
+book, so it carries the real margin, and the each-way place leg pays a
+fraction of the starting price on a placed finish. The one addition is a
+second each-way payout under corrected place terms (@sec-terms), asserted
+equal to paper 2b's when given paper 2b's terms rather than trusted to agree.
+
+The first thing the ledger does is rebuild paper 5's published test backtest.
+
+```{r}
+#| label: tbl-gate
+#| tbl-cap: "The reproduction gate. Paper 5's encoder rows, rebuilt through the paper-6 ledger under S1/K0 and paper 5's each-way terms."
+p6_ledger_gate |>
+  dplyr::transmute(
+    Bet = dplyr::recode(bet, win = "win", place = "place",
+                        eachway = "each-way"),
+    `Bets (p6)` = n_bets_p6, `Bets (p5)` = n_bets_p5,
+    `Wins (p6)` = n_wins_p6, `Wins (p5)` = n_wins_p5,
+    `Profit (p6)` = sprintf("%.2f", profit_p6),
+    `Profit (p5)` = sprintf("%.2f", profit_p5),
+    `ROI difference` = sprintf("%.1e", d_roi)
+  ) |>
+  kable(align = "lrrrrrrr")
+```
+
+Every column agrees exactly. The gate is a standing script,
+`scripts/verify_p6_ledger.R`, and a target on the pipeline graph, so a later
+change to the ledger that moved any of these numbers fails rather than
+quietly repricing the comparator.
+
+## The candidates
+
+| | Selection |
+|---|---|
+| S0 | the model's top-rated horse, every race, no filter |
+| S1 | Owen's rule: $P_{\text{mod}} > 0.15$ and $P_{\text{mod}}/P_{\text{mkt}} > 1.3$, back the highest $P_{\text{mod}}$ (the incumbent, in its published absolute form) |
+| S2a/b/c | the top-rated horse where its ratio falls in a middle band: $[q_{25}, q_{75}]$, $[q_{30}, q_{60}]$, $[q_{40}, q_{70}]$ |
+| S3a/b/c | the top-rated horse where its starting price is at or below the $q_{25}$, $q_{50}$, $q_{75}$ cut |
+| S4 | the market favourite, every race, no model input |
+
+| | Staking, per leg |
+|---|---|
+| K0 | flat, one unit |
+| K1 | $(P_{\text{mod}} - P_{\text{mkt}})/0.05$, capped at three units |
+| K2 | quarter-Kelly at $P_{\text{mod}}$ against the starting price, divided by 0.05, capped at three units |
+
+Both staking constants are round numbers fixed in advance: a five-point
+probability edge stakes one unit under K1, and a quarter-Kelly fraction of
+five per cent of bankroll stakes one unit under K2. ROI is invariant to that
+scale except through the cap, so the constants matter only in where the cap
+bites. Both rules read the selected runner's win-side quantities whatever the
+bet type being settled, so staking is one rule across the three markets
+rather than three.
+
+## Two stages, because they are two questions {#sec-stages}
+
+A single grid over selection and staking confounds them: an arm that changes
+both and loses tells you nothing about which change was responsible. So the
+declaration runs in two stages, each varying exactly one term.
+
+**Stage A — selection, at a flat stake.** All nine selection rules at K0,
+comparator S1/K0.
+
+**Stage B — staking, on the declared selection only.** K0, K1 and K2 on
+whatever stage A declared, comparator that selection at K0.
+
+Paper 5's rung-1 lesson — an arm differing from its comparator in two
+respects at once cannot test what the contrast exists to test — is enforced
+in code rather than by inspection. Before anything is scored,
+`p6_assert_one_difference()` checks every pair the paper reads; all
+`r nrow(p6_contrast_check)` pass.
+
+## Eligibility, counted in bets placed {#sec-eligibility}
+
+K1 and K2 stake zero where the model's probability does not exceed the price.
+That makes them selection rules as well as staking rules, and the effect is
+much stronger out of sample than in: the model's top-rated horse carries a
+positive Kelly edge in
+`r p6_fmt_pct(p6_pos(p6_positions, "validation")$share_positive_kelly_edge, 1)`
+of validation races and
+`r p6_fmt_pct(p6_pos(p6_positions, "test")$share_positive_kelly_edge, 1)` of
+test races. A rule can therefore look strong on a search set while placing
+almost no bets on the one that matters.
+
+Two conditions, both applied **before** the argmax rather than after it:
+
+1. projected test bets $\geq$ 300, where projected = validation bets placed
+   $\times$ (`r p6_comma(n_test_races)` / `r p6_comma(n_val_races)`);
+2. the arm places a positive stake in at least 60% of the races its selection
+   rule selects.
+
+A candidate failing either is struck from the grid before the maximum is
+taken. @sec-gate reports what it struck.
+
+## The declaration {#sec-declaration}
+
+Within a stage, and with no judgement at any step:
+
+1. Among eligible candidates, take the highest validation ROI at the real
+   starting price.
+2. Paired race-level bootstrap of its ROI difference against the stage
+   comparator on their common races, B = 2000, seed 42.
+3. Declare that candidate only if the point difference exceeds one bootstrap
+   standard error of the difference. Otherwise declare the comparator.
+4. Ties on ROI to four decimal places prefer the lower-numbered selection
+   arm, then K0 over K1 over K2.
+
+Both stages, all three bet types, and the validation numbers that produced
+them were written to `papers/06_betting_strategy/DECLARED_RULES.md` and
+committed before any test target existed. The pipeline re-reads that file
+from disk on every build and matches it against the declaration target, so
+neither can drift from the other.

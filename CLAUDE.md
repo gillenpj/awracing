@@ -131,22 +131,32 @@ below has five entries for four numbered papers.
   Live: <https://gillenpj.github.io/awracing/paper5/>.
 - **Paper 6 — Bet selection and staking. DRAFTED, NOT PUBLISHED.**
   Changes the betting rule and nothing else; the model is held fixed at
-  paper 5's rung-3b encoder. Nine selection rules and three staking rules
-  searched on the 5,022 training races, one rule per bet type declared by a
-  mechanical rule and frozen in `papers/06_betting_strategy/DECLARED_RULES.md`
-  before any test contact, test split scored once. **Nothing wins.** All three
-  declared rules lose more than the incumbent and every paired interval
-  against it contains zero. The result that matters is the control: on the
-  win market S4/K0 — back the market favourite flat, no model input at all —
-  returns −6.36% against the incumbent's −12.19%, its 90% interval excluding
-  zero, so the model's contribution to bet selection is not visible on this
-  data (consistent with paper 4). The place market is the one exception and
-  goes the other way, which is a fact about a synthetic top-3 place market
-  that prices favourites hardest, not about the model. Priced at a zero-margin
-  book the incumbent returns +0.84% on win, so the whole of its loss is the
-  over-round. Own pipeline and store (`_targets_p6.R` / `_targets_p6`).
-  Standing gate: `scripts/verify_p6_ledger.R`. **`docs/` is untouched and the
-  site index is not updated** — publishing is a separate, unstarted task.
+  paper 5's rung-3b encoder and paper 6 fits nothing. Nine selection rules
+  and three staking rules searched on **paper 5's validation slice** — the
+  1,505 races scored by the fitting-partition fit, which never saw them —
+  in TWO STAGES: selection at a flat stake first, then staking on whatever
+  selection won, so the two questions are not confounded. An eligibility
+  gate counting **bets placed, not races selected** (projected test bets
+  >= 300; positive stake in >= 60% of selected races) strikes candidates
+  before the argmax. Declaration frozen in
+  `papers/06_betting_strategy/DECLARED_RULES.md` before any test contact.
+  **Both stages declared the incumbent (S1/K0) for all three bet types** —
+  searched out of sample, nothing beats Owen's rule, and the middle-band
+  rules built to test paper 4's "the ratio filter selects for the model's
+  errors" implication came last. Test contact is therefore two rules:
+  S1/K0 and S4/K0 (market favourite, no model). Central contrast on the
+  1,064 common races — win −6.2 pts [−21.0, +9.4]; place +10.4 pts
+  [+3.6, +16.6]; each-way p5 terms +0.7 [−9.1, +10.8]; each-way corrected
+  −7.3 [−17.8, +3.6]. Three of four contain zero; the place exception is a
+  fact about a synthetic top-3 place market that prices favourites hardest.
+  At a zero-margin book the incumbent returns +0.84% on win, so its loss is
+  the over-round. Own pipeline and store (`_targets_p6.R` / `_targets_p6`).
+  Standing gate: `scripts/verify_p6_ledger.R`.
+  **A FIRST ATTEMPT WAS VOIDED** — it searched on training-split
+  predictions, which are in sample — and is kept unrendered at
+  `papers/06_betting_strategy/SUPERSEDED/` with a README. Do not cite its
+  numbers or restart from it. **`docs/` is untouched and the site index is
+  not updated** — publishing is a separate, unstarted task.
 
 ## Standing conventions
 
@@ -195,6 +205,23 @@ below has five entries for four numbered papers.
   even when the judgement turns out to be correct. The point of the gate
   is the chance to intervene, and that is lost whether or not the call
   was right. Report, then wait.
+- **A search set must be held out from the fit that scores it.** Paper 6's
+  first attempt searched betting rules on training-split predictions from
+  the full-training-split refit. The model was fitted on those races, so the
+  search ranked rules by how hard they leaned on memorisation: the
+  incumbent's training win ROI was +39.8% against −12.19% on test, while the
+  model-free control was −12.7% on training against −6.4% on test. It picked
+  staking arms that stake zero where the model probability does not exceed
+  the price — which happens far more often out of sample — so the declared
+  win rule staked 33 units across 2,183 test races and no alternative
+  SELECTION at a flat stake ever reached test. The fix, and the pattern to
+  follow: search on **paper 5's validation slice** (`p5_scored_v7`, scored
+  by the fitting-partition fit), never the fitting partition, and never the
+  full-training-split refit's own training rows. Two corollaries that
+  generalise: **count bets placed, not races selected**, when gating a
+  candidate's eligibility; and **declare selection and staking in separate
+  one-difference stages**, because a single grid over both cannot say which
+  one caused a result.
 - **Making all features NA-tolerant rather than complete-case is a
   database-refresh candidate, not a mid-series change.** It alters which
   races qualify, so papers 1-3 would no longer share a race universe
@@ -403,8 +430,9 @@ below has five entries for four numbered papers.
     `store =` to each `tar_load()`. Upstream targets are read from the MAIN
     and PAPER-5 stores read-only, hashes in `p6_upstream_fingerprint`.
     Alongside the paper: the frozen `DECLARED_RULES.md` (committed before any
-    test target existed — do not alter it), `P6_TEST_REPORT.md`, and the
-    `tar_make()` run logs.
+    test target existed — do not alter it), `P6_TEST_REPORT.md`, the
+    `tar_make()` run logs, and `SUPERSEDED/` — the voided first attempt,
+    kept for reference with a README, not rendered and not cited.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -507,7 +535,11 @@ below has five entries for four numbered papers.
     and not the bet set. Read-only; also on the graph as `p6_ledger_gate`.
   - `run_p6_pipeline.R` — the paper-6 driver, same reasons as paper 5's. An
     optional argument names a target to build up to; that is how the
-    declaration was frozen before the test targets were written.
+    declaration was frozen before the test targets were written. It unquotes
+    that argument into `tidyselect::all_of(!!...)`: `tar_make(names = )` is a
+    tidyselect expression evaluated inside the pipeline's own environment, so
+    a bare local is not found there — and `any_of(args)` silently resolves to
+    `base::args` instead.
   - `run_p5_pipeline.R` — the paper-5 driver. Exists because `Rscript -e`
     does not activate renv on this machine and because the script/store
     pair must be passed explicitly on every call.

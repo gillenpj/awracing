@@ -1,1 +1,100 @@
-# stub
+# The result {#sec-result}
+
+```{r}
+#| label: result-numbers
+#| include: false
+
+inc_win <- p6_res(p6_test_results, "S1/K0", "win")
+mkt_win <- p6_res(p6_test_results, "S4/K0", "win")
+inc_plc <- p6_res(p6_test_results, "S1/K0", "place")
+mkt_plc <- p6_res(p6_test_results, "S4/K0", "place")
+inc_ewc <- p6_res(p6_test_results, "S1/K0", "eachway_corrected")
+mkt_ewc <- p6_res(p6_test_results, "S4/K0", "eachway_corrected")
+inc_ew5 <- p6_res(p6_test_results, "S1/K0", "eachway")
+mkt_ew5 <- p6_res(p6_test_results, "S4/K0", "eachway")
+
+c_win <- p6_con(p6_test_contrasts, "win", "incumbent")
+c_plc <- p6_con(p6_test_contrasts, "place", "incumbent")
+c_ew5 <- p6_con(p6_test_contrasts, "eachway", "incumbent")
+c_ewc <- p6_con(p6_test_contrasts, "eachway_corrected", "incumbent")
+
+val_win <- p6_valinc(p6_val_incumbent, "win")
+```
+
+**Owen's rule survived the search.** Nine selection rules were scored against
+it at a flat stake on `r p6_comma(n_val_races)` held-out races, and three
+staking rules against a flat stake on whatever selection won. For all three
+bet types, at both stages, the mechanical declaration rule returned the
+incumbent: no alternative selection and no alternative stake had a higher
+out-of-sample return.
+
+That is a different answer from the one a search on in-sample predictions
+gives, and the difference is the point of the design (@sec-searchset).
+
+Because the declaration is the incumbent, the test split carries two distinct
+rules rather than four: S1/K0, which is simultaneously the declared
+selection, the declared stake and paper 5's published rule, and S4/K0, the
+market-only control. Two of the four named contrasts are therefore
+identically zero by construction, and are reported that way rather than
+dropped.
+
+```{r}
+#| label: tbl-headline
+#| tbl-cap: "The test split, scored once. Each-way appears under both paper 5's flat terms and the corrected industry terms; see @sec-terms."
+p6_results_table(p6_test_results) |> kable(align = "llrrrrrrrl")
+```
+
+## Against a rule with no model in it
+
+The remaining question is whether the model earns its place in the rule at
+all. S4 backs the market favourite in every race at a flat stake and reads no
+model output. On the `r p6_comma(c_win$n_races)` races both arms bet:
+
+| Market | Incumbent | Market favourite | Difference | 90% interval |
+|---|---|---|---|---|
+| win | `r p6_fmt_pct(c_win$roi_a)` | `r p6_fmt_pct(c_win$roi_b)` | `r p6_fmt_pts(c_win$diff_point)` | `r p6_fmt_pts_ci(c_win$ci_lo, c_win$ci_hi)` |
+| place | `r p6_fmt_pct(c_plc$roi_a)` | `r p6_fmt_pct(c_plc$roi_b)` | `r p6_fmt_pts(c_plc$diff_point)` | `r p6_fmt_pts_ci(c_plc$ci_lo, c_plc$ci_hi)` |
+| each-way, paper 5 terms | `r p6_fmt_pct(c_ew5$roi_a)` | `r p6_fmt_pct(c_ew5$roi_b)` | `r p6_fmt_pts(c_ew5$diff_point)` | `r p6_fmt_pts_ci(c_ew5$ci_lo, c_ew5$ci_hi)` |
+| each-way, corrected terms | `r p6_fmt_pct(c_ewc$roi_a)` | `r p6_fmt_pct(c_ewc$roi_b)` | `r p6_fmt_pts(c_ewc$diff_point)` | `r p6_fmt_pts_ci(c_ewc$ci_lo, c_ewc$ci_hi)` |
+
+Three of the four contain zero. **On the win market the model rule and the
+model-free rule cannot be told apart**: `r p6_fmt_pts(c_win$diff_point)`
+points on an interval `r p6_fmt_pts_ci(c_win$ci_lo, c_win$ci_hi)` wide enough
+to hold a large edge in either direction. The point estimate favours the
+favourite; the interval will not carry it.
+
+The place market is the exception and goes the other way. The incumbent
+returns `r p6_fmt_pct(c_plc$roi_a)` against the favourite's
+`r p6_fmt_pct(c_plc$roi_b)`, a difference of
+`r p6_fmt_pts(c_plc$diff_point)` points on
+`r p6_fmt_pts_ci(c_plc$ci_lo, c_plc$ci_hi)` — the one interval in the paper
+that excludes zero. It is a smaller claim than it looks: backing favourites
+to place is expensive because a place market built from the starting-price
+book prices short horses hardest, so the contrast is as much about the place
+market's shape as about the model (@sec-control).
+
+## Two things that are structural, not modelling
+
+**The whole of the incumbent's win-market loss is the over-round.** Priced at
+a zero-margin book — the same starting prices, renormalised within race to
+sum to one — its win ROI moves from `r p6_fmt_pct(inc_win$roi)` to
+`r p6_fmt_pct(inc_win$roi_fair)`, a margin of
+`r p6_fmt_pct(inc_win$roi_fair - inc_win$roi)`. The favourite rule moves from
+`r p6_fmt_pct(mkt_win$roi)` to `r p6_fmt_pct(mkt_win$roi_fair)`. Both are
+close to break-even or better against a fair book and lose against a real
+one. Closing that gap is a question about the price, not about the rule
+(@sec-breakeven).
+
+**The validation slice could not have seen a small edge.** The incumbent
+returned `r p6_fmt_pct(val_win$roi)` on the win market there, on
+`r p6_comma(val_win$n_bets)` bets, with a 90% interval of
+`r p6_fmt_pct_ci(val_win$ci_lo, val_win$ci_hi)`; on test it returned
+`r p6_fmt_pct(inc_win$roi)`, interval
+`r p6_fmt_pct_ci(inc_win$ci_lo, inc_win$ci_hi)`. Both figures are out of
+sample and the two intervals overlap heavily, so the swing of about twenty
+points between them is what sampling noise looks like at this scale, not a
+finding. A search set that wide cannot resolve differences of a few points,
+and the declaration it produced should be read as "nothing separated itself
+from the incumbent", not as "the incumbent is best" (@sec-limitations).
+
+The rest of the paper is how those numbers were arrived at.

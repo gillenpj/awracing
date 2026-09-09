@@ -1,1 +1,141 @@
-# stub
+# Discussion {#sec-discussion}
+
+```{r}
+#| label: disc-numbers
+#| include: false
+
+d_inc_win <- p6_res(p6_test_results, "S1/K0", "win")
+d_mkt_win <- p6_res(p6_test_results, "S4/K0", "win")
+d_inc_ew5 <- p6_res(p6_test_results, "S1/K0", "eachway")
+d_win <- p6_con(p6_test_contrasts, "win", "incumbent")
+d_plc <- p6_con(p6_test_contrasts, "place", "incumbent")
+dv_win <- p6_valinc(p6_val_incumbent, "win")
+```
+
+## What this paper found
+
+The betting rule was not the binding constraint either.
+
+Paper 3 concluded that the linear predictor was not what limited the series,
+because a tree ensemble tied it. Paper 5 found that the feature encoding was
+worth something on ranking and nothing on ROI. This paper adds the third: the
+selection and staking rule was not it. Nine selection rules and three staking
+rules, searched out of sample, produced three declarations and all three were
+the rule the series already had.
+
+That is a mildly surprising positive for Owen's rule. It is inherited from a
+different dataset and its thresholds sit at odd places in this one, and the
+obvious criticism of it — that a high model-to-market ratio selects for races
+where the model is wrong, which is what paper 4 implies — did not survive
+contact with the data. Of the three middle-band rules built to test that
+criticism, the two narrowest are last and second-last in every validation
+table and the widest is middling. Inverting the filter made things worse.
+
+What it is not is evidence that Owen's rule is good. Against a rule with no
+model in it, the win-market difference is
+`r p6_fmt_pts(d_win$diff_point)` points on
+`r p6_fmt_pts_ci(d_win$ci_lo, d_win$ci_hi)`, and the point estimate favours
+the model-free rule. On three of four settlement columns the two cannot be
+told apart. The model's contribution to bet selection remains invisible on
+this data — the same answer paper 4 reached from a different direction.
+
+## What it did not find
+
+It did not find that the model is worthless. Papers 2b, 3 and 5 measured
+ranking, and there the encoder is distinguishably better than every earlier
+arm in the series, on nine contrasts with nine intervals excluding zero. A
+model can rank better and still not turn that into a bet, because the bet has
+to beat a price and the price already contains most of what the ranking
+knows.
+
+It did not find that the place result means the model works. The incumbent
+beats the control there by `r p6_fmt_pts(d_plc$diff_point)` points on an
+interval excluding zero, and that is the only such interval in the paper. It
+is a statement about a synthetic place market that prices favourites hardest
+(@sec-control), not about model skill.
+
+It did not find that variable staking is a bad idea. It found that staking
+proportional to a disagreement is not worth doing when the disagreement
+carries no information against the settled price, which is a narrower claim
+and one paper 4 already implied.
+
+## Limitations {#sec-limitations}
+
+**The validation slice is small for a betting question.** It holds
+`r p6_comma(n_val_races)` races, and under the incumbent's filter that is
+`r p6_comma(dv_win$n_bets)` bets. The incumbent's own win ROI there is
+`r p6_fmt_pct(dv_win$roi)` with a 90% interval of
+`r p6_fmt_pct_ci(dv_win$ci_lo, dv_win$ci_hi)` — about
+`r sprintf("%.0f", 100 * (dv_win$ci_hi - dv_win$ci_lo))` points wide. **The
+design cannot see a difference of a few points.** What it can see is a rule
+that is badly wrong, or one that bets so rarely the question does not arise;
+what it cannot see is the size of edge that would matter commercially. The
+declaration should be read as "nothing separated itself from the incumbent",
+not as "the incumbent is best". Those are different claims and only the first
+is supported.
+
+The same figure bounds the other direction. The incumbent returned
+`r p6_fmt_pct(dv_win$roi)` on validation and `r p6_fmt_pct(d_inc_win$roi)` on
+test, both out of sample, a swing of about twenty points between two
+non-overlapping periods. That is what noise looks like at this scale.
+
+**The model was selected with knowledge of the test races.** The betting rule
+was not — it was declared and committed before any test target existed — but
+five papers of model development have looked at this test split, and the
+encoder scoring it here is the one those five papers arrived at. The model
+side of every number in this paper carries that history. Only the
+betting-rule side is clean.
+
+**The validation slice is not virgin data either.** Paper 5 used it to select
+the encoder's architecture, hyperparameters and epoch count. It was not used
+for betting rules, and no betting quantity entered any paper-5 decision, so
+the search here is not re-using its own selection criterion. But a slice that
+has already chosen a model is not the same as an untouched hold-out, and a
+rule that happens to suit the architecture that slice selected would not be
+caught by this design.
+
+**The test split has one arm on it.** Because the declaration returned the
+incumbent, the test contact is two rules, one of which is the comparator.
+There was no opportunity for a declared alternative to fail on test, which
+means this paper offers no evidence about how well a validation-slice
+declaration generalises. A design that declared something other than the
+incumbent would have produced that evidence; this one did not get the chance.
+
+**Every arm loses money.** Stated without qualification: on the test split,
+at real starting prices, neither rule returns a profit on any market.
+
+## Break-even, and what would settle it {#sec-breakeven}
+
+The margin decomposition (@sec-margin) puts a number on the gap. The
+incumbent loses `r p6_fmt_pct(-d_inc_win$roi)` on the win market at the
+starting price and returns `r p6_fmt_pct(d_inc_win$roi_fair)` at a book with
+the over-round taken out. Its each-way return under paper 5's terms is
+`r p6_fmt_pct(d_inc_ew5$roi)`, the closest any arm in the series has come to
+break-even. So the question is not whether the model is a long way from
+profitable — it is whether it is roughly one bookmaker's margin away.
+
+The direction that would answer it is prices better than the starting price.
+The starting price is the settled price, after the market has absorbed
+everything it is going to absorb. Paper 4 found the model adds nothing
+against it, but adds substantially against the pre-race racecard forecast
+published the night before. If a price closer to the forecast than to the
+settled price were available at bet time — an exchange price early in the
+market, before liquidity builds — the same selection could face a materially
+smaller margin, and possibly a positive one.
+
+**This dataset cannot settle that.** Smartform holds the overnight forecast
+price and the settled starting price, and nothing in between. There is no
+exchange price history: no series of prices from market open to the off, no
+record of what was actually available at any moment, and no depth alongside
+it. A rule that looks break-even against a hypothetical fair book is not
+evidence that a real counterparty would have taken the bet at that price, in
+that size.
+
+What it would take is exchange price and volume history for these races,
+timestamped, and a repeat of this design against prices taken at a declared
+time before the off rather than at the off. Until that exists, the honest
+statement is the one the numbers support: the model does not beat the settled
+market, the rule that bets it is the best of the nine tried and is
+indistinguishable from backing the favourite, the gap on the best market
+tested is about the size of the over-round, and whether an earlier price
+closes that gap is untested.

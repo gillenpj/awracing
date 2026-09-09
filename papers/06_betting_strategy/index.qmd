@@ -1,12 +1,98 @@
 ---
 title: "Bet selection and staking"
-format: html
+subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-09"
+abstract: |
+  Papers 1 to 5 changed the model and left the betting rule alone: back the
+  horse whose model win probability clears 0.15 and whose model-to-market
+  ratio clears 1.3, one unit a bet. That rule is Owen's, inherited from a
+  different dataset, and it has never been examined. This paper changes it
+  and nothing else. The model is held fixed at paper 5's encoder.
+  Nine selection rules and three staking rules are searched on paper 5's
+  held-out validation slice — 1,505 races the fit that scores them never saw
+  — in two stages, selection first at a flat stake and staking second on
+  whatever selection won. One rule per bet type was declared mechanically,
+  behind an eligibility gate that counts bets placed rather than races
+  selected, and frozen before any test contact. The test split was then
+  scored once.
+  **Both stages declared the incumbent, for all three bet types.** Searched
+  out of sample, no alternative selection and no alternative stake beats
+  Owen's rule. The remaining question is the control: against backing the
+  market favourite flat — a rule with no model in it — the incumbent is
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "win" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the win market, 90%% interval [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`
+  and
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "place" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the place market, [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`.
+  Three of four such contrasts contain zero; the place market is the
+  exception and favours the model. Every arm loses money at real starting
+  prices, and priced at a zero-margin book the incumbent is roughly
+  break-even on the win market — so the loss is the over-round, and closing
+  it needs a better price rather than a better rule.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
 ---
 
 ```{r}
 #| label: setup
 #| include: false
+
 library(targets)
+library(tidyverse)
+library(knitr)
+
+# Paper 6 reads the paper-6 store. Like papers 4 and 5 and unlike papers 1-3
+# this does NOT call tar_config_set(): that writes the project-root
+# `_targets.yaml`, which papers 1-3's own setup chunks also write, and
+# pointing it at `_targets_p6` would send their next render at the wrong
+# store. Passing `store =` per call leaves `_targets.yaml` untouched.
+P6_ROOT  <- rprojroot::find_root(rprojroot::has_file("awracing.Rproj"))
+P6_STORE <- file.path(P6_ROOT, "_targets_p6")
+
+# Sourced robustly across the cwd tar_quarto() sets (project root) and the
+# one a direct render would set (this folder).
+source(file.path(P6_ROOT, "papers", "06_betting_strategy", "_helpers.R"))
+
+# Every target the section files read is loaded here, centrally, so
+# tar_quarto()'s dependency detection sees them: files pulled in with
+# {{< include >}} are not scanned.
+tar_load(c(p6_search_set_check, p6_universe, p6_fit_provenance_tbl,
+           p6_ledger_gate, p6_positions,
+           p6_price_coverage_val, p6_overround_val,
+           p6_field_sizes_val, p6_field_sizes_test,
+           p6_eachway_terms_decision,
+           p6_thresholds_val, p6_thresholds_test, p6_contrast_check,
+           p6_stage_a_grid, p6_stage_a_contrasts, p6_stage_b_grid,
+           p6_gate_demonstration, p6_val_incumbent,
+           p6_declaration, p6_declaration_frozen, p6_declared_rules_file,
+           p6_test_arms, p6_test_selection_sizes, p6_test_results,
+           p6_test_contrasts, p6_margin_decomposition,
+           p6_fig_cumulative, p6_fig_val_vs_test, p6_test_report_file),
+         store = P6_STORE)
+
+n_val_races  <- p6_universe$n_val_races
+n_test_races <- p6_universe$n_test_races
+n_fit_races  <- p6_search_set_check$n_races_fit
 ```
 
 {{< include _01_result.qmd >}}
+
+{{< include _02_method.qmd >}}
+
+{{< include _03_search.qmd >}}
+
+{{< include _04_test.qmd >}}
+
+{{< include _05_discussion.qmd >}}
+
+{{< include _appx_a_settlement.qmd >}}
+
+{{< include _appx_b_software.qmd >}}
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
