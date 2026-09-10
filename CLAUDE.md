@@ -129,34 +129,66 @@ below has five entries for four numbered papers.
   `papers/05_encoder/`, and the supplementary theory note is in
   `papers/05_encoder/supplement/`.
   Live: <https://gillenpj.github.io/awracing/paper5/>.
-- **Paper 6 — Bet selection and staking. DRAFTED, NOT PUBLISHED.**
-  Changes the betting rule and nothing else; the model is held fixed at
-  paper 5's rung-3b encoder and paper 6 fits nothing. Nine selection rules
-  and three staking rules searched on **paper 5's validation slice** — the
-  1,505 races scored by the fitting-partition fit, which never saw them —
-  in TWO STAGES: selection at a flat stake first, then staking on whatever
-  selection won, so the two questions are not confounded. An eligibility
-  gate counting **bets placed, not races selected** (projected test bets
-  >= 300; positive stake in >= 60% of selected races) strikes candidates
-  before the argmax. Declaration frozen in
-  `papers/06_betting_strategy/DECLARED_RULES.md` before any test contact.
-  **Both stages declared the incumbent (S1/K0) for all three bet types** —
-  searched out of sample, nothing beats Owen's rule, and the middle-band
-  rules built to test paper 4's "the ratio filter selects for the model's
-  errors" implication came last. Test contact is therefore two rules:
-  S1/K0 and S4/K0 (market favourite, no model). Central contrast on the
-  1,064 common races — win −6.2 pts [−21.0, +9.4]; place +10.4 pts
-  [+3.6, +16.6]; each-way p5 terms +0.7 [−9.1, +10.8]; each-way corrected
-  −7.3 [−17.8, +3.6]. Three of four contain zero; the place exception is a
-  fact about a synthetic top-3 place market that prices favourites hardest.
-  At a zero-margin book the incumbent returns +0.84% on win, so its loss is
-  the over-round. Own pipeline and store (`_targets_p6.R` / `_targets_p6`).
-  Standing gate: `scripts/verify_p6_ledger.R`.
-  **A FIRST ATTEMPT WAS VOIDED** — it searched on training-split
-  predictions, which are in sample — and is kept unrendered at
-  `papers/06_betting_strategy/SUPERSEDED/` with a README. Do not cite its
-  numbers or restart from it. **`docs/` is untouched and the site index is
-  not updated** — publishing is a separate, unstarted task.
+- **Paper 6 — Exploratory ROI sweep, validation to test. NOT A PAPER, NOT
+  PUBLISHED.** No longer a hypothesis-testing paper. It is an exploratory
+  stress test of whether test-split ROI can be moved by a different betting
+  rule, to generate ideas to return to when betting goes live: **no
+  declaration rule, no bar to clear, no interval gating what reaches test**,
+  and several rules read against the same test split, so whatever tops the
+  test table is partly noise. The model is held fixed at paper 5's rung-3b
+  encoder; paper 6 fits nothing. Output is a working report,
+  `papers/06_betting_strategy/EXPLORATION.md`, written from a
+  `format = "file"` target so no number in it is a transcription.
+  The candidate set is a cross-product of **five pickers** (which horse:
+  highest model probability; market favourite; model probability x SP;
+  largest model-minus-market; highest model probability among qualifiers =
+  Owen's) and **1,261 filters** (which races: `P_mod` cut 0.00-0.35 step
+  0.01 crossed with ratio cut 0.80-2.50 step 0.05, plus a no-filter row),
+  scored on four settlement tables at a flat stake — 25,220 combinations.
+  Staking is a separate stage 3, because in the first draft Kelly and
+  edge-proportional staking changed the bet set as well as the stake.
+  **Mean backed price is on every table and is the column to read first**:
+  ROI across this surface correlates −0.785 with mean backed price and a
+  quadratic in log mean price explains 65% of it, so a rule's return is
+  mostly a statement about the price band it bets in.
+  What it found: **nothing is profitable at the settled starting price** —
+  1 of the 28 rule-by-bet-type combinations that reached test returned a
+  positive real-price ROI (P3 at P>0.15/ratio>1.70 on place, +0.65%, 90% CI
+  [−14.9%, +17.1%]). The three least-bad things are all price-band
+  artefacts, and the report says so: the market favourite every race with no
+  model (win −6.4% real, **+8.4% at a fair book, the best fair-book win
+  figure in the sweep** — pure favourite-longshot bias, so its whole loss is
+  the over-round, which makes it the strongest live candidate because only a
+  better entry price is needed); P3/1.70 on place (mean backed price 20.66,
+  6.9% strike rate); and P5 at P>0.17/ratio>1.45 on each-way (−0.28% real
+  but only on paper 5's synthetic flat 1/5-top-3 terms — under the corrected
+  ladder Owen's own each-way falls from −5.96% to −17.43%).
+  **Selecting a rule by validation ROI does not work on the win market**
+  (Spearman −0.143, Pearson −0.586 between validation and test ROI across
+  the shortlist; the best validation win rule, +10.68%, returned −18.77% on
+  test) **but does work on the place market** (Spearman +0.857, mean
+  absolute rank move 0.86 against 2.86 on win). Non-flat staking helps
+  nowhere: 29 of 32 non-flat arms return less than their own flat-stake
+  counterpart, one beats it by 0.4 points on an identical bet set, and the
+  other two only look positive because the stake collapsed (K1 staked 14 of
+  311 selected validation races).
+  Five pickers, unlike the previous nine arms, are genuinely five: no pair
+  exceeds 0.95 agreement at any filter with a cut in it (closest P4 vs P5 at
+  0.947), and the one 1.000 is P1 vs P5 at the no-filter row, which is
+  definitional.
+  Own pipeline and store (`_targets_p6.R` / `_targets_p6`); the declaration
+  chain is off the graph. Standing gates: `scripts/verify_p6_ledger.R`
+  (**now seven assertions — see below**) plus the on-graph `p6_sweep_gate`,
+  which asserts the sweep's index arithmetic reproduces `p6_ledger()` bit
+  for bit on the three rules that exist in both languages.
+  **TWO EARLIER ATTEMPTS WERE VOIDED**, both hypothesis-testing papers, kept
+  unrendered under `papers/06_betting_strategy/SUPERSEDED/` with a README:
+  `attempt1_training_split/` searched training-split predictions, which are
+  in sample; `attempt2_declaration/` searched the validation slice correctly
+  but its nine-arm space was degenerate (seven arms were one horse-picker
+  behind seven race filters, agreeing at 100.0% in every shared race — see
+  `papers/06_betting_strategy/DIAGNOSTICS.md`). Do not cite either one's
+  numbers. **`docs/` is untouched and the site index is not updated.**
 
 ## Standing conventions
 
@@ -229,6 +261,40 @@ below has five entries for four numbered papers.
   against them would be computed on a different set of races. Comment-
   and going-style features are exempt from the complete-case rule
   individually; changing the rule itself is a different act.
+- **A candidate set must vary the thing it claims to vary — check it
+  numerically before scoring anything.** Paper 6's second attempt searched
+  nine "selection rules" that were really three: seven of them were one
+  horse-picking function behind seven race-level filters and agreed on the
+  backed horse in **100.0%** of races where any two of them bet. The
+  declaration was correctly executed and meant almost nothing, because the
+  winning arm was the only candidate in its price band rather than the best
+  of nine comparable rules. The fix, and the pattern: split the decision
+  into its independent parts — for betting, a PICKER (which horse) and a
+  FILTER (which races) — take their cross-product, and **report the pairwise
+  agreement matrix as a target before reading any result off the search**.
+  Any pair above 0.95 is one arm, not two. Generalises paper 5's rung-1
+  lesson: there, state the term-by-term difference between two arms; here,
+  measure it.
+- **On any betting result, report the mean price of the horses backed, and
+  read that column first.** Across paper 6's populated search surface, ROI
+  correlates −0.785 with the mean backed price and a quadratic in log mean
+  price explains 65% of the between-rule variance. A rule's return is mostly
+  a statement about the price band it bets in, not about skill: two thirds
+  of any leaderboard is a map of the favourite-longshot bias read at
+  different prices. Do not control for it — make it visible on every table,
+  so a "better rule" that is really a different price band cannot be
+  mistaken for an improvement. Corollary from paper 6's exploration: the
+  fair-book (zero-margin) column is where the information is, because a rule
+  whose entire loss is the over-round is a candidate for a better entry
+  price, while a rule that loses at fair odds is not a candidate at all.
+- **A held-out window selects usefully on the place market and not on the
+  win market.** Across paper 6's shortlist, validation-to-test rank
+  agreement was Spearman +0.857 on place (mean absolute rank move 0.86) and
+  −0.143 on win (mean move 2.86, Pearson −0.586): the best validation win
+  rule returned +10.68% on validation and −18.77% on test. Place returns
+  rest on a top-three finish rather than a win, so far more events per race
+  contribute and the estimate is much less sample-driven. If one market is
+  worth searching on a held-out window, it is the place market.
 - **Every reported number is a live target, not a transcription.**
   Papers reference results via `tar_read()`/`tar_load()` inline in the
   `.qmd`, never as a hard-coded figure — a number with nothing behind it
@@ -421,18 +487,29 @@ below has five entries for four numbered papers.
     chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
     that folder needs neither renv nor the targets store. `publish_docs.R`
     copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
-  - `papers/06_betting_strategy/` — **paper 6, drafted, NOT published.** Bet
-    selection and staking. Built by its own pipeline, `_targets_p6.R`, into
-    its own store, `_targets_p6` — NOT by `_targets.R`. Run it with
-    `Rscript scripts/run_p6_pipeline.R`, optionally naming a target to build
-    up to. Rendered by `tar_quarto(paper_6_betting_strategy)` inside that
-    pipeline. `tar_config_set()` is never called; the qmd setup chunk passes
-    `store =` to each `tar_load()`. Upstream targets are read from the MAIN
-    and PAPER-5 stores read-only, hashes in `p6_upstream_fingerprint`.
-    Alongside the paper: the frozen `DECLARED_RULES.md` (committed before any
-    test target existed — do not alter it), `P6_TEST_REPORT.md`, the
-    `tar_make()` run logs, and `SUPERSEDED/` — the voided first attempt,
-    kept for reference with a README, not rendered and not cited.
+  - `papers/06_betting_strategy/` — **paper 6, an exploratory sweep, NOT a
+    Quarto paper and NOT published.** Built by its own pipeline,
+    `_targets_p6.R`, into its own store, `_targets_p6` — NOT by `_targets.R`.
+    Run it with `Rscript scripts/run_p6_pipeline.R`, optionally naming a
+    target to build up to. `tar_config_set()` is never called. Upstream
+    targets are read from the MAIN and PAPER-5 stores read-only, hashes in
+    `p6_upstream_fingerprint`. **There is no `tar_quarto()` target and no
+    `_quarto.yml` at this level** — the output is Markdown written by
+    `format = "file"` targets, so nothing here needs Quarto or TeX.
+    Contents:
+    - `EXPLORATION.md` — the working report, written by `p6_exploration_file`
+      from `R/p6_explore_report.R`. Every number is a function of the
+      targets; do not hand-edit it, change the writer and rebuild.
+    - `DIAGNOSTICS.md` plus its three `diagnostics_*.png` figures — the
+      read-only audit that established the second attempt's search space was
+      degenerate and its validation ledger nonetheless correct. Standalone
+      one-off analysis, like paper 4's `audit/`; not on the targets graph.
+    - `SUPERSEDED/attempt1_training_split/` and
+      `SUPERSEDED/attempt2_declaration/` — the two voided hypothesis-testing
+      drafts with their qmd, declaration files, test reports and logs, plus a
+      top-level `SUPERSEDED/README.md` explaining why each was set aside. Not
+      rendered, not cited.
+    - `p6_explore_run.log` — the `tar_make()` run log.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -526,13 +603,29 @@ below has five entries for four numbered papers.
     Run after any change to `R/p5_gru.R` — but see the recompute trap in
     "Standing conventions" first.
   - `verify_p6_ledger.R` — standing gate on paper 6's betting ledger
-    (`R/p6_ledger.R`, `R/p6_rules.R`). Six assertions: three that the ledger
-    rebuilds paper 5's published test backtest exactly under S1/K0 (against
-    the stored targets AND against the printed figures), one that
-    `p6_eachway_returns()` reproduces `build_eachway_value_bets()` when given
-    paper 5's terms, one that the corrected each-way terms move exactly the
-    rows the field-size ladder marks, one that a staking rule changes stakes
-    and not the bet set. Read-only; also on the graph as `p6_ledger_gate`.
+    (`R/p6_ledger.R`, `R/p6_rules.R`). **Seven assertions.** Six on the TEST
+    frame: three that the ledger rebuilds paper 5's published test backtest
+    exactly under S1/K0 (against the stored targets AND against the printed
+    figures), one that `p6_eachway_returns()` reproduces
+    `build_eachway_value_bets()` when given paper 5's terms, one that the
+    corrected each-way terms move exactly the rows the field-size ladder
+    marks, one that a staking rule changes stakes and not the bet set. The
+    first six are also on the graph as `p6_ledger_gate`.
+    **Assertion 7 is the VALIDATION path**, added 2026-09-10 and the reason
+    to re-run this gate rather than trust it: assertions 1-6 all run on the
+    test frame, so for two whole drafts the validation arithmetic — the path
+    every rule search in paper 6 has ever run on — was never checked against
+    anything. It now rebuilds the validation S1/K0 and S0/K0 win ledgers from
+    `historic_runners` in code calling **no `p6_*` function** (finishing
+    position, winner, price and the renormalised market probability all
+    recomputed from the source table; only `win_model` comes from paper 5)
+    and requires an exact match on the bet set as well as on bets, wins,
+    gross and ROI, plus a match against the recorded figures 704 bets /
+    +0.080028409 and 1,505 bets / −0.068890363. It passes.
+    **Consequence: the gate is no longer read-only.** It opens one database
+    connection for those 1,505 races, so it must be run under PowerShell —
+    `{RMariaDB}` crashes under the Bash tool's Git Bash environment on this
+    machine. It still acquires no `{targets}` lock and writes nothing.
   - `run_p6_pipeline.R` — the paper-6 driver, same reasons as paper 5's. An
     optional argument names a target to build up to; that is how the
     declaration was frozen before the test targets were written. It unquotes
