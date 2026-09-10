@@ -1,0 +1,273 @@
+# The search, on the validation slice {#sec-search}
+
+```{r}
+#| label: search-numbers
+#| include: false
+
+cov <- p6_price_coverage_val
+v_win <- p6_valinc(p6_val_incumbent, "win")
+v_plc <- p6_valinc(p6_val_incumbent, "place")
+v_ewc <- p6_valinc(p6_val_incumbent, "eachway_corrected")
+s1_a_win <- p6_grid(p6_stage_a_grid, "S1", "K0", "win")
+s4_a_win <- p6_grid(p6_stage_a_grid, "S4", "K0", "win")
+n_struck <- p6_gate_demonstration |>
+  dplyr::filter(bet == "win", !eligible) |> nrow()
+n_demo <- p6_gate_demonstration |> dplyr::filter(bet == "win") |> nrow()
+```
+
+`r p6_comma(p6_search_set_check$n_rows_frame)` runner-rows over
+`r p6_comma(n_val_races)` races.
+`r p6_search_set_check$n_rows_dropped` rows carry no usable starting price.
+Overlap with the test split: `r p6_search_set_check$n_test_overlap` races.
+Overlap with the `r p6_comma(n_fit_races)` fitting races the model was
+trained on: `r p6_search_set_check$n_fit_overlap`. All three are assertions
+on the pipeline graph, not observations.
+
+## Prices
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "Price coverage on the validation slice, by year. `SP` is the industry starting price from the results archive; `forecast` is the racecard forecast price from the overnight feed, counted only where the feed row was written strictly before the meeting date."
+cov |>
+  dplyr::transmute(
+    Year = year, Rows = p6_comma(n_rows), Races = p6_comma(n_races),
+    `SP rows` = p6_fmt_pct(pct_rows_sp, 1),
+    `SP races complete` = p6_fmt_pct(pct_races_sp, 1),
+    `Forecast rows` = p6_fmt_pct(pct_rows_fp, 1),
+    `Forecast races complete` = p6_fmt_pct(pct_races_fp, 1)
+  ) |>
+  kable(align = "lrrrrrr")
+```
+
+The validation slice runs from December 2010, so it sits entirely inside the
+period where both price sources exist — unlike the training period as a
+whole, where the racecard forecast is absent before March 2008 and patchy for
+a year after, as paper 4's Appendix A records. Every rule in this paper is
+priced at the starting price; the forecast column is here because it bounds
+what a future paper could select on, not because anything here uses it.
+
+```{r}
+#| label: tbl-overround
+#| tbl-cap: "The starting-price book by field size, validation slice. The margin is what a flat bettor pays before any skill."
+p6_overround_val |>
+  dplyr::filter(n_races >= 10) |>
+  dplyr::transmute(
+    `Field size` = field_size, Races = p6_comma(n_races),
+    `Mean book` = sprintf("%.4f", mean_book),
+    `Median book` = sprintf("%.4f", median_book),
+    `Mean margin` = sprintf("%.2f%%", mean_margin_pct)
+  ) |>
+  kable(align = "rrrrr")
+```
+
+The margin rises with field size throughout. Any rule that shifts betting
+towards smaller fields reduces the margin it pays without picking better,
+which is why every ROI in this paper is reported at a fair book alongside the
+real one.
+
+## Each-way terms {#sec-terms}
+
+Paper 5 settles every each-way bet at one fifth the odds on a top-three
+finish, whatever the field size. The real industry terms for a handicap are a
+ladder: win-only at four runners, a quarter the odds on the first two from
+five to seven, a fifth on the first three from eight to eleven, a quarter on
+the first three from twelve to fifteen, and a quarter on the first four from
+sixteen.
+
+`r p6_fmt_pct(p6_eachway_terms_decision$share_4_to_7_val, 1)` of validation
+races and
+`r p6_fmt_pct(p6_eachway_terms_decision$share_4_to_7_test, 1)` of test races
+have four to seven runners, where paper 5's terms are most obviously wrong.
+Correcting only that band would leave the twelve-and-up band wrong as well,
+so the whole ladder is applied. Paper 5's terms differ from it on
+`r p6_fmt_pct(p6_eachway_terms_decision$share_mispriced_val, 1)` of validation
+races.
+
+Every each-way number in this paper is therefore reported twice: under paper
+5's flat terms, so the comparison with paper 5 is like for like, and under
+the corrected terms, which is what an each-way bet actually settles on. The
+comparator is recomputed under each. The place market is left at paper 5's
+top-three Harville construction throughout — the same criticism applies to
+it, and correcting it would mean redefining the synthetic market rather than
+repricing a bet, which is a different change from the one this paper makes.
+
+## Where Owen's thresholds sit {#sec-thresholds}
+
+```{r}
+#| label: tbl-deciles
+#| tbl-cap: "Deciles of the two quantities S1 filters on, over the model's top-rated horse in each race, on both splits."
+p6_positions$deciles |>
+  tidyr::pivot_wider(names_from = split,
+                     values_from = c(p_mod, ratio)) |>
+  dplyr::transmute(
+    Decile = sprintf("%.0f%%", 100 * decile),
+    `P_mod, validation` = sprintf("%.4f", p_mod_validation),
+    `P_mod, test` = sprintf("%.4f", p_mod_test),
+    `Ratio, validation` = sprintf("%.4f", ratio_validation),
+    `Ratio, test` = sprintf("%.4f", ratio_test)
+  ) |>
+  kable(align = "lrrrr")
+```
+
+```{r}
+#| label: tbl-s1-position
+#| tbl-cap: "Owen's two absolute cuts, located in each split's own distribution."
+p6_positions$s1_position |>
+  dplyr::transmute(
+    Split = split, Quantity = quantity, Threshold = s1_threshold,
+    `Quantile it sits at` = p6_fmt_pct(quantile_of_top_rated, 1),
+    `Top-rated horses passing` = p6_fmt_pct(share_passing, 1)
+  ) |>
+  kable(align = "llrrr")
+```
+
+The probability floor of 0.15 is close to inert on both splits: it passes
+`r p6_fmt_pct(p6_positions$s1_position$share_passing[1], 1)` of top-rated
+horses on validation and
+`r p6_fmt_pct(p6_positions$s1_position$share_passing[3], 1)` on test. The
+ratio threshold does the work, passing
+`r p6_fmt_pct(p6_positions$s1_position$share_passing[2], 1)` and
+`r p6_fmt_pct(p6_positions$s1_position$share_passing[4], 1)`. Owen's rule is,
+on this data, a ratio filter with a probability floor attached that does
+almost nothing — and because that filter is absolute rather than a quantile,
+it bets a visibly different fraction of the two splits. Every candidate rule
+in the search is parameterised the other way for exactly that reason.
+
+## Stage A — selection, at a flat stake
+
+```{r}
+#| label: tbl-stage-a-win
+#| tbl-cap: "Stage A, win market: nine selection rules at a flat stake on the validation slice, best first."
+p6_grid_table(p6_stage_a_grid, "win") |> kable(align = "lrrrrrrrll")
+```
+
+```{r}
+#| label: tbl-stage-a-place
+#| tbl-cap: "Stage A, place market."
+p6_grid_table(p6_stage_a_grid, "place") |> kable(align = "lrrrrrrrll")
+```
+
+```{r}
+#| label: tbl-stage-a-ew
+#| tbl-cap: "Stage A, each-way at the corrected terms."
+p6_grid_table(p6_stage_a_grid, "eachway_corrected") |>
+  kable(align = "lrrrrrrrll")
+```
+
+**S1 is first on all three.** Its validation win ROI,
+`r p6_fmt_pct(s1_a_win$roi)`, is the only positive figure in the win table,
+and no other selection rule comes within
+`r sprintf("%.0f", 100 * (s1_a_win$roi - max(p6_stage_a_grid$roi[p6_stage_a_grid$bet == "win" & p6_stage_a_grid$selection != "S1"])))`
+points of it. The narrower two of the three middle-band rules — S2b and S2c,
+built to test paper 4's implication that the ratio filter selects for the
+model's own errors — occupy the bottom two places in all three tables; the
+widest, S2a, is middling. Inverting the ratio filter made things worse, not
+better, so on this evidence the high-ratio filter is picking something real.
+The intervals in @sec-limitations are wide enough that this is a direction
+rather than a measurement.
+
+@tbl-stage-a-win also shows the control in its unrestricted form. S4/K0 bets
+every race and returns `r p6_fmt_pct(s4_a_win$roi)` on validation, against
+S1/K0's `r p6_fmt_pct(s1_a_win$roi)`. Those two are not directly comparable —
+S1 bets `r p6_comma(s1_a_win$n_bets)` of the `r p6_comma(n_val_races)` races
+and S4 bets all of them — which is what the paired contrast on common races
+is for; @sec-test does it on the split that counts.
+
+## Stage B — staking, on the declared selection
+
+```{r}
+#| label: tbl-stage-b
+#| tbl-cap: "Stage B: the three staking rules on the selection stage A declared, validation slice."
+p6_stage_b_grid |>
+  dplyr::filter(bet %in% c("win", "place", "eachway_corrected")) |>
+  dplyr::arrange(match(bet, c("win", "place", "eachway_corrected")),
+                 staking) |>
+  dplyr::transmute(
+    Bet = P6_BET_LABEL[bet], Arm = paste0(selection, "/", staking),
+    Bets = p6_comma(n_bets), ROI = p6_fmt_pct(roi),
+    `ROI, fair book` = p6_fmt_pct(roi_fair),
+    `Mean stake` = sprintf("%.2f", mean_stake),
+    `SD unit return` = sprintf("%.2f", sd_unit_return),
+    `Max drawdown` = sprintf("%.0f", max_drawdown),
+    Eligible = dplyr::if_else(eligible, "yes", "no")
+  ) |>
+  kable(align = "llrrrrrrl")
+```
+
+Flat staking wins every comparison. Both alternatives lower the return on
+every market, and they do it while raising the dispersion of the unit return
+— K1 stakes more than one unit on average and K2 much less, but neither buys
+anything back. The reading is not that variable staking is a bad idea in
+general; it is that staking proportional to a disagreement is only worth
+doing if the disagreement carries information, and paper 4 already found that
+against the settled price it does not.
+
+Note that under S1 the staking rules do not shed any bets: every horse
+clearing a ratio above 1.3 has a positive probability edge and, given the
+over-round, a positive Kelly fraction too, so all three arms bet the same
+`r p6_comma(s1_a_win$n_bets)` races. That is a property of S1, not of the
+staking rules, and @sec-gate shows what happens under selections that do not
+have it.
+
+## The eligibility gate {#sec-gate}
+
+The gate struck nothing from either stage's pool. That is not because it is
+inert: stage A runs at a flat stake, where every selected race is staked by
+construction, and stage B runs on S1, where the ratio filter guarantees a
+positive edge. Both pools are immune to the failure mode by construction.
+
+To show the gate has teeth, it is applied to the full nine-by-three
+cross-product on the validation slice. This declares nothing —
+the declaration is passed the stage grids, never this one — and exists only
+to make the gate's behaviour visible.
+
+```{r}
+#| label: tbl-gate-demo
+#| tbl-cap: "The eligibility gate applied to all 27 combinations on the validation slice, win market. Diagnostic only: nothing here declares anything."
+p6_gate_demonstration |>
+  dplyr::filter(bet == "win") |>
+  dplyr::arrange(dplyr::desc(roi)) |>
+  dplyr::transmute(
+    Arm = paste0(selection, "/", staking),
+    Selected = p6_comma(n_races_selected), Bets = p6_comma(n_bets),
+    `Staked share` = p6_fmt_pct(staked_share, 0),
+    `Projected test bets` = sprintf("%.0f", projected_test_bets),
+    ROI = p6_fmt_pct(roi),
+    Eligible = dplyr::if_else(eligible, "yes", "no"),
+    `Struck because` = dplyr::coalesce(struck_because, "—")
+  ) |>
+  kable(align = "lrrrrrll")
+```
+
+`r n_struck` of the `r n_demo` combinations fail the gate, and the top of the
+table shows why it matters. S3a/K2 returns
+`r p6_fmt_pct(p6_grid(p6_gate_demonstration, "S3a", "K2", "win")$roi)` on the
+validation slice — the best figure in the table — from
+`r p6_grid(p6_gate_demonstration, "S3a", "K2", "win")$n_bets` bets across
+`r p6_comma(p6_grid(p6_gate_demonstration, "S3a", "K2", "win")$n_races_selected)`
+selected races, a
+`r p6_fmt_pct(p6_grid(p6_gate_demonstration, "S3a", "K2", "win")$staked_share, 0)`
+staked share. An unguarded maximum takes it. The gate strikes it before the
+maximum is taken, on both conditions.
+
+## What was declared
+
+```{r}
+#| label: tbl-declaration
+#| tbl-cap: "The declaration, both stages. Frozen and committed before any test target existed."
+p6_declaration |>
+  dplyr::transmute(
+    Stage = stage, Bet = P6_BET_LABEL[bet],
+    Declared = paste0(selection, "/", staking),
+    `Top eligible candidate` = paste0(cand_selection, "/", cand_staking),
+    `Candidate ROI` = p6_fmt_pct(cand_roi),
+    `Comparator ROI` = p6_fmt_pct(comparator_roi),
+    `Eligible candidates` = n_eligible,
+    Note = note
+  ) |>
+  kable(align = "lllrrrrl")
+```
+
+In every case the top eligible candidate *is* the comparator, so steps 2 and
+3 of the declaration rule never engage: there is no difference to bootstrap.
+The incumbent is declared for all three bet types at both stages.

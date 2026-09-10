@@ -1,0 +1,47 @@
+# Limitations {#sec-limitations}
+
+**The search window is too small to rank rules.** It is
+`r p6_fn(p6_universe$n_val_races)` races. Cross-half rank correlations run
+between `r p6_fcor(min(p6_guard_summary$spearman))` and
+`r p6_fcor(max(p6_guard_summary$spearman))`, and the rule that won on both
+halves reversed by
+`r sprintf("%.0f", 100 * (p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$val_roi - p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$test_roi))`
+points out of sample. Nothing here has identified a good rule.
+
+**Search-set rank predicts test rank negatively on all four markets.** Round
+2's positive place-market correlation did not replicate. The only difference
+between the two rounds is which seven rules were in the shortlist.
+
+**Twenty-eight rule-by-market combinations were read against one test split
+with no multiplicity correction.** The intervals are marginal 90% race-level
+bootstraps and are not adjusted for having looked twenty-eight times. Whatever
+tops a test table is partly noise. The two rules that did top them were
+carried forward unconditionally rather than selected, which is the only reason
+their position means anything.
+
+**Only the betting rule is clean.** The model was selected with knowledge of
+these test races across five papers: features, objective, function class,
+encoder architecture and the rung ladder were each chosen after seeing earlier
+papers' test results. The split has been scored once per paper, six times on
+the same races. Paper 6 fits nothing, so its betting rules are out of sample.
+The model underneath them is not.
+
+**Going and class were not really tested.** Their absence from the results is
+a fact about the scope of this series (four All-Weather courses, class 2 to 5
+handicaps, 2006 to 2015), not evidence that either is uninformative.
+
+**Field size is the only race characteristic with real coverage.** The winning
+band, 11 to 12 runners, is
+`r p6_fpct(sum(p6_overround_val$n_races[p6_overround_val$field_size %in% 11:12]) / p6_universe$n_val_races, 1)`
+of the search set, and a rule on it bets
+`r p6_fn(p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$test_bets)`
+times on test. That is not enough for its ROI to mean much either way.
+
+**The place prices are a construction and the each-way market is not a
+market.** Set out in @sec-forward.
+
+**The forward strategy is untested.** @sec-forward reads paper 4's result
+alongside a market-structure argument. Its two load-bearing assumptions, that
+usable size exists at early prices and that the model beats an early traded
+price, are not tested anywhere in this series and cannot be tested on this
+archive.

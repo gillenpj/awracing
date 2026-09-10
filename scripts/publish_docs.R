@@ -38,7 +38,8 @@ papers <- c(
   "02b_ranking_model"         = "paper2b",
   "03_gradient_boosted_trees" = "paper3",
   "04_market_blend"           = "paper4",
-  "05_encoder"                = "paper5"
+  "05_encoder"                = "paper5",
+  "06_betting_strategy"       = "paper6"
 )
 
 copied  <- character(0)

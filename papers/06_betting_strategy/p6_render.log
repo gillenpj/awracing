@@ -1,0 +1,623 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ paper_6_betting_strategy dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/55                     
+
+
+2/55 [setup]             
+
+
+3/55                     
+
+
+4/55 [tbl-pickers]       
+
+
+5/55                     
+
+
+6/55 [tbl-rc-specs]      
+
+
+7/55                     
+
+
+8/55 [tbl-overround]     
+
+
+9/55                     
+
+
+10/55 [tbl-provenance]    
+
+
+11/55                     
+
+
+12/55 [r3-key]            
+
+
+13/55                     
+
+
+14/55 [tbl-fs-win]        
+
+
+15/55                     
+
+
+16/55 [tbl-fs-others]     
+
+
+17/55                     
+
+
+18/55 [tbl-rc-all]        
+
+
+19/55                     
+
+
+20/55 [tbl-comb]          
+
+
+21/55                     
+
+
+22/55 [tbl-guard-counts]  
+
+
+23/55                     
+
+
+24/55 [tbl-owen-guard]    
+
+
+25/55                     
+
+
+26/55 [tbl-half-cor]      
+
+
+27/55                     
+
+
+28/55 [tbl-half-cor-sub]  
+
+
+29/55                     
+
+
+30/55 [tbl-r3-win]        
+
+
+31/55                     
+
+
+32/55 [tbl-r3-place]      
+
+
+33/55                     
+
+
+34/55 [tbl-r3-ew]         
+
+
+35/55                     
+
+
+36/55 [tbl-r3-ewc]        
+
+
+37/55                     
+
+
+38/55 [tbl-fair-positive] 
+
+
+39/55                     
+
+
+40/55 [tbl-rank-agree]    
+
+
+41/55                     
+
+
+42/55 [tbl-rank-agree-fam]
+
+
+43/55                     
+
+
+44/55 [tbl-priceband]     
+
+
+45/55                     
+
+
+46/55 [tbl-owen-resid]    
+
+
+47/55                     
+
+
+48/55 [staking-counts]    
+
+
+49/55                     
+
+
+50/55 [tbl-staking-test]  
+
+
+51/55                     
+
+
+52/55 [tbl-staking-val]   
+
+
+53/55                     
+
+
+54/55 [tbl-staking-thin]  
+
+
+55/55                     
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: 'Bet selection: three families of rule, and where the edge is not'
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-10'
+
+  abstract: |
+
+    A betting rule has three parts: which horse to back, which races to bet on
+
+    the strength of the model's output, and which races to bet on the strength
+
+    of the race itself. Two earlier rounds searched the first two and found
+
+    nothing that beat the rule paper 1 took from Owen. This paper adds the
+
+    third: filters on field size, class, course, distance and going, all known
+
+    the night before the race. Every candidate in all three families then had
+
+    to rank in the top decile of its family on both halves of the search window
+
+    before it could reach the test split. That guard struck Owen's rule on
+
+    three of the four markets. It did not save the search. One rule topped every
+
+    search-set table, backing the horse whose model probability most exceeds its
+
+    market probability in fields of eleven to twelve runners, at
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$val_roi) })`
+
+    on the win market with the two halves of the window two points apart. On the
+
+    test split it returned
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`.
+
+    Search-set rank predicts test rank negatively on all four markets. Two
+
+    thirds to four fifths of the variation in return between rules is explained
+
+    by the mean price the rule backs, so a leaderboard mostly ranks price bands,
+
+    and the residual does not hold across halves of one window. The two best
+
+    rules on test were the two carried forward without being selected: the
+
+    market favourite in every race, with no model in it, and Owen's rule. Three
+
+    rules in the shortlist are profitable once the bookmaker's margin is
+
+    removed; none is profitable with it in place. Paper 4 showed the model ties
+
+    the settled starting price and beats the overnight forecast price, so its
+
+    value sits between them, and every backtest in this series settles at the
+
+    closing end of that interval. The final section sets out what that implies
+
+    for live use.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/55                     
+
+
+2/55 [setup]             
+
+
+3/55                     
+
+
+4/55 [tbl-pickers]       
+
+
+5/55                     
+
+
+6/55 [tbl-rc-specs]      
+
+
+7/55                     
+
+
+8/55 [tbl-overround]     
+
+
+9/55                     
+
+
+10/55 [tbl-provenance]    
+
+
+11/55                     
+
+
+12/55 [r3-key]            
+
+
+13/55                     
+
+
+14/55 [tbl-fs-win]        
+
+
+15/55                     
+
+
+16/55 [tbl-fs-others]     
+
+
+17/55                     
+
+
+18/55 [tbl-rc-all]        
+
+
+19/55                     
+
+
+20/55 [tbl-comb]          
+
+
+21/55                     
+
+
+22/55 [tbl-guard-counts]  
+
+
+23/55                     
+
+
+24/55 [tbl-owen-guard]    
+
+
+25/55                     
+
+
+26/55 [tbl-half-cor]      
+
+
+27/55                     
+
+
+28/55 [tbl-half-cor-sub]  
+
+
+29/55                     
+
+
+30/55 [tbl-r3-win]        
+
+
+31/55                     
+
+
+32/55 [tbl-r3-place]      
+
+
+33/55                     
+
+
+34/55 [tbl-r3-ew]         
+
+
+35/55                     
+
+
+36/55 [tbl-r3-ewc]        
+
+
+37/55                     
+
+
+38/55 [tbl-fair-positive] 
+
+
+39/55                     
+
+
+40/55 [tbl-rank-agree]    
+
+
+41/55                     
+
+
+42/55 [tbl-rank-agree-fam]
+
+
+43/55                     
+
+
+44/55 [tbl-priceband]     
+
+
+45/55                     
+
+
+46/55 [tbl-owen-resid]    
+
+
+47/55                     
+
+
+48/55 [staking-counts]    
+
+
+49/55                     
+
+
+50/55 [tbl-staking-test]  
+
+
+51/55                     
+
+
+52/55 [tbl-staking-val]   
+
+
+53/55                     
+
+
+54/55 [tbl-staking-thin]  
+
+
+55/55                     
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: 'Bet selection: three families of rule, and where the edge is not'
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-10'
+
+  abstract: |
+
+    A betting rule has three parts: which horse to back, which races to bet on
+
+    the strength of the model's output, and which races to bet on the strength
+
+    of the race itself. Two earlier rounds searched the first two and found
+
+    nothing that beat the rule paper 1 took from Owen. This paper adds the
+
+    third: filters on field size, class, course, distance and going, all known
+
+    the night before the race. Every candidate in all three families then had
+
+    to rank in the top decile of its family on both halves of the search window
+
+    before it could reach the test split. That guard struck Owen's rule on
+
+    three of the four markets. It did not save the search. One rule topped every
+
+    search-set table, backing the horse whose model probability most exceeds its
+
+    market probability in fields of eleven to twelve runners, at
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$val_roi) })`
+
+    on the win market with the two halves of the window two points apart. On the
+
+    test split it returned
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`.
+
+    Search-set rank predicts test rank negatively on all four markets. Two
+
+    thirds to four fifths of the variation in return between rules is explained
+
+    by the mean price the rule backs, so a leaderboard mostly ranks price bands,
+
+    and the residual does not hold across halves of one window. The two best
+
+    rules on test were the two carried forward without being selected: the
+
+    market favourite in every race, with no model in it, and Owen's rule. Three
+
+    rules in the shortlist are profitable once the bookmaker's margin is
+
+    removed; none is profitable with it in place. Paper 4 showed the model ties
+
+    the settled starting price and beats the overnight forecast price, so its
+
+    value sits between them, and every backtest in this series settles at the
+
+    closing end of that interval. The final section sets out what that implies
+
+    for live use.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_6_betting_strategy completed [38.7s, 2.23 MB]
+
+✔ ended pipeline [47.8s, 1 completed, 82 skipped]
+

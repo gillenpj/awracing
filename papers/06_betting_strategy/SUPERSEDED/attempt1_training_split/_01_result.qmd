@@ -1,0 +1,93 @@
+# The result {#sec-result}
+
+```{r}
+#| label: result-numbers
+#| include: false
+
+inc_win  <- p6_res(p6_test_results, "incumbent", "win")
+mkt_win  <- p6_res(p6_test_results, "market-only", "win")
+dec_win  <- p6_res(p6_test_results, "^declared", "win")
+inc_plc  <- p6_res(p6_test_results, "incumbent", "place")
+mkt_plc  <- p6_res(p6_test_results, "market-only", "place")
+dec_plc  <- p6_res(p6_test_results, "^declared", "place")
+inc_ewc  <- p6_res(p6_test_results, "incumbent", "eachway_corrected")
+mkt_ewc  <- p6_res(p6_test_results, "market-only", "eachway_corrected")
+dec_ewc  <- p6_res(p6_test_results, "^declared", "eachway_corrected")
+inc_ew5  <- p6_res(p6_test_results, "incumbent", "eachway")
+
+con_win_s1 <- p6_con(p6_test_contrasts, "win", "incumbent")
+con_win_s4 <- p6_con(p6_test_contrasts, "win", "market-only")
+con_plc_s4 <- p6_con(p6_test_contrasts, "place", "market-only")
+
+sel_win <- p6_declared_selection_sizes |> dplyr::filter(bet == "win")
+```
+
+Nothing wins.
+
+Nine selection rules and three staking rules were searched on the
+`r p6_comma(n_train_races)` training races. One rule per bet type was
+declared by a mechanical rule, frozen in a committed file, and scored once on
+the `r p6_comma(n_test_races)` test races. All three declared rules lose
+money, all three lose more than the rule they were meant to beat, and every
+paired interval against that rule contains zero. On the win market the
+declared rule returns `r p6_fmt_pct(dec_win$roi)` on `r dec_win$n_bets` bets
+against the incumbent's `r p6_fmt_pct(inc_win$roi)`, a difference of
+`r p6_fmt_pts(con_win_s1$diff_point)` points with a 90% interval of
+`r p6_fmt_pts_ci(con_win_s1$ci_lo, con_win_s1$ci_hi)`.
+
+The result that matters is the control. S4 backs the market favourite in
+every race at a flat stake and uses no model output of any kind. On the win
+market it returns `r p6_fmt_pct(mkt_win$roi)` over all
+`r p6_comma(mkt_win$n_bets)` test races, against
+`r p6_fmt_pct(inc_win$roi)` for the model rule, and its own 90% interval,
+`r p6_fmt_pct_ci(mkt_win$ci_lo, mkt_win$ci_hi)`, excludes zero. The paired
+contrast of the declared rule against it is
+`r p6_fmt_pts(con_win_s4$diff_point)` points,
+`r p6_fmt_pts_ci(con_win_s4$ci_lo, con_win_s4$ci_hi)`. **A rule with no model
+in it does at least as well as every rule that has one.** On the win market
+it does better.
+
+That does not generalise across bet types. On the place market the ordering
+reverses: the model rule returns `r p6_fmt_pct(inc_plc$roi)` against the
+favourite rule's `r p6_fmt_pct(mkt_plc$roi)`, and the declared rule beats the
+favourite by `r p6_fmt_pts(con_plc_s4$diff_point)` points,
+`r p6_fmt_pts_ci(con_plc_s4$ci_lo, con_plc_s4$ci_hi)` — the one interval in
+the paper that excludes zero in the model's favour. Backing favourites to
+place is an expensive way to lose money, because the place market prices
+short-priced horses hardest; that is a statement about the place market's
+shape, not about the model.
+
+```{r}
+#| label: tbl-headline
+#| tbl-cap: "The test split, scored once. Each-way is reported under both paper 5's flat terms and the corrected industry terms; see @sec-terms."
+p6_results_table(p6_test_results) |>
+  kable(align = "llrrrrrrrl")
+```
+
+Two further things the numbers say, both structural rather than about the
+model.
+
+**The whole of the incumbent's loss is the over-round.** Priced at a
+zero-margin book — the same starting prices, renormalised within race to sum
+to one — the incumbent's win ROI moves from `r p6_fmt_pct(inc_win$roi)` to
+`r p6_fmt_pct(inc_win$roi_fair)`, and the favourite rule's from
+`r p6_fmt_pct(mkt_win$roi)` to `r p6_fmt_pct(mkt_win$roi_fair)`. The margin
+paid is `r p6_fmt_pct(inc_win$roi_fair - inc_win$roi)` and
+`r p6_fmt_pct(mkt_win$roi_fair - mkt_win$roi)` respectively. Both rules are
+close to break-even or better against a fair book and lose against a real
+one. That is the whole story of the series' betting results in one line, and
+it is not a modelling result: it is what a bookmaker's margin costs.
+
+**Staking rules select.** Both non-flat staking rules stake nothing when the
+model's probability does not exceed the price, so they change the bet set as
+well as the stake. In sample this costs little; out of sample it is severe.
+The declared win rule selects `r p6_comma(sel_win$n_races_selected)` test races but places a
+positive stake in only `r dec_win$n_bets` of them, for
+`r sprintf("%.0f", dec_win$total_stake)` units of total stake across a
+`r p6_comma(n_test_races)`-race split. Its interval is
+`r p6_fmt_pct_ci(dec_win$ci_lo, dec_win$ci_hi)` wide. There is not enough
+betting there to learn anything, and the declaration rule had no way to know
+that from training numbers alone.
+
+The rest of the paper is how those numbers were arrived at, and what is wrong
+with the exercise.

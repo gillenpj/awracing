@@ -1,0 +1,7 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_exploration_file dispatched
+
+✔ p6_exploration_file completed [1s, 40.97 kB]
+
+✔ ended pipeline [9.1s, 1 completed, 43 skipped]
+

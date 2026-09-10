@@ -1,0 +1,599 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ paper_6_betting_strategy dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                    
+
+
+2/53 [setup]            
+
+
+3/53                    
+
+
+4/53 [result-numbers]   
+
+
+5/53                    
+
+
+6/53 [tbl-headline]     
+
+
+7/53                    
+
+
+8/53 [tbl-provenance]   
+
+
+9/53                    
+
+
+10/53 [tbl-splits]       
+
+
+11/53                    
+
+
+12/53 [tbl-gate]         
+
+
+13/53                    
+
+
+14/53 [search-numbers]   
+
+
+15/53                    
+
+
+16/53 [tbl-coverage]     
+
+
+17/53                    
+
+
+18/53 [tbl-overround]    
+
+
+19/53                    
+
+
+20/53 [tbl-deciles]      
+
+
+21/53                    
+
+
+22/53 [tbl-s1-position]  
+
+
+23/53                    
+
+
+24/53 [tbl-stage-a-win]  
+
+
+25/53                    
+
+
+26/53 [tbl-stage-a-place]
+
+
+27/53                    
+
+
+28/53 [tbl-stage-a-ew]   
+
+
+29/53                    
+
+
+30/53 [tbl-stage-b]      
+
+
+31/53                    
+
+
+32/53 [tbl-gate-demo]    
+
+
+33/53                    
+
+
+34/53 [tbl-declaration]  
+
+
+35/53                    
+
+
+36/53 [test-numbers]     
+
+
+37/53                    
+
+
+38/53 [tbl-arms]         
+
+
+39/53                    
+
+
+40/53 [tbl-test]         
+
+
+41/53                    
+
+
+42/53 [tbl-contrasts]    
+
+
+43/53                    
+
+
+44/53 [tbl-margin]       
+
+
+45/53                    
+
+
+46/53 [fig-cumulative]   
+
+
+47/53                    
+
+
+48/53 [fig-val-vs-test]  
+
+
+49/53                    
+
+
+50/53 [disc-numbers]     
+
+
+51/53                    
+
+
+52/53 [tbl-terms]        
+
+
+53/53                    
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: Bet selection and staking
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-09'
+
+  abstract: |
+
+    Papers 1 to 5 changed the model and left the betting rule alone: back the
+
+    horse whose model win probability clears 0.15 and whose model-to-market
+
+    ratio clears 1.3, one unit a bet. That rule is Owen's, inherited from a
+
+    different dataset, and it has never been examined. This paper changes it
+
+    and nothing else. The model is held fixed at paper 5's encoder.
+
+    Nine selection rules and three staking rules are searched on paper 5's
+
+    held-out validation slice — 1,505 races the fit that scores them never saw
+
+    — in two stages, selection first at a flat stake and staking second on
+
+    whatever selection won. One rule per bet type was declared mechanically,
+
+    behind an eligibility gate that counts bets placed rather than races
+
+    selected, and frozen before any test contact. The test split was then
+
+    scored once.
+
+    **Both stages declared the incumbent, for all three bet types.** Searched
+
+    out of sample, no alternative selection and no alternative stake beats
+
+    Owen's rule. The remaining question is the control: against backing the
+
+    market favourite flat — a rule with no model in it — the incumbent is
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "win" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the win market, 90%% interval [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`
+
+    and
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "place" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the place market, [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`.
+
+    Three of four such contrasts contain zero; the place market is the
+
+    exception and favours the model. Every arm loses money at real starting
+
+    prices, and priced at a zero-margin book the incumbent is roughly
+
+    break-even on the win market — so the loss is the over-round, and closing
+
+    it needs a better price rather than a better rule.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/53                    
+
+
+2/53 [setup]            
+
+
+3/53                    
+
+
+4/53 [result-numbers]   
+
+
+5/53                    
+
+
+6/53 [tbl-headline]     
+
+
+7/53                    
+
+
+8/53 [tbl-provenance]   
+
+
+9/53                    
+
+
+10/53 [tbl-splits]       
+
+
+11/53                    
+
+
+12/53 [tbl-gate]         
+
+
+13/53                    
+
+
+14/53 [search-numbers]   
+
+
+15/53                    
+
+
+16/53 [tbl-coverage]     
+
+
+17/53                    
+
+
+18/53 [tbl-overround]    
+
+
+19/53                    
+
+
+20/53 [tbl-deciles]      
+
+
+21/53                    
+
+
+22/53 [tbl-s1-position]  
+
+
+23/53                    
+
+
+24/53 [tbl-stage-a-win]  
+
+
+25/53                    
+
+
+26/53 [tbl-stage-a-place]
+
+
+27/53                    
+
+
+28/53 [tbl-stage-a-ew]   
+
+
+29/53                    
+
+
+30/53 [tbl-stage-b]      
+
+
+31/53                    
+
+
+32/53 [tbl-gate-demo]    
+
+
+33/53                    
+
+
+34/53 [tbl-declaration]  
+
+
+35/53                    
+
+
+36/53 [test-numbers]     
+
+
+37/53                    
+
+
+38/53 [tbl-arms]         
+
+
+39/53                    
+
+
+40/53 [tbl-test]         
+
+
+41/53                    
+
+
+42/53 [tbl-contrasts]    
+
+
+43/53                    
+
+
+44/53 [tbl-margin]       
+
+
+45/53                    
+
+
+46/53 [fig-cumulative]   
+
+
+47/53                    
+
+
+48/53 [fig-val-vs-test]  
+
+
+49/53                    
+
+
+50/53 [disc-numbers]     
+
+
+51/53                    
+
+
+52/53 [tbl-terms]        
+
+
+53/53                    
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: Bet selection and staking
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-09'
+
+  abstract: |
+
+    Papers 1 to 5 changed the model and left the betting rule alone: back the
+
+    horse whose model win probability clears 0.15 and whose model-to-market
+
+    ratio clears 1.3, one unit a bet. That rule is Owen's, inherited from a
+
+    different dataset, and it has never been examined. This paper changes it
+
+    and nothing else. The model is held fixed at paper 5's encoder.
+
+    Nine selection rules and three staking rules are searched on paper 5's
+
+    held-out validation slice — 1,505 races the fit that scores them never saw
+
+    — in two stages, selection first at a flat stake and staking second on
+
+    whatever selection won. One rule per bet type was declared mechanically,
+
+    behind an eligibility gate that counts bets placed rather than races
+
+    selected, and frozen before any test contact. The test split was then
+
+    scored once.
+
+    **Both stages declared the incumbent, for all three bet types.** Searched
+
+    out of sample, no alternative selection and no alternative stake beats
+
+    Owen's rule. The remaining question is the control: against backing the
+
+    market favourite flat — a rule with no model in it — the incumbent is
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "win" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the win market, 90%% interval [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`
+
+    and
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); c <- targets::tar_read(p6_test_contrasts, store = S); r <- c[c$bet == "place" & grepl("incumbent", c$question), ]; sprintf("%+.1f points on the place market, [%+.1f, %+.1f]", 100 * r$diff_point, 100 * r$ci_lo, 100 * r$ci_hi) })`.
+
+    Three of four such contrasts contain zero; the place market is the
+
+    exception and favours the model. Every arm loses money at real starting
+
+    prices, and priced at a zero-margin book the incumbent is roughly
+
+    break-even on the win market — so the loss is the over-round, and closing
+
+    it needs a better price rather than a better rule.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_6_betting_strategy completed [42.8s, 2.52 MB]
+
+✔ ended pipeline [51.5s, 1 completed, 58 skipped]
+

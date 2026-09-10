@@ -1,0 +1,115 @@
+# What was searched {#sec-searched}
+
+A betting rule has three parts: which horse to back, which races to bet on the
+model's output, and which races to bet on the race itself. Rounds 1 and 2
+searched the first two and found nothing that beat the rule paper 1 took from
+@owen2019. That was a claim about two families. This paper adds the third.
+
+```{r}
+#| label: tbl-pickers
+p6_tbl(tibble::tibble(
+  Picker = c("P1", "P2", "P3", "P4", "P5"),
+  Definition = c(
+    "Highest model win probability",
+    "Market favourite: shortest starting price",
+    "Highest model probability $\\times$ starting price (expected return)",
+    "Largest model probability minus market probability",
+    "Highest model probability among runners passing the filter's cuts"),
+  Reads = c("the field", "the field", "the field", "the field",
+            "the filter's cuts")
+), caption = "The five pickers. P5 is Owen's; with no filter every runner passes its cuts, so P5 is then identical to P1.")
+```
+
+**Threshold filters** cut on the model probability $\hat P$ and the ratio
+$\hat P / P^{\text{mkt}}$. Owen's rule is $\hat P > 0.15$, ratio $> 1.3$,
+picker P5. The grid is $\hat P$ from 0.00 to 0.35 by 0.01 crossed with the
+ratio from 0.80 to 2.50 by 0.05, plus a no-filter row:
+`r p6_fn(nrow(p6_explore_grid))` filters.
+
+**Race-characteristic filters** use conditions known the night before. Every
+contiguous field-size band over 4 to 16 runners; each class 2 to 5 singly and
+in contiguous pairs; each course singly and in pairs; the search set's
+distance terciles (`r sprintf("%.0f", p6_rc_terciles[1])` and
+`r sprintf("%.0f", p6_rc_terciles[2])` yards) and the cuts at each boundary;
+the going ordinal at each interior cut. A filter is kept only if it admits 300
+search-set races and 150 in each half of the window.
+
+```{r}
+#| label: tbl-rc-specs
+p6_tbl(
+  p6_rc_pruned |>
+    dplyr::group_by(Family = family) |>
+    dplyr::summarise(
+      Enumerated = dplyr::n(),
+      Kept = sum(kept),
+      `Struck for size` = sum(!kept),
+      `Largest struck` = max(c(0L, n_races[!kept])),
+      .groups = "drop"),
+  caption = "The race-characteristic family, before scoring."
+)
+```
+
+Two sub-families are empty before scoring, and both facts are about the scope
+of this series rather than the method. Going does not vary:
+`r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$family == "going" & grepl("<= 4", p6_rc_pruned$label)]))`
+of `r p6_fn(p6_universe$n_val_races)` search races are "Standard". Class is
+too concentrated: classes 2 and 3 hold
+`r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$label == "class 2-3"]))`
+races between them, under the floor even pooled.
+
+Field size is the one sub-family with a prior. Paper 4 found the overnight
+forecast-price over-round widening with field size, and the settled starting
+price does the same.
+
+```{r}
+#| label: tbl-overround
+p6_tbl(
+  p6_overround_val |>
+    dplyr::filter(n_races >= 20) |>
+    dplyr::transmute(
+      `Field size` = field_size, Races = n_races,
+      `Mean book` = sprintf("%.3f", mean_book),
+      `Margin` = p6_fpct(mean_margin_pct / 100, 2)),
+  caption = "The starting-price over-round by field size, search set. The margin is what a flat backer pays before any skill enters."
+)
+```
+
+The prior is real, and it argues against big fields: a rule that bets them
+starts further behind.
+
+## Provenance and gates
+
+Nothing here refits anything. The model is paper 5's rung-3b encoder, scored
+on the search set by its fitting-partition fit and on the test split by the
+full-training-split refit paper 5 published. These are two fits of one
+architecture, so no threshold is assumed to transfer.
+
+```{r}
+#| label: tbl-provenance
+p6_tbl(
+  p6_fit_provenance_tbl |>
+    dplyr::transmute(Fit = fit, Scores = scores,
+                     `Training races` = p6_fn(n_train_races),
+                     Config = config, Epochs = epochs,
+                     `Validation PL loss` = ifelse(is.na(val_pl_loss), "---",
+                                                   sprintf("%.6f", val_pl_loss))),
+  caption = "The two fits."
+)
+```
+
+Search set `r p6_fn(p6_universe$n_val_races)` races,
+`r p6_fn(p6_universe$n_val_rows)` runners; test split
+`r p6_fn(p6_universe$n_test_races)` races,
+`r p6_fn(p6_universe$n_test_rows)` runners. Race-id overlap between them,
+`r p6_search_set_check$n_test_overlap`; overlap with the
+`r p6_fn(p6_search_set_check$n_races_fit)` fitting races,
+`r p6_search_set_check$n_fit_overlap`. Both asserted in code.
+
+Three gates run first. The ledger reproduces paper 5's published test backtest
+to the printed digit, and the search set's ledger is rebuilt from the source
+database in code calling none of this paper's functions, matching on the bet
+set as well as the arithmetic. The faster sweep used for searching is asserted
+equal to the ledger on every rule expressible in both. The round-3 scoring
+path reproduces round 2 on all `r p6_fn(p6_round3_gate$rows_compared)` shared
+rows, maximum absolute ROI difference
+`r sprintf("%.1e", p6_round3_gate$max_abs_roi_diff)`.

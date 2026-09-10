@@ -1,0 +1,98 @@
+# Appendix B — Software and reproducibility {#sec-appx-b}
+
+## The series pattern
+
+The analysis is a `{targets}` pipeline [@targetsr] in R, with `{renv}`
+pinning package versions and one function per target. Paper 6 has its own
+pipeline script and its own store, `_targets_p6.R` and `_targets_p6`,
+following papers 4 and 5, so nothing it does can invalidate or overwrite the
+published work of papers 1 to 5. `tar_config_set()` is never called anywhere
+in paper 6: the setup chunk passes `store =` to each `tar_load()`, leaving
+the project-root `_targets.yaml` that papers 1 to 3 share untouched.
+
+Upstream objects — the runner table, paper 3's test key, paper 5's validation
+scoring, fitting-partition fit, slice definition, test predictions and
+published backtests — are read from the main and paper-5 stores
+**read-only**, with their content hashes recorded in
+`p6_upstream_fingerprint`. An upstream change therefore invalidates this
+paper's downstream work rather than leaving it silently stale.
+
+Every number in this document is read from a target at render time via
+`tar_read()` or `tar_load()`. None is transcribed.
+
+## No fitting
+
+Paper 6 fits nothing. Both prediction sets already existed as paper-5
+targets:
+
+- the search set is `p5_scored_v7`, paper 5's rung-3b arm scored on the
+  validation slice by the fitting-partition fit, with the series' own market
+  probabilities already attached;
+- the test split is `p5_test_predictions$rung3b`, the full-training-split
+  refit's scoring, exactly as paper 5 published it.
+
+Before anything is read off the search set, `p6_validation_predictions()`
+asserts that paper 5's stored rung-3b validation PL loss equals the published
+`r sprintf("%.6f", p6_fit_provenance_tbl$val_pl_loss[1])` and that the frame
+is row-identical to paper 5's validation key. If it did not match, the search
+set could not be attributed to the fit paper 5 selected, and the function
+stops rather than continuing.
+
+## Gates
+
+Four standing checks run on the pipeline graph, not as afterthoughts.
+
+`scripts/verify_p6_ledger.R` — six assertions on the ledger, unchanged from
+the first attempt at this paper. Three that it rebuilds paper 5's published
+test backtest exactly under S1/K0, both against the stored targets and
+against the printed figures; one that the corrected each-way payout
+reproduces paper 2b's when given paper 2b's terms; one that the corrected
+terms move exactly the rows the field-size ladder marks; one that a staking
+rule changes stakes and not the bet set. Also on the graph as
+`p6_ledger_gate`.
+
+`p6_search_set_check` — row identity of the search set against paper 5's
+validation key, zero overlap with the test split, and zero overlap with the
+fitting races the model was trained on.
+
+`p6_contrast_check` — paper 5's rung-1 rule, that a compared pair differs in
+exactly one term, asserted over every contrast the paper reads before
+anything is scored. The two-stage design (@sec-stages) exists so that every
+contrast is of that shape.
+
+`p6_declaration_frozen` re-reads `DECLARED_RULES.md` from disk on every build
+and matches it against the declaration target, so the committed artefact and
+the pipeline cannot drift apart. `p6_declare_step()` errors rather than
+returning if no candidate survives the eligibility gate for some bet type.
+
+## Order of operations
+
+The declaration was committed before any test target existed. The git history
+records it: the commit introducing this version of `DECLARED_RULES.md`
+contains no stage-2 target, and the stage-2 targets were added in the
+following commit. The `_targets_p6` store was also destroyed and rebuilt
+before that commit, so no test object from the superseded attempt survived
+into this one. That is the only mechanism available for a claim of this kind
+— a pre-registration living in the same repository as the analysis is only as
+good as the history that timestamps it.
+
+## The superseded attempt
+
+An earlier version of this paper searched the rules on training-split
+predictions, which are in sample, and is kept unrendered at
+`papers/06_betting_strategy/SUPERSEDED/` with a README recording what was
+wrong with it. It is not part of this paper and none of its numbers are
+cited here. The ledger, the settlement, the eligibility machinery's
+`p6_assert_one_difference()`, the fair-book columns and the margin
+decomposition carried over from it unchanged.
+
+## Running it
+
+```
+"C:/Program Files/R/R-4.6.0/bin/Rscript.exe" scripts/run_p6_pipeline.R
+```
+
+from the project root, via PowerShell — the database connection fails under
+the Git Bash environment on the development machine. An optional argument
+names a target to build up to, which is how the declaration was frozen before
+the test targets were written.

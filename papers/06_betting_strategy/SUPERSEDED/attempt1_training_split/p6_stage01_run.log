@@ -1,0 +1,99 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_rung3b_scores dispatched
+
+✔ p6_rung3b_scores completed [54.7s, 493.66 kB]
+
++ p6_price_coverage_train dispatched
+
+✔ p6_price_coverage_train completed [200ms, 452 B]
+
++ p6_field_sizes_test dispatched
+
+✔ p6_field_sizes_test completed [60ms, 471 B]
+
++ p6_test_settle dispatched
+
+✔ p6_test_settle completed [12s, 357.90 kB]
+
++ p6_train_predictions dispatched
+
+✔ p6_train_predictions completed [130ms, 1.16 MB]
+
++ p6_train_frame dispatched
+
+✔ p6_train_frame completed [1.5s, 1.60 MB]
+
++ p6_ledger_gate dispatched
+
+✔ p6_ledger_gate completed [660ms, 301 B]
+
++ p6_search_set_check dispatched
+
+✔ p6_search_set_check completed [470ms, 207 B]
+
++ p6_thresholds_train dispatched
+
+✔ p6_thresholds_train completed [300ms, 215 B]
+
++ p6_train_settle dispatched
+
+✔ p6_train_settle completed [31.6s, 711.25 kB]
+
++ p6_field_sizes_train dispatched
+
+✔ p6_field_sizes_train completed [20ms, 491 B]
+
++ p6_overround_train dispatched
+
+✔ p6_overround_train completed [40ms, 597 B]
+
++ p6_threshold_position_train dispatched
+
+✔ p6_threshold_position_train completed [290ms, 526 B]
+
++ p6_selections dispatched
+
+✔ p6_selections completed [0ms, 32.05 kB]
+
++ p6_incumbent_train dispatched
+
+✔ p6_incumbent_train completed [4.7s, 656 B]
+
++ p6_eachway_terms_decision dispatched
+
+✔ p6_eachway_terms_decision completed [20ms, 249 B]
+
++ p6_stage1_grid dispatched
+
+✔ p6_stage1_grid completed [32.5s, 7.63 kB]
+
++ p6_contrast_check dispatched
+
+✔ p6_contrast_check completed [20ms, 252 B]
+
++ p6_train_ledgers dispatched
+
+✔ p6_train_ledgers completed [29.9s, 5.40 MB]
+
++ p6_declaration dispatched
+
+✔ p6_declaration completed [1.8s, 444 B]
+
++ p6_stage1_contrasts dispatched
+
+✔ p6_stage1_contrasts completed [45.3s, 3.66 kB]
+
++ p6_declaration_check dispatched
+
+✔ p6_declaration_check completed [0ms, 220 B]
+
++ p6_declared_rules_file dispatched
+
+✔ p6_declared_rules_file completed [110ms, 21.64 kB]
+
+✔ ended pipeline [3m 47.7s, 23 completed, 16 skipped]
+
+Warning message:
+
+package 'torch' was built under R version 4.6.1 
+

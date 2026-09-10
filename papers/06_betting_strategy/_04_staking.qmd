@@ -1,0 +1,90 @@
+# Staking {#sec-staking}
+
+```{r}
+#| label: staking-counts
+#| include: false
+nf <- dplyr::bind_rows(
+  dplyr::mutate(p6_staking_test, split = "test"),
+  dplyr::mutate(p6_staking_val, split = "search set"))
+k0 <- nf |> dplyr::filter(staking == "K0") |>
+  dplyr::select(split, bet, rule, roi_k0 = roi)
+cmp <- nf |> dplyr::filter(staking != "K0", !is.na(roi)) |>
+  dplyr::left_join(k0, by = c("split", "bet", "rule")) |>
+  dplyr::mutate(worse = roi < roi_k0,
+                collapsed = !is.na(share_zero_stake) & share_zero_stake > 0.5)
+n_nonflat <- nrow(cmp); n_worse <- sum(cmp$worse)
+thin <- cmp |> dplyr::filter(collapsed)
+```
+
+Neither non-flat staking rule helps. Of the `r n_nonflat` non-flat arms scored
+across the two splits, `r n_worse` return less than their own flat-stake
+counterpart.
+
+Every search in this paper runs at a flat one-unit stake, and staking is
+varied separately on a fixed selection. In the first attempt at this paper the
+non-flat rules were searched alongside the selection rules. Because they stake
+zero wherever the model's probability does not exceed the price, they changed
+the bet set as well as the stake, and the search preferred them for a reason
+that had nothing to do with staking.
+
+Three rules: flat at one unit; edge-proportional,
+$(\hat P - P^{\text{mkt}})$ over a five-point edge, capped at three units; and
+quarter-Kelly at $\hat P$ against the starting price, on the same cap.
+
+```{r}
+#| label: tbl-staking-test
+p6_tbl(
+  p6_staking_test |>
+    dplyr::transmute(
+      Market = unname(BET_LAB[bet]), Rule = rule, Staking = staking,
+      `Races selected` = n_races_selected, `Races staked` = n_bets,
+      `Zero-stake share` = p6_fpct(share_zero_stake, 1),
+      `Total staked` = sprintf("%.1f", total_stake),
+      ROI = p6_fpct(roi, 1, TRUE),
+      `Fair book` = p6_fpct(roi_fair, 1, TRUE)),
+  caption = "Staking on the test split, selection held fixed. The zero-stake share is the fraction of selected races where the staking rule puts nothing on."
+)
+```
+
+```{r}
+#| label: tbl-staking-val
+p6_tbl(
+  p6_staking_val |>
+    dplyr::transmute(
+      Market = unname(BET_LAB[bet]), Rule = rule, Staking = staking,
+      `Races selected` = n_races_selected, `Races staked` = n_bets,
+      `Zero-stake share` = p6_fpct(share_zero_stake, 1),
+      `Total staked` = sprintf("%.1f", total_stake),
+      ROI = p6_fpct(roi, 1, TRUE),
+      `Fair book` = p6_fpct(roi_fair, 1, TRUE)),
+  caption = "The same on the search set."
+)
+```
+
+Two mechanisms. Where the selection already requires the model's probability
+to exceed the price, the zero-stake share is 0.0% and the staking rules lever
+up an identical bet set, so a negative return becomes more negative. Where it
+does not, the stake collapses.
+
+```{r}
+#| label: tbl-staking-thin
+p6_tbl(
+  thin |>
+    dplyr::transmute(Split = split, Market = unname(BET_LAB[bet]),
+                     Rule = rule, Staking = staking,
+                     `Races selected` = n_races_selected,
+                     `Races staked` = n_bets,
+                     `Zero-stake share` = p6_fpct(share_zero_stake, 1),
+                     `Total staked` = sprintf("%.1f", total_stake),
+                     ROI = p6_fpct(roi, 1, TRUE)),
+  caption = "The arms where the staking rule discards most of the bet set. An ROI on this many units is not a staking result."
+)
+```
+
+That is the market-favourite rules: the model usually rates the favourite
+below the market, so both non-flat rules stake nothing on most selected races.
+At worst the rule stakes `r p6_fn(min(thin$n_bets))` of
+`r p6_fn(max(thin$n_races_selected))`. Report the zero-stake share, not the
+ROI alone. In the first attempt at this paper the declared win rule staked 33
+units across 2,183 test races with an interval 54 points wide, and none of
+that was visible in its ROI.

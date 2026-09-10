@@ -1,0 +1,227 @@
+# The search, on the training split {#sec-search}
+
+```{r}
+#| label: search-numbers
+#| include: false
+
+cov <- p6_price_coverage_train
+fs_tr <- p6_field_sizes_train
+inc_tr_win <- p6_incumbent_train |> dplyr::filter(bet == "win")
+inc_tr_plc <- p6_incumbent_train |> dplyr::filter(bet == "place")
+inc_tr_ew  <- p6_incumbent_train |> dplyr::filter(bet == "eachway")
+inc_tr_ewc <- p6_incumbent_train |> dplyr::filter(bet == "eachway_corrected")
+s4_tr_win  <- p6_grid(p6_stage1_grid, "S4", "K0", "win")
+s1_tr_win  <- p6_grid(p6_stage1_grid, "S1", "K0", "win")
+```
+
+The search set is paper 5's training split:
+`r p6_comma(p6_search_set_check$n_rows_frame)` runner-rows over
+`r p6_comma(n_train_races)` races.
+`r p6_search_set_check$n_rows_dropped` rows of paper 5's training frame carry
+no usable starting price and are dropped, exactly as the series' own
+market-probability construction drops them on the test split. Row identity is
+asserted as a sorted set on race and runner against paper 5's frame, and the
+overlap with test race identifiers is `r p6_search_set_check$n_test_overlap`.
+
+## The training-split predictions are in sample {#sec-insample}
+
+The encoder was fitted on these races. Its win probabilities here are sharper
+than anything it produces out of sample, and every training ROI that uses a
+model probability is inflated by that.
+
+The scale of it is not subtle. Under the incumbent rule the training-split
+win ROI is `r p6_fmt_pct(inc_tr_win$roi)`, against
+`r p6_fmt_pct(p6_res(p6_test_results, "incumbent", "win")$roi)` on test. The
+control shows it is memorisation and not a difference between the splits: S4
+uses no model output at all, and its training win ROI is
+`r p6_fmt_pct(s4_tr_win$roi)`, close to its test
+`r p6_fmt_pct(p6_res(p6_test_results, "market-only", "win")$roi)`.
+
+**No training ROI in this section is an estimate of what a rule returns.**
+They are a ranking device, which is all the declaration rule uses them for,
+and the test split settles the levels. The brief for this paper fixed the
+search set, and the alternative — a nested split inside the training half,
+or out-of-fold predictions from a cross-validated refit — would have been a
+better search set and is the obvious first change if this work is taken
+further (@sec-limitations).
+
+## Prices
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "Price coverage on the training split, by year. `SP` is the industry starting price from the results archive; `forecast` is the racecard forecast price from the overnight feed, counted only where the feed row was written strictly before the meeting date."
+cov |>
+  dplyr::transmute(
+    Year = year, Rows = p6_comma(n_rows), Races = p6_comma(n_races),
+    `SP rows` = p6_fmt_pct(pct_rows_sp, 1),
+    `SP races complete` = p6_fmt_pct(pct_races_sp, 1),
+    `Forecast rows` = p6_fmt_pct(pct_rows_fp, 1),
+    `Forecast races complete` = p6_fmt_pct(pct_races_fp, 1)
+  ) |>
+  kable(align = "lrrrrrr")
+```
+
+The starting price is effectively complete from 2007. The pre-race racecard
+forecast does not exist before March 2008 and is patchy for a year after,
+exactly as paper 4's Appendix A records: `r p6_fmt_pct(cov$pct_rows_fp[3], 1)`
+of runner-rows in 2008, reaching `r p6_fmt_pct(cov$pct_rows_fp[7], 1)` by
+2012. Every rule in this paper is priced at the starting price, so this table
+is a constraint on what could be asked rather than on what was: a rule
+selecting on the forecast price could not be searched on the whole training
+split.
+
+```{r}
+#| label: tbl-overround
+#| tbl-cap: "The starting-price book by field size, training split. The margin is what a flat bettor pays before any skill."
+p6_overround_train |>
+  dplyr::filter(n_races >= 10) |>
+  dplyr::transmute(
+    `Field size` = field_size, Races = p6_comma(n_races),
+    `Mean book` = sprintf("%.4f", mean_book),
+    `Median book` = sprintf("%.4f", median_book),
+    `Mean margin` = sprintf("%.2f%%", mean_margin_pct)
+  ) |>
+  kable(align = "rrrrr")
+```
+
+The margin rises monotonically with field size, from about
+`r sprintf("%.0f%%", p6_overround_train$mean_margin_pct[p6_overround_train$field_size == 5])`
+in a five-runner race to about
+`r sprintf("%.0f%%", p6_overround_train$mean_margin_pct[p6_overround_train$field_size == 14])`
+in a fourteen-runner one. Any rule that shifts betting towards smaller fields
+reduces the margin it pays without picking better, which is why every ROI in
+this paper is reported at a fair book alongside the real one.
+
+## Each-way terms {#sec-terms}
+
+Paper 5 settles every each-way bet at one fifth the odds on a top-three
+finish, whatever the field size. The real industry terms for a handicap are a
+ladder: win-only at four runners, a quarter the odds on the first two from
+five to seven, a fifth on the first three from eight to eleven, a quarter on
+the first three from twelve to fifteen, and a quarter on the first four from
+sixteen.
+
+`r p6_fmt_pct(p6_eachway_terms_decision$share_4_to_7_train, 1)` of training
+races and
+`r p6_fmt_pct(p6_eachway_terms_decision$share_4_to_7_test, 1)` of test races
+have four to seven runners, where paper 5's terms are most obviously wrong.
+Correcting only that band would leave the twelve-and-up band wrong as well,
+so the whole ladder is applied. Paper 5's terms differ from it on
+`r p6_fmt_pct(p6_eachway_terms_decision$share_mispriced_train, 1)` of training
+races.
+
+Every each-way number in this paper is therefore reported twice: under paper
+5's flat terms, so the comparison with paper 5 is like for like, and under
+the corrected terms, which is what an each-way bet actually settles on. The
+comparator is recomputed under each. The place market is left at paper 5's
+top-three Harville construction throughout — the same criticism applies to
+it, and correcting it would mean redefining the synthetic place market rather
+than repricing a bet, which is a different change from the one this paper
+makes.
+
+## Where Owen's thresholds sit {#sec-thresholds}
+
+```{r}
+#| label: tbl-deciles
+#| tbl-cap: "Deciles of the two quantities S1 filters on, over the model's top-rated horse in each training race."
+p6_threshold_position_train$deciles |>
+  dplyr::transmute(
+    Decile = sprintf("%.0f%%", 100 * decile),
+    `Model win probability` = sprintf("%.4f", p_mod),
+    `Model / market ratio` = sprintf("%.4f", ratio)
+  ) |>
+  kable(align = "lrr")
+```
+
+The probability floor of 0.15 sits at the
+`r sprintf("%.0f", 100 * p6_threshold_position_train$s1_position$quantile_of_top_rated[1])`th
+percentile and passes
+`r p6_fmt_pct(p6_threshold_position_train$s1_position$share_top_rated_passing[1], 1)`
+of top-rated horses: it is close to inert. The ratio threshold of 1.3 sits at
+the
+`r sprintf("%.0f", 100 * p6_threshold_position_train$s1_position$quantile_of_top_rated[2])`th
+percentile and passes
+`r p6_fmt_pct(p6_threshold_position_train$s1_position$share_top_rated_passing[2], 1)`.
+Owen's rule is, on this data, a ratio filter with a probability floor
+attached that does almost nothing.
+
+## The incumbent on the training split
+
+```{r}
+#| label: tbl-incumbent-train
+#| tbl-cap: "S1/K0 on the training split, at the real starting price and at a zero-margin fair book, with 90% race-level bootstrap intervals (B = 2000, seed 42). In-sample: see @sec-insample."
+p6_incumbent_train |>
+  dplyr::transmute(
+    Bet = P6_BET_LABEL[bet], Bets = p6_comma(n_bets),
+    Wins = p6_comma(n_wins), ROI = p6_fmt_pct(roi),
+    `90% interval` = purrr::map2_chr(ci_lo, ci_hi, p6_fmt_pct_ci),
+    `ROI, fair book` = p6_fmt_pct(roi_fair)
+  ) |>
+  kable(align = "lrrrlr")
+```
+
+## The grid
+
+```{r}
+#| label: tbl-grid-win
+#| tbl-cap: "The win market: all 27 combinations on the training split, best first. In-sample."
+p6_grid_table(p6_stage1_grid, "win") |> kable(align = "llrrrrrrr")
+```
+
+```{r}
+#| label: tbl-grid-place
+#| tbl-cap: "The place market: all 27 combinations on the training split, best first. In-sample."
+p6_grid_table(p6_stage1_grid, "place") |> kable(align = "llrrrrrrr")
+```
+
+```{r}
+#| label: tbl-grid-ew
+#| tbl-cap: "Each-way at the corrected terms: all 27 combinations on the training split, best first. In-sample."
+p6_grid_table(p6_stage1_grid, "eachway_corrected") |>
+  kable(align = "llrrrrrrr")
+```
+
+Two features of these tables are worth reading, both of which survive the
+in-sample caveat because they are comparisons within one contaminated set
+rather than levels.
+
+**S4/K0 is the worst rule on the grid for every bet type.** On a training
+split where the model has memorised the answers, that is exactly what should
+happen, and it is the reason the training numbers cannot be used to rank a
+model rule against a market rule. Only the test split can.
+
+**Both non-flat staking rules improve almost every selection arm.** That, too,
+is what memorisation predicts: staking more where the in-sample probability
+is highest concentrates the bet on races the model already knows. Whether it
+survives out of sample is a different question and @sec-test answers it.
+
+Every candidate is also contrasted against S1/K0 on their common races, since
+arms bet different numbers of races and only the restricted contrast is
+paired. Those contrasts are in `DECLARED_RULES.md` in full.
+
+## What was declared
+
+```{r}
+#| label: tbl-declaration
+#| tbl-cap: "The declaration. Frozen and committed before any test target existed."
+p6_declaration |>
+  dplyr::transmute(
+    Bet = P6_BET_LABEL[bet],
+    Declared = paste0(selection, "/", staking),
+    `Candidate ROI` = p6_fmt_pct(cand_roi),
+    `S1/K0 ROI` = p6_fmt_pct(incumbent_roi),
+    Difference = p6_fmt_pts(diff_point),
+    `Bootstrap SE` = p6_fmt_pts(se),
+    `Exceeds one SE` = dplyr::if_else(exceeds_one_se, "yes", "no"),
+    `Training bets` = p6_comma(n_bets)
+  ) |>
+  kable(align = "llrrrrlr")
+```
+
+All three declarations took the candidate rather than falling back to the
+incumbent, and all three place at least 200 bets on the training split. The
+each-way declaration is S4/K2 — **a rule with no model in it**, declared on
+its training numbers by the same mechanical rule as the others. That is worth
+stating plainly rather than hiding in a table: on the each-way market, the
+search's own criterion preferred betting the favourite to betting the model,
+even on a training split where the model has memorised the results.

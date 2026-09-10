@@ -1,0 +1,97 @@
+---
+title: "Bet selection: three families of rule, and where the edge is not"
+subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-10"
+abstract: |
+  A betting rule has three parts: which horse to back, which races to bet on
+  the strength of the model's output, and which races to bet on the strength
+  of the race itself. Two earlier rounds searched the first two and found
+  nothing that beat the rule paper 1 took from Owen. This paper adds the
+  third: filters on field size, class, course, distance and going, all known
+  the night before the race. Every candidate in all three families then had
+  to rank in the top decile of its family on both halves of the search window
+  before it could reach the test split. That guard struck Owen's rule on
+  three of the four markets. It did not save the search. One rule topped every
+  search-set table, backing the horse whose model probability most exceeds its
+  market probability in fields of eleven to twelve runners, at
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$val_roi) })`
+  on the win market with the two halves of the window two points apart. On the
+  test split it returned
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`.
+  Search-set rank predicts test rank negatively on all four markets. Two
+  thirds to four fifths of the variation in return between rules is explained
+  by the mean price the rule backs, so a leaderboard mostly ranks price bands,
+  and the residual does not hold across halves of one window. The two best
+  rules on test were the two carried forward without being selected: the
+  market favourite in every race, with no model in it, and Owen's rule. Three
+  rules in the shortlist are profitable once the bookmaker's margin is
+  removed; none is profitable with it in place. Paper 4 showed the model ties
+  the settled starting price and beats the overnight forecast price, so its
+  value sits between them, and every backtest in this series settles at the
+  closing end of that interval. The final section sets out what that implies
+  for live use.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(glue)
+
+# Paper 6 reads the paper-6 store. Like papers 4 and 5 and unlike papers 1-3
+# this does NOT call tar_config_set(): that writes the project-root
+# `_targets.yaml`, which papers 1-3's own setup chunks also write, and
+# pointing it at `_targets_p6` would send their next render at the wrong
+# store. Passing `store =` per call leaves `_targets.yaml` untouched.
+P6_ROOT <- rprojroot::find_root(rprojroot::has_file("awracing.Rproj"))
+P6_STORE <- file.path(P6_ROOT, "_targets_p6")
+
+source(file.path(P6_ROOT, "papers", "06_betting_strategy", "_helpers.R"))
+
+# tar_load() centrally so tarchetypes::tar_quarto() picks these up as render
+# dependencies — files pulled in via {{< include >}} are not auto-scanned.
+tar_load(c(
+  # universe, gates, provenance
+  p6_universe, p6_search_set_check, p6_fit_provenance_tbl, p6_ledger_gate,
+  p6_sweep_gate, p6_round3_gate,
+  # what was searched (_01)
+  p6_explore_bets, p6_explore_grid, p6_rc_all_specs, p6_rc_pruned,
+  p6_rc_kept, p6_rc_terciles, p6_agree_max, p6_agree_owen,
+  # what was found (_02)
+  p6_val_sweep, p6_rc_sweep_full, p6_comb_sweep_full, p6_rc_best_pairs,
+  p6_rc_guard, p6_thr_guard, p6_comb_guard, p6_guard_summary,
+  p6_guard_summary_sub, p6_owen_guard, p6_round3_shortlists,
+  p6_round3_val, p6_round3_test, p6_round3_ranks, p6_explore_ranks,
+  # price band (_03)
+  p6_price_band_fit, p6_price_context,
+  # staking (_04)
+  p6_staking_test, p6_staking_val, p6_stage3_rules,
+  # descriptive
+  p6_field_sizes_val, p6_field_sizes_test, p6_overround_val,
+  p6_eachway_terms_decision
+), store = P6_STORE)
+
+BET_LAB <- p6_bet_labels()
+```
+
+{{< include _01_searched.qmd >}}
+
+{{< include _02_found.qmd >}}
+
+{{< include _03_priceband.qmd >}}
+
+{{< include _04_staking.qmd >}}
+
+{{< include _05_forward.qmd >}}
+
+{{< include _06_limitations.qmd >}}

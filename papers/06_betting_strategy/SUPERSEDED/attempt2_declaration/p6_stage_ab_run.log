@@ -1,0 +1,15 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_gate_demo_arms dispatched
+
+✔ p6_gate_demo_arms completed [0ms, 199 B]
+
++ p6_gate_demonstration dispatched
+
+✔ p6_gate_demonstration completed [15.2s, 7.98 kB]
+
++ p6_declared_rules_file dispatched
+
+✔ p6_declared_rules_file completed [180ms, 18.64 kB]
+
+✔ ended pipeline [23.3s, 3 completed, 44 skipped]
+
