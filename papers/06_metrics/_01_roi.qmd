@@ -1,0 +1,227 @@
+# ROI cannot compare one model against the next {#sec-roi}
+
+```{r}
+#| label: roi-key
+#| include: false
+c_2b_2a <- p6m_row(p6m_contrasts, "contrast", "2b - 2a")
+c_3_2b  <- p6m_row(p6m_contrasts, "contrast", "3 - 2b")
+c_5_3   <- p6m_row(p6m_contrasts, "contrast", "5 - 3")
+c_5_hb  <- p6m_row(p6m_contrasts, "contrast", "5 - hand-built")
+n_excl  <- sum(p6m_contrasts$excludes_zero)
+roi_row <- p6m_row(p6m_resolution, "measure", "single-bet win ROI")
+rank_rows <- p6m_resolution |> dplyr::filter(measure != "single-bet win ROI")
+h1 <- p6m_row(p6m_race_sets, "race_set", "validation slice, first half")
+h2 <- p6m_row(p6m_race_sets, "race_set", "validation slice, second half")
+ts <- p6m_row(p6m_race_sets, "race_set", "test split")
+p3_frame <- p6m_row(p6m_race_identity, "frame", "3")
+```
+
+Every paper in this series except paper 4 has reported a return on investment,
+and the series has used the sequence of those figures to judge whether each
+model improved on the one before. It cannot support that use. Of the four
+consecutive-model contrasts, only
+`r c("none", "one", "two", "three", "all four")[n_excl + 1]` excludes zero,
+and it is the earliest.
+
+The figures themselves are sound. Each is an unbiased estimate of what that
+rule returned on those races, and nothing was miscomputed. The problem is that
+the intervals around the differences are wider than the differences the series
+was trying to detect.
+
+## The published record
+
+The series' single-bet win ROI, one bet per race under Owen's naive rule
+[@owen2019] at the series-standard thresholds, settled at the real starting
+price:
+
+```{r}
+#| label: tbl-series
+p6m_tbl(
+  p6m_series |>
+    dplyr::transmute(
+      Model = model, Bets = p6m_n(n_bets), Wins = p6m_n(n_wins),
+      ROI = p6m_pct(roi, 2, TRUE),
+      `ROI less top winner` = p6m_pct(roi_drop_top1, 2, TRUE)),
+  caption = "Single-bet win ROI across the series, on the test split."
+)
+```
+
+Paper 1 is absent because it has no single-bet figure: it reported only the
+bet-every-qualifier rule, at
+`r p6m_pct(p6m_backtests_main$naive_1$roi, 2, TRUE)` over
+`r p6m_n(p6m_backtests_main$naive_1$n_bets)` bets, and no single-bet
+equivalent was computed at the time.
+
+The point estimates improve by
+`r sprintf("%.1f", 100 * (p6m_row(p6m_series, "model", "5")$roi - p6m_row(p6m_series, "model", "2a")$roi))`
+points from paper 2a to paper 5, which reads as steady improvement. The paired race-level bootstraps of the consecutive
+differences do not support that reading.
+
+```{r}
+#| label: tbl-contrasts
+p6m_tbl(
+  p6m_contrasts |>
+    dplyr::transmute(
+      Contrast = contrast,
+      Difference = p6m_pp(diff_point),
+      `90% interval` = p6m_ci_pp(ci_lo, ci_hi),
+      Races = p6m_n(n_races),
+      `Excludes zero` = p6m_yn(excludes_zero)),
+  caption = "Consecutive-model differences in single-bet win ROI. Paired race-level bootstrap, B = 2000, seed 42."
+)
+```
+
+Only `r c_2b_2a$contrast` excludes zero, at `r p6m_pp(c_2b_2a$diff_point)`
+with interval `r p6m_ci_pp(c_2b_2a$ci_lo, c_2b_2a$ci_hi)`. The three later
+contrasts have intervals `r sprintf("%.0f", 100 * (c_3_2b$ci_hi - c_3_2b$ci_lo))`,
+`r sprintf("%.0f", 100 * (c_5_3$ci_hi - c_5_3$ci_lo))` and
+`r sprintf("%.0f", 100 * (c_5_hb$ci_hi - c_5_hb$ci_lo))` points wide against
+point differences of `r p6m_pp(c_3_2b$diff_point, 1)`,
+`r p6m_pp(c_5_3$diff_point, 1)` and `r p6m_pp(c_5_hb$diff_point, 1)`.
+
+### A note on the basis of these four figures
+
+The four contrasts above were recomputed for this paper. The versions the
+series published do not share a bet rule: papers 2b and 3 compared ROI on the
+bet-every-qualifier rule, while paper 5 compared it on the single-bet rule.
+
+```{r}
+#| label: tbl-published
+p6m_tbl(
+  p6m_published |>
+    dplyr::transmute(
+      Contrast = label, Basis = basis,
+      Difference = p6m_pp(diff_point),
+      `90% interval` = p6m_ci_pp(ci_lo, ci_hi),
+      `Excludes zero` = p6m_yn(excludes_zero)),
+  caption = "The same four contrasts as published, with the bet rule each was computed on."
+)
+```
+
+Switching the two earlier contrasts to the single-bet rule moves them by
+`r sprintf("%.1f", 100 * abs(p6m_basis_check$published[1] - p6m_basis_check$single_bet[1]))`
+and
+`r sprintf("%.1f", 100 * abs(p6m_basis_check$published[2] - p6m_basis_check$single_bet[2]))`
+points, which is why they were recomputed rather than quoted. The
+recomputation uses the series' own paired bootstrap and reproduces paper 5's
+two figures exactly, so all four rows are the output of one procedure:
+
+```{r}
+#| label: tbl-recompute-check
+p6m_tbl(
+  p6m_recompute_check |>
+    dplyr::transmute(
+      Contrast = contrast,
+      Recomputed = p6m_pp(new_diff, 4),
+      Published = p6m_pp(pub_diff, 4),
+      `Max absolute difference` = p6m_sig(pmax(d_diff, d_lo, d_hi), 2)),
+  caption = "The two contrasts that appear in both tables. Agreement is exact, on the point difference and both interval ends."
+)
+```
+
+The conclusion is unchanged by the change of basis: one of four contrasts
+excludes zero on either rule, and it is the earliest one either way.
+
+## Three measures that resolve, one that does not
+
+Papers 2b and 3 are the clearest case. They tie on all three ranking measures
+the series reports, and their single-bet win ROI point estimates differ by
+`r sprintf("%.1f", 100 * abs(roi_row$diff_point))` points.
+
+```{r}
+#| label: tbl-resolution
+p6m_tbl(
+  p6m_resolution |>
+    dplyr::transmute(
+      Measure = measure,
+      `Paper 2b` = p6m_sig(point_2b, 4),
+      `Paper 3` = p6m_sig(point_3, 4),
+      Difference = p6m_sig(diff_point, 3),
+      `90% interval` = sprintf("[%s, %s]", p6m_sig(ci_lo, 3), p6m_sig(ci_hi, 3))),
+  caption = "Papers 2b and 3 on four measures. Every interval contains zero."
+)
+```
+
+```{r}
+#| label: tbl-resolution-basis
+p6m_tbl(
+  p6m_resolution |>
+    dplyr::transmute(
+      Measure = measure,
+      `Computed over` = n_basis,
+      Width = p6m_sig(ci_width, 3),
+      `Width / value` = sprintf("%.1f%%", 100 * width_over_value)),
+  caption = "What each measure is computed over, and its interval width as a share of the value it measures (paper 2b's, from Table 5)."
+)
+```
+
+Every interval contains zero, so on all four measures the two models tie. What
+differs is how much that tells us, and the measure of that is how wide each
+interval is against the size of the quantity it measures. On the three ranking
+measures the interval is
+`r sprintf("%.1f%%", 100 * min(rank_rows$width_over_value))` to
+`r sprintf("%.1f%%", 100 * max(rank_rows$width_over_value))` of the value
+being measured, so the tie is a real answer: any difference between the two
+models is at most a few per cent of the quantity. The ROI interval is
+`r sprintf("%.0f%%", 100 * roi_row$width_over_value)` of the value being
+measured and spans `r p6m_ci_pp(roi_row$ci_lo, roi_row$ci_hi, 1)`, which is
+consistent with paper 3 being much worse than paper 2b, slightly better, or
+the same. That is not a tie, it is an absence of information.
+
+The reason is the number of observations each measure gets. Brier_place is
+computed over `r p6m_n(p3_frame$n_rows)` runner-rows and the other two
+ranking measures over `r p6m_n(p3_frame$n_races)` races. The ROI is computed
+over the `r p6m_n(p6m_backtests_main$single_2b$n_bets)` and
+`r p6m_n(p6m_backtests_main$single_3$n_bets)` races where Owen's rule finds a
+bet, and within those almost all of the variance sits in whether a small
+number of long-priced bets landed.
+
+## One model, one rule, three sets of races
+
+The second demonstration holds the model and the rule fixed and changes only
+the races. Paper 5's encoder, Owen's rule, one bet per race, nothing refitted
+and nothing selected.
+
+```{r}
+#| label: tbl-race-sets
+p6m_tbl(
+  p6m_race_sets |>
+    dplyr::transmute(
+      `Race set` = race_set, Fit = fit,
+      Races = ifelse(is.na(n_races), "---", p6m_n(n_races)),
+      Bets = p6m_n(n_bets), Wins = p6m_n(n_wins),
+      ROI = p6m_pct(roi, 1, TRUE)),
+  caption = "One model and one rule on three sets of races."
+)
+```
+
+The first two rows are the 1,505 races carved out of the training split at
+2010-12-15 for paper 5's model selection, split chronologically at
+`r unique(p6m_val_halves$cut_date)` into `r p6m_n(h1$n_races)` and
+`r p6m_n(h2$n_races)` races. The same model under the same rule returns
+`r p6m_pct(h1$roi, 1, TRUE)` on one and `r p6m_pct(h2$roi, 1, TRUE)` on the
+other, a spread of
+`r sprintf("%.0f", 100 * (h1$roi - h2$roi))` points across two adjacent sets
+of races of almost equal size. On the test split it returns
+`r p6m_pct(ts$roi, 1, TRUE)`.
+
+Those three figures are not identical in provenance: the validation slice is
+scored by the encoder's fitting-partition fit and the test split by the
+full-training-split refit, which are two fits of one architecture. The spread
+between the two validation halves needs no such qualification, since both are
+scored by the same fit.
+
+## What this establishes
+
+The ROI figures in papers 1 to 5 are unbiased estimates of what each rule
+returned on the races it was measured on. The intervals around the differences
+between them are wider than the differences the series was trying to detect,
+and a single figure moves by
+`r sprintf("%.0f", 100 * (h1$roi - h2$roi))` points between two adjacent sets
+of races when the model and the rule are held fixed. A sequence of ROI point
+estimates across papers therefore cannot establish that the models improved.
+
+The measures that do resolve are the ones computed over every race or every
+runner-row rather than over the subset of races a betting rule selects.
+Section 2 takes the scoring rules the series has for that job and reports what
+they say.
