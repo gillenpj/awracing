@@ -1,141 +1,141 @@
-# Where the edge actually is {#sec-forward}
+# How the model will likely be used {#sec-forward}
 
-Three families of betting rule have now been searched over the settled
-starting price and none of them produced a rule that returns a profit at it.
-That is the point at which the price, rather than the rule, becomes the thing
-to look at.
+This section is informed speculation. Nothing in it is a result of this paper.
 
 ## Every number in this series is measured at the wrong price
 
-Paper 4 released the constraint that market data stay out of the model and
-asked whether the model adds anything *given* a price. Against the settled
-starting price it adds nothing distinguishable: the pooled Benter
-model-probability coefficient was 0.068 for the paper-2b ranking model and
-0.039 for the gradient-boosted trees over 2,182 races, with 95% intervals
-reaching no higher than 0.204. Against the overnight racecard forecast price
-it adds substantially — 1.037 and 1.026 on the earlier test half, 0.746 and
-0.723 on the later.
+Paper 4 asked whether the model adds anything given a market price. Two
+answers came back.
 
-The model therefore knows something the overnight price does not, and nothing
-the settled price does not. Its value sits in the interval between the two,
-and **every backtest in papers 1 to 6 is settled at the closing end of that
-interval**, which is the one price at which the model is known to add nothing.
-Six papers of betting numbers have been optimised against the only price in
-the day where the answer was already known to be no.
+Against the **settled starting price** it adds nothing that can be
+distinguished from zero. The pooled model-probability coefficient in a
+two-stage conditional logit was 0.068 for the paper-2b ranking model and 0.039
+for the gradient-boosted trees over 2,182 races, with 95% intervals reaching
+no higher than 0.204.
 
-That reframes what @sec-found found. The searches were not failing to find a
-rule; they were searching for a rule good enough to overcome a margin at a
-price where the model has no informational advantage left. The margin is not
-small:
+Against the **overnight racecard forecast price** it adds a great deal: 1.037
+and 1.026 on the earlier test half, 0.746 and 0.723 on the later.
 
-```{r}
-#| label: tbl-margin-forward
-p6_tbl(
-  p6_overround_val |>
-    dplyr::filter(n_races >= 20) |>
-    dplyr::transmute(`Field size` = field_size, Races = n_races,
-                     `Starting-price margin` = p6_fpct(mean_margin_pct / 100, 1)),
-  caption = "What a flat backer pays away at the settled starting price, before any skill enters."
-)
-```
+So the model knows something the overnight price does not and nothing the
+settled price does not. Its value sits in the hours between those two moments.
+Every backtest in papers 1 to 6 settles at the closing end of that interval,
+which is the one price where the model was already known to add nothing.
 
-Field sizes 8 to 12 carry
+That reframes @sec-found. The searches were not failing to find a good rule.
+They were looking for a rule strong enough to beat a margin at a price where
+the model has no informational advantage left.
+
+## The likely use is a price trade, not a winner-picking trade
+
+Backing at the off means picking winners against a market that has already
+absorbed everything the model knows. Backing early means taking a price the
+model thinks is too long, which is a different bet with a different payoff.
+
+The trade has two exits. Hold to the result and collect at the early price if
+the horse wins. Or lay the same horse back on the exchange once the price
+shortens, taking the difference and carrying no result risk at all. The second
+exit is available whether or not the horse runs well, which is the point: the
+bet is on the price moving, not on the horse.
+
+The mechanism this leans on is convergence. Early markets are thin and
+dominated by bookmaker prices and money that has not looked closely. As race
+time approaches, liquidity builds and prices move toward fair value. A model
+that approximates the closing price from pre-race information alone identifies
+horses whose early price has not yet moved. The edge, if it exists, is in
+front-running that convergence.
+
+Paper 4's numbers are consistent with that and do not establish it. What they
+establish is where to look.
+
+## The metric changes with the trade
+
+Judge it by closing line value, not ROI. Did the price taken beat the price at
+the off?
+
+That is a per-bet measurement rather than a per-win one. It is available on
+every bet, it does not wait for a result, and it converges in hundreds of bets
+rather than tens of thousands. ROI on a win market converges slowly because
+almost all its variance sits in whether a few long-priced bets landed. The
+field-size rule's entire 75-point reversal in @sec-found is 42 winners
+becoming 19.
+
+This is the reason every ROI interval in this series is too wide to read. The
+intervals in @sec-found run 20 to 50 points wide on samples of 300 to 1,000
+bets. A metric that resolves in hundreds of bets is not a refinement here. It
+is the difference between being able to tell whether the strategy works and
+not being able to tell.
+
+If the convergence thesis is right, closing line value is positive and shows
+up quickly. If it is wrong, that shows up quickly too, and long before an ROI
+would say anything.
+
+## The exchange changes the arithmetic
+
+Bookmaker prices carry the over-round in @sec-searched: from
+`r p6_fpct(p6_overround_val$mean_margin_pct[p6_overround_val$field_size == 4] / 100, 1)`
+at four runners to
+`r p6_fpct(p6_overround_val$mean_margin_pct[p6_overround_val$field_size == 14] / 100, 1)`
+at fourteen. Field sizes 8 to 12 hold
 `r p6_fpct(sum(p6_overround_val$n_races[p6_overround_val$field_size %in% 8:12]) / p6_universe$n_val_races, 0)`
-of the search-set races and pay between
+of the search races and pay between
 `r p6_fpct(min(p6_overround_val$mean_margin_pct[p6_overround_val$field_size %in% 8:12]) / 100, 1)`
 and
 `r p6_fpct(max(p6_overround_val$mean_margin_pct[p6_overround_val$field_size %in% 8:12]) / 100, 1)`.
-Against that, the best test-split return in this paper's whole shortlist is
-`r p6_fpct(max(p6_round3_test$roi, na.rm = TRUE), 1, TRUE)`. The fair-book
-column says the same thing from the other side: three rules in the shortlist
-are profitable with the margin removed, and all three lose with it in place.
 
-## What follows for live betting
+An exchange charges commission on net winnings instead, typically 2 to 5%.
+That gap is larger than any effect this paper searched for. The best
+test-split return in the whole shortlist is
+`r p6_fpct(max(p6_round3_test$roi, na.rm = TRUE), 1, TRUE)`, and the spread
+between the best and worst rules is smaller than the difference between paying
+an 8-to-18% over-round and paying 2-to-5% commission.
 
-Three things, in the order they matter.
-
-**Bet early, into the gap.** The model's demonstrated advantage is over the
-overnight price, so the bet has to be struck while some of that gap is still
-open. This is the convergence idea the series has carried since paper 4 as a
-direction rather than a commitment: early markets are thin and dominated by
-bookmaker prices and uninformed money, and they move toward fair value as
-race time approaches and liquidity builds. A model that approximates the
-closing price using only pre-race information identifies horses whose early
-price has not yet converged. The trade is front-running that convergence, not
-beating the closing line.
-
-**Judge it by closing line value, not by ROI.** This paper is a
-demonstration of why. A 1,505-race window could not rank betting rules at all
-(@sec-found), and the intervals on 300-to-1,000-bet samples in @sec-found run
-20 to 50 points wide. ROI on a win market converges slowly because almost all
-of the variance is in whether a small number of long-priced bets landed —
-the field-size rule's whole reversal is 42 winners becoming 19. Closing line
-value measures something per bet rather than per win: whether the price taken
-was better than the price the market settled at. It is available on every
-bet, it does not wait for a result, and it converges in hundreds of bets
-rather than tens of thousands. If the early-price thesis is right, closing
-line value is positive; if it is wrong, that shows up long before an ROI
-would.
-
-**The exchange changes the arithmetic.** The margin in the table above is a
-bookmaker over-round baked into the price. An exchange replaces it with
-commission on net winnings, in the region of 2 to 5% depending on the account.
-That does not create an edge, but it changes what size of edge is needed for
-one to survive: a rule losing roughly its margin at the starting price is not
-obviously a losing rule at a price struck on an exchange with commission
-instead of an over-round.
+The fair-book column makes the same point from the other side. Three rules in
+the shortlist are profitable with the margin removed and none is profitable
+with it in place. Changing the venue does not create an edge. It changes how
+much edge a rule needs before one survives.
 
 ## Two things this dataset cannot answer
 
-Neither of the following is a caveat in the ordinary sense. They are the two
-questions on which the whole forward strategy turns, and this data is silent
-on both.
-
 **Is real money available at early prices, in usable size?** Everything above
-assumes a bet can be struck at the early price. The Smartform archive records
-what prices existed, not what liquidity stood behind them. Early exchange
-markets on UK All-Weather handicaps are thin, and a price that exists for one
-unit may not exist for fifty. If the available size at the early price is
-small enough, the edge is real and unusable, which is operationally the same
-as not having it.
+assumes the bet can be struck. The Smartform archive records what prices
+existed, not what money stood behind them. Early exchange markets on UK
+All-Weather handicaps are thin. A price available for one unit may not be
+available for fifty, and a price that moves when you bet into it is not the
+price you modelled. If the available size is small enough, the edge is real
+and unusable, which is the same thing operationally as not having it.
 
-**Does the model beat an early *exchange* price?** Paper 4's result is
-against `daily_runners.forecast_price_decimal` — a newspaper-style forecast
-published the evening before by a compiler, not a price money has traded at.
-An early exchange price is a much harder target: it aggregates the opinion of
-people who have committed money, and it will already contain much of what a
-compiler's forecast misses. Beating a forecast price is weak evidence of
-beating an early traded price, and this dataset contains no early traded
-prices at all, so the gap cannot be measured here.
+**Does the model beat an early exchange price?** Paper 4's result is against
+`daily_runners.forecast_price_decimal`, a forecast published the evening
+before by a compiler. That is not a price money has traded at. An early
+exchange price aggregates the opinions of people who have committed funds, and
+it will already contain much of what a compiler's forecast misses. Beating a
+forecast price is weak evidence of beating an early traded price. This dataset
+contains no early traded prices, so the gap cannot be measured here.
 
-**Nothing above asserts that the strategy will work.** It is the direction the
-evidence points, and the two questions above are exactly the ones that decide
-it. They need a live feed and paper trading, not another backtest on this
-archive.
+Neither question is a footnote. They decide whether any of this works, and
+answering them needs a live feed and paper trading, not another backtest on
+this archive.
 
-## The place and each-way numbers are against markets that do not quite exist
+## A correction to the series
 
-One correction to the series that this section is the right place for.
+Two of the four markets reported throughout papers 2b to 6 price bets that do
+not quite exist on the venue this strategy would use.
 
-Betfair has **no each-way market**. An each-way bet is a bookmaker product:
-one stake on the win, one on a place at a fraction of the odds. On an
-exchange the two legs are separate markets and the each-way construction has
-no counterpart. Every each-way figure in papers 2b, 5 and 6 — at paper 5's
-flat one-fifth top-three terms and at the corrected industry ladder alike —
-prices a bet that cannot be placed on the venue the forward strategy would
-use.
+**Betfair has no each-way market.** An each-way bet is a bookmaker product:
+one stake on the win, one on a place at a fraction of the odds. On an exchange
+those are two separate markets and the each-way construction has no
+counterpart. Every each-way figure in papers 2b, 5 and 6, at paper 5's flat
+one-fifth top-three terms and at the corrected industry ladder alike, prices
+something that cannot be placed there.
 
-Betfair's place market is a **real, independently priced market**. The place
-prices in this series are not: they are a discounted-Harville construction
-computed from the win prices, following @harville1973 with the
-@lobaconshone1994 corrections. That construction was the right choice for papers 2b to
-5, because it makes the place market comparable to the win market on the same
-information. It is not the price a place bet would be struck at, and the
-difference need not be small — a genuinely traded place market prices the
-probability of a top-three finish directly, and can disagree with anything
-derived from win prices.
+**Betfair's place market is independently priced.** The place prices in this
+series are not. They are a discounted-Harville construction computed from the
+win prices, following @harville1973 with the @lobaconshone1994 corrections.
+That was the right choice for papers 2b to 5, because it makes the place
+market comparable to the win market on the same information. It is not the
+price a place bet would be struck at, and a real place market can disagree
+with anything derived from win prices.
 
-So of the four markets reported throughout this paper, one is real for the
-forward strategy (win), one is real but priced here by proxy (place), and two
-are products of a venue the strategy would not be using. The win-market
-numbers are the ones that carry forward.
+Of the four markets in this paper, win is real and priced as traded, place is
+real but priced here by proxy, and the two each-way columns are products of a
+different venue. The win numbers are the ones that carry forward.

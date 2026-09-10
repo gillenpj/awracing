@@ -1,10 +1,9 @@
 # What was searched {#sec-searched}
 
-A betting rule on this data has three independent parts, and the first two
-rounds of this work searched only two of them.
-
-**Which horse.** Given a race worth betting, a *picker* chooses the runner.
-Five are used throughout, and only the fifth reads anything about the filter:
+A betting rule has three parts: which horse to back, which races to bet on the
+model's output, and which races to bet on the race itself. Rounds 1 and 2
+searched the first two and found nothing that beat the rule paper 1 took from
+@owen2019. That was a claim about two families. This paper adds the third.
 
 ```{r}
 #| label: tbl-pickers
@@ -18,51 +17,22 @@ p6_tbl(tibble::tibble(
     "Highest model probability among runners passing the filter's cuts"),
   Reads = c("the field", "the field", "the field", "the field",
             "the filter's cuts")
-), caption = "The five pickers. P5 is Owen's own picker; on the no-filter row every runner passes its cuts, so P5 is P1 there by construction.")
+), caption = "The five pickers. P5 is Owen's; with no filter every runner passes its cuts, so P5 is then identical to P1.")
 ```
 
-**Which races: the model's own output.** A *threshold* filter cuts on the
-model probability $\hat P$ and on the ratio $\hat P / P^{\text{mkt}}$. Owen's
-rule [@owen2019] is $\hat P > 0.15$ and ratio $> 1.3$ with picker P5, and the
-grid searched here is $\hat P$ from 0.00 to 0.35 in steps of 0.01 crossed with
-the ratio from 0.80 to 2.50 in steps of 0.05, plus a no-filter row that bets
-every race — `r p6_fn(nrow(p6_explore_grid))` filters.
+**Threshold filters** cut on the model probability $\hat P$ and the ratio
+$\hat P / P^{\text{mkt}}$. Owen's rule is $\hat P > 0.15$, ratio $> 1.3$,
+picker P5. The grid is $\hat P$ from 0.00 to 0.35 by 0.01 crossed with the
+ratio from 0.80 to 2.50 by 0.05, plus a no-filter row:
+`r p6_fn(nrow(p6_explore_grid))` filters.
 
-**Which races: the race itself.** A *race-characteristic* filter conditions on
-what is known the night before the race and is independent of the model's
-output: field size, class, course, distance, going. This family had never been
-searched.
-
-That omission is the reason this paper exists. Rounds 1 and 2 concluded that
-nothing beat the rule paper 1 inherited from @owen2019, and read as a claim
-about betting rules in general. It was a claim about one family. Worse, that
-family is largely a single dial in disguise: across the
-`r p6_fn(p6_price_band_fit$n_rules[p6_price_band_fit$bet == "win"])`
-threshold-family rules that place at least 300 validation bets, win ROI
-correlates
-`r p6_fcor(p6_price_band_fit$cor_roi_price[p6_price_band_fit$bet == "win"])`
-with the mean starting price the rule backs, and a quadratic in log mean price
-explains
-`r p6_fpct(p6_price_band_fit$r_squared[p6_price_band_fit$bet == "win"], 1)`
-of the variation between rules (@sec-priceband). The search had been dense in
-one dimension and absent everywhere else.
-
-## The race-characteristic family, enumerated
-
-Every contiguous field-size band over 4 to 16 runners; each class 2 to 5
-singly and each contiguous pair; each of the four courses singly and each
-pair; the distance terciles of the search set
-(`r sprintf("%.0f", p6_rc_terciles[1])` and
-`r sprintf("%.0f", p6_rc_terciles[2])` yards) and the single cuts at each
-boundary; and the going ordinal split at each interior cut point. A
-specification is data rather than a closure, so the identical filter is
-evaluated against both splits, and the distance boundaries are fixed on the
-search set and carried to the test split unchanged — a re-derived boundary
-would make the two splits' rules different rules.
-
-A filter is kept only if it admits at least 300 search-set races and at least
-150 in each half of the search window, since a rule that cannot be ranked on
-both halves cannot pass the stability guard in @sec-found.
+**Race-characteristic filters** use conditions known the night before. Every
+contiguous field-size band over 4 to 16 runners; each class 2 to 5 singly and
+in contiguous pairs; each course singly and in pairs; the search set's
+distance terciles (`r sprintf("%.0f", p6_rc_terciles[1])` and
+`r sprintf("%.0f", p6_rc_terciles[2])` yards) and the cuts at each boundary;
+the going ordinal at each interior cut. A filter is kept only if it admits 300
+search-set races and 150 in each half of the window.
 
 ```{r}
 #| label: tbl-rc-specs
@@ -75,26 +45,21 @@ p6_tbl(
       `Struck for size` = sum(!kept),
       `Largest struck` = max(c(0L, n_races[!kept])),
       .groups = "drop"),
-  caption = "The race-characteristic family. A filter is struck if it admits fewer than 300 search-set races or fewer than 150 in either half."
+  caption = "The race-characteristic family, before scoring."
 )
 ```
 
-Two of the five sub-families are effectively empty before any scoring happens,
-and both facts are about UK All-Weather racing rather than about the method.
-**Going does not vary**:
+Two sub-families are empty before scoring, and both facts are about the scope
+of this series rather than the method. Going does not vary:
 `r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$family == "going" & grepl("<= 4", p6_rc_pruned$label)]))`
-of the `r p6_fn(p6_universe$n_val_races)` search-set races are reported
-"Standard", so every split of the going scale puts almost everything on one
-side; the two filters that survive pruning are near-complete sets of the data
-and cannot distinguish anything. **Class is too concentrated**: classes 2 and
-3 carry
+of `r p6_fn(p6_universe$n_val_races)` search races are "Standard". Class is
+too concentrated: classes 2 and 3 hold
 `r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$label == "class 2-3"]))`
-races between them, below the 300-race floor even pooled, so only the class 4
-and class 5 ends of the scale are searchable.
+races between them, under the floor even pooled.
 
-Field size is the sub-family with a prior behind it. Paper 4 found the
-overnight forecast-price over-round widening steadily with the size of the
-field, and the settled starting price on this data does the same thing:
+Field size is the one sub-family with a prior. Paper 4 found the overnight
+forecast-price over-round widening with field size, and the settled starting
+price does the same.
 
 ```{r}
 #| label: tbl-overround
@@ -105,22 +70,19 @@ p6_tbl(
       `Field size` = field_size, Races = n_races,
       `Mean book` = sprintf("%.3f", mean_book),
       `Margin` = p6_fpct(mean_margin_pct / 100, 2)),
-  caption = "The starting-price over-round by field size, on the search set. The margin is what a flat backer pays away before any skill enters."
+  caption = "The starting-price over-round by field size, search set. The margin is what a flat backer pays before any skill enters."
 )
 ```
 
-The margin a backer pays runs from
-`r p6_fpct(p6_overround_val$mean_margin_pct[p6_overround_val$field_size == 4] / 100, 1)`
-in a four-runner race to
-`r p6_fpct(p6_overround_val$mean_margin_pct[p6_overround_val$field_size == 14] / 100, 1)`
-in a fourteen-runner race. The prior is therefore real but it points *against*
-big fields: whatever a rule gains by betting them, it starts further behind.
+The prior is real, and it argues against big fields: a rule that bets them
+starts further behind.
 
-## Provenance, and the gates
+## Provenance and gates
 
-Nothing here refits anything. The model is paper 5's rung-3b encoder, held
-fixed, scored on the search set by its fitting-partition fit and on the test
-split by the full-training-split refit paper 5 published.
+Nothing here refits anything. The model is paper 5's rung-3b encoder, scored
+on the search set by its fitting-partition fit and on the test split by the
+full-training-split refit paper 5 published. These are two fits of one
+architecture, so no threshold is assumed to transfer.
 
 ```{r}
 #| label: tbl-provenance
@@ -131,27 +93,23 @@ p6_tbl(
                      Config = config, Epochs = epochs,
                      `Validation PL loss` = ifelse(is.na(val_pl_loss), "---",
                                                    sprintf("%.6f", val_pl_loss))),
-  caption = "The two fits. They are two fits of one architecture and not the same model, which is why every threshold in this paper is checked on both splits rather than assumed to transfer."
+  caption = "The two fits."
 )
 ```
 
-The search set is `r p6_fn(p6_universe$n_val_races)` races and
-`r p6_fn(p6_universe$n_val_rows)` runners; the test split is
-`r p6_fn(p6_universe$n_test_races)` races and
-`r p6_fn(p6_universe$n_test_rows)` runners. Race-id overlap between them is
-`r p6_search_set_check$n_test_overlap`, and overlap with the
-`r p6_fn(p6_search_set_check$n_races_fit)` races paper 5's fitting partition
-saw is `r p6_search_set_check$n_fit_overlap`; both are asserted, not checked
-by eye.
+Search set `r p6_fn(p6_universe$n_val_races)` races,
+`r p6_fn(p6_universe$n_val_rows)` runners; test split
+`r p6_fn(p6_universe$n_test_races)` races,
+`r p6_fn(p6_universe$n_test_rows)` runners. Race-id overlap between them,
+`r p6_search_set_check$n_test_overlap`; overlap with the
+`r p6_fn(p6_search_set_check$n_races_fit)` fitting races,
+`r p6_search_set_check$n_fit_overlap`. Both asserted in code.
 
-Three gates run before anything in this paper is read. The betting ledger
-reproduces paper 5's published test backtest to the printed digit, and — added
-for this paper — the search set's own ledger is rebuilt from the source
-database table in code that calls none of the paper's own functions, matching
-on the bet set as well as on the arithmetic. The sweep used for the searches
-is a second, faster implementation of the same selection and settlement
-arithmetic, and is asserted equal to the ledger on every rule expressible in
-both. The round-3 scoring path is asserted to reproduce round 2's numbers on
-all `r p6_fn(p6_round3_gate$rows_compared)` shared rows, with a maximum
-absolute ROI difference of
+Three gates run first. The ledger reproduces paper 5's published test backtest
+to the printed digit, and the search set's ledger is rebuilt from the source
+database in code calling none of this paper's functions, matching on the bet
+set as well as the arithmetic. The faster sweep used for searching is asserted
+equal to the ledger on every rule expressible in both. The round-3 scoring
+path reproduces round 2 on all `r p6_fn(p6_round3_gate$rows_compared)` shared
+rows, maximum absolute ROI difference
 `r sprintf("%.1e", p6_round3_gate$max_abs_roi_diff)`.

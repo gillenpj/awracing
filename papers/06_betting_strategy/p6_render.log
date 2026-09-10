@@ -1,8 +1,4 @@
 ﻿- The project is out-of-sync -- use `renv::status()` for details.
-+ p6_price_context dispatched
-
-✔ p6_price_context completed [100ms, 225 B]
-
 + paper_6_betting_strategy dispatched
 
 
@@ -14,175 +10,169 @@
 processing file: index.qmd
 
 
-1/57                     
+1/55                     
 
 
-2/57 [setup]             
+2/55 [setup]             
 
 
-3/57                     
+3/55                     
 
 
-4/57 [tbl-pickers]       
+4/55 [tbl-pickers]       
 
 
-5/57                     
+5/55                     
 
 
-6/57 [tbl-rc-specs]      
+6/55 [tbl-rc-specs]      
 
 
-7/57                     
+7/55                     
 
 
-8/57 [tbl-overround]     
+8/55 [tbl-overround]     
 
 
-9/57                     
+9/55                     
 
 
-10/57 [tbl-provenance]    
+10/55 [tbl-provenance]    
 
 
-11/57                     
+11/55                     
 
 
-12/57 [tbl-fs-win]        
+12/55 [r3-key]            
 
 
-13/57                     
+13/55                     
 
 
-14/57 [tbl-fs-others]     
+14/55 [tbl-fs-win]        
 
 
-15/57                     
+15/55                     
 
 
-16/57 [tbl-rc-all]        
+16/55 [tbl-fs-others]     
 
 
-17/57                     
+17/55                     
 
 
-18/57 [tbl-comb]          
+18/55 [tbl-rc-all]        
 
 
-19/57                     
+19/55                     
 
 
-20/57 [tbl-guard-counts]  
+20/55 [tbl-comb]          
 
 
-21/57                     
+21/55                     
 
 
-22/57 [tbl-owen-guard]    
+22/55 [tbl-guard-counts]  
 
 
-23/57                     
+23/55                     
 
 
-24/57 [tbl-half-cor]      
+24/55 [tbl-owen-guard]    
 
 
-25/57                     
+25/55                     
 
 
-26/57 [tbl-half-cor-sub]  
+26/55 [tbl-half-cor]      
 
 
-27/57                     
+27/55                     
 
 
-28/57 [tbl-r3-win]        
+28/55 [tbl-half-cor-sub]  
 
 
-29/57                     
+29/55                     
 
 
-30/57 [tbl-r3-place]      
+30/55 [tbl-r3-win]        
 
 
-31/57                     
+31/55                     
 
 
-32/57 [tbl-r3-ew]         
+32/55 [tbl-r3-place]      
 
 
-33/57                     
+33/55                     
 
 
-34/57 [tbl-r3-ewc]        
+34/55 [tbl-r3-ew]         
 
 
-35/57                     
+35/55                     
 
 
-36/57 [r3-key]            
+36/55 [tbl-r3-ewc]        
 
 
-37/57                     
+37/55                     
 
 
-38/57 [tbl-fair-positive] 
+38/55 [tbl-fair-positive] 
 
 
-39/57                     
+39/55                     
 
 
-40/57 [tbl-rank-agree]    
+40/55 [tbl-rank-agree]    
 
 
-41/57                     
+41/55                     
 
 
-42/57 [tbl-rank-agree-fam]
+42/55 [tbl-rank-agree-fam]
 
 
-43/57                     
+43/55                     
 
 
-44/57 [tbl-priceband]     
+44/55 [tbl-priceband]     
 
 
-45/57                     
+45/55                     
 
 
-46/57 [tbl-owen-resid]    
+46/55 [tbl-owen-resid]    
 
 
-47/57                     
+47/55                     
 
 
-48/57 [tbl-staking-test]  
+48/55 [staking-counts]    
 
 
-49/57                     
+49/55                     
 
 
-50/57 [tbl-staking-val]   
+50/55 [tbl-staking-test]  
 
 
-51/57                     
+51/55                     
 
 
-52/57 [staking-counts]    
+52/55 [tbl-staking-val]   
 
 
-53/57                     
+53/55                     
 
 
-54/57 [tbl-staking-thin]  
+54/55 [tbl-staking-thin]  
 
 
-55/57                     
-
-
-56/57 [tbl-margin-forward]
-
-
-57/57                     
+55/55                     
 
 
 output file: index.knit.md
@@ -249,67 +239,59 @@ metadata
 
   abstract: |
 
-    A betting rule has three independent parts: which horse to back, which
+    A betting rule has three parts: which horse to back, which races to bet on
 
-    races to bet on the strength of the model's own output, and which races to
+    the strength of the model's output, and which races to bet on the strength
 
-    bet on the strength of the race itself. Two earlier rounds of this work
+    of the race itself. Two earlier rounds searched the first two and found
 
-    searched the first two and concluded that nothing beat the rule paper 1
+    nothing that beat the rule paper 1 took from Owen. This paper adds the
 
-    inherited from Owen. This paper adds the third — filters on field size,
+    third: filters on field size, class, course, distance and going, all known
 
-    class, course, distance and going, all known the night before the race —
+    the night before the race. Every candidate in all three families then had
 
-    and puts every candidate in all three families through a stability guard
+    to rank in the top decile of its family on both halves of the search window
 
-    before anything reaches the test split: a rule must rank in the top decile
+    before it could reach the test split. That guard struck Owen's rule on
 
-    of its family on both halves of the search window to be carried forward.
+    three of the four markets. It did not save the search. One rule topped every
 
-    The guard struck Owen's rule on three of the four markets, which is a fact
+    search-set table, backing the horse whose model probability most exceeds its
 
-    about that rule worth recording. It did not save the search. One rule won
-
-    every search-set leaderboard — back the horse whose model probability most
-
-    exceeds its market probability, in fields of eleven to twelve runners —
-
-    returning
+    market probability in fields of eleven to twelve runners, at
 
     `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$val_roi) })`
 
-    on the win market with the two halves of the window agreeing to within two
+    on the win market with the two halves of the window two points apart. On the
 
-    points, and
+    test split it returned
 
-    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`.
 
-    on the test split. Search-set rank predicts test rank *negatively* on all
+    Search-set rank predicts test rank negatively on all four markets. Two
 
-    four markets. Across the threshold family, two thirds to four fifths of the
+    thirds to four fifths of the variation in return between rules is explained
 
-    variation in return between rules is explained by the mean price the rule
+    by the mean price the rule backs, so a leaderboard mostly ranks price bands,
 
-    backs, so a leaderboard mostly ranks price bands; the residual is not
+    and the residual does not hold across halves of one window. The two best
 
-    stable across halves of the same window. The two best rules on the test
+    rules on test were the two carried forward without being selected: the
 
-    split were the two carried forward without being selected: the market
+    market favourite in every race, with no model in it, and Owen's rule. Three
 
-    favourite in every race, with no model in it, and Owen's rule. Three rules
+    rules in the shortlist are profitable once the bookmaker's margin is
 
-    in the whole shortlist are profitable once the bookmaker's margin is
+    removed; none is profitable with it in place. Paper 4 showed the model ties
 
-    removed and none is profitable with it in place. Since paper 4 showed the
+    the settled starting price and beats the overnight forecast price, so its
 
-    model ties the settled starting price and beats the overnight forecast
+    value sits between them, and every backtest in this series settles at the
 
-    price, its value sits between the two — and every backtest in this series
+    closing end of that interval. The final section sets out what that implies
 
-    settles at the closing end of that interval, the one price where the answer
-
-    was already known to be no.
+    for live use.
 
   
 
@@ -322,175 +304,169 @@ metadata
 processing file: index.qmd
 
 
-1/57                     
+1/55                     
 
 
-2/57 [setup]             
+2/55 [setup]             
 
 
-3/57                     
+3/55                     
 
 
-4/57 [tbl-pickers]       
+4/55 [tbl-pickers]       
 
 
-5/57                     
+5/55                     
 
 
-6/57 [tbl-rc-specs]      
+6/55 [tbl-rc-specs]      
 
 
-7/57                     
+7/55                     
 
 
-8/57 [tbl-overround]     
+8/55 [tbl-overround]     
 
 
-9/57                     
+9/55                     
 
 
-10/57 [tbl-provenance]    
+10/55 [tbl-provenance]    
 
 
-11/57                     
+11/55                     
 
 
-12/57 [tbl-fs-win]        
+12/55 [r3-key]            
 
 
-13/57                     
+13/55                     
 
 
-14/57 [tbl-fs-others]     
+14/55 [tbl-fs-win]        
 
 
-15/57                     
+15/55                     
 
 
-16/57 [tbl-rc-all]        
+16/55 [tbl-fs-others]     
 
 
-17/57                     
+17/55                     
 
 
-18/57 [tbl-comb]          
+18/55 [tbl-rc-all]        
 
 
-19/57                     
+19/55                     
 
 
-20/57 [tbl-guard-counts]  
+20/55 [tbl-comb]          
 
 
-21/57                     
+21/55                     
 
 
-22/57 [tbl-owen-guard]    
+22/55 [tbl-guard-counts]  
 
 
-23/57                     
+23/55                     
 
 
-24/57 [tbl-half-cor]      
+24/55 [tbl-owen-guard]    
 
 
-25/57                     
+25/55                     
 
 
-26/57 [tbl-half-cor-sub]  
+26/55 [tbl-half-cor]      
 
 
-27/57                     
+27/55                     
 
 
-28/57 [tbl-r3-win]        
+28/55 [tbl-half-cor-sub]  
 
 
-29/57                     
+29/55                     
 
 
-30/57 [tbl-r3-place]      
+30/55 [tbl-r3-win]        
 
 
-31/57                     
+31/55                     
 
 
-32/57 [tbl-r3-ew]         
+32/55 [tbl-r3-place]      
 
 
-33/57                     
+33/55                     
 
 
-34/57 [tbl-r3-ewc]        
+34/55 [tbl-r3-ew]         
 
 
-35/57                     
+35/55                     
 
 
-36/57 [r3-key]            
+36/55 [tbl-r3-ewc]        
 
 
-37/57                     
+37/55                     
 
 
-38/57 [tbl-fair-positive] 
+38/55 [tbl-fair-positive] 
 
 
-39/57                     
+39/55                     
 
 
-40/57 [tbl-rank-agree]    
+40/55 [tbl-rank-agree]    
 
 
-41/57                     
+41/55                     
 
 
-42/57 [tbl-rank-agree-fam]
+42/55 [tbl-rank-agree-fam]
 
 
-43/57                     
+43/55                     
 
 
-44/57 [tbl-priceband]     
+44/55 [tbl-priceband]     
 
 
-45/57                     
+45/55                     
 
 
-46/57 [tbl-owen-resid]    
+46/55 [tbl-owen-resid]    
 
 
-47/57                     
+47/55                     
 
 
-48/57 [tbl-staking-test]  
+48/55 [staking-counts]    
 
 
-49/57                     
+49/55                     
 
 
-50/57 [tbl-staking-val]   
+50/55 [tbl-staking-test]  
 
 
-51/57                     
+51/55                     
 
 
-52/57 [staking-counts]    
+52/55 [tbl-staking-val]   
 
 
-53/57                     
+53/55                     
 
 
-54/57 [tbl-staking-thin]  
+54/55 [tbl-staking-thin]  
 
 
-55/57                     
-
-
-56/57 [tbl-margin-forward]
-
-
-57/57                     
+55/55                     
 
 
 output file: index.knit.md
@@ -559,67 +535,59 @@ metadata
 
   abstract: |
 
-    A betting rule has three independent parts: which horse to back, which
+    A betting rule has three parts: which horse to back, which races to bet on
 
-    races to bet on the strength of the model's own output, and which races to
+    the strength of the model's output, and which races to bet on the strength
 
-    bet on the strength of the race itself. Two earlier rounds of this work
+    of the race itself. Two earlier rounds searched the first two and found
 
-    searched the first two and concluded that nothing beat the rule paper 1
+    nothing that beat the rule paper 1 took from Owen. This paper adds the
 
-    inherited from Owen. This paper adds the third — filters on field size,
+    third: filters on field size, class, course, distance and going, all known
 
-    class, course, distance and going, all known the night before the race —
+    the night before the race. Every candidate in all three families then had
 
-    and puts every candidate in all three families through a stability guard
+    to rank in the top decile of its family on both halves of the search window
 
-    before anything reaches the test split: a rule must rank in the top decile
+    before it could reach the test split. That guard struck Owen's rule on
 
-    of its family on both halves of the search window to be carried forward.
+    three of the four markets. It did not save the search. One rule topped every
 
-    The guard struck Owen's rule on three of the four markets, which is a fact
+    search-set table, backing the horse whose model probability most exceeds its
 
-    about that rule worth recording. It did not save the search. One rule won
-
-    every search-set leaderboard — back the horse whose model probability most
-
-    exceeds its market probability, in fields of eleven to twelve runners —
-
-    returning
+    market probability in fields of eleven to twelve runners, at
 
     `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$val_roi) })`
 
-    on the win market with the two halves of the window agreeing to within two
+    on the win market with the two halves of the window two points apart. On the
 
-    points, and
+    test split it returned
 
-    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6_round3_ranks, store = S)$table; r <- d[d$bet == "win" & d$rule == "P4 / field size 11-12", ]; sprintf("%+.1f%%", 100 * r$test_roi) })`.
 
-    on the test split. Search-set rank predicts test rank *negatively* on all
+    Search-set rank predicts test rank negatively on all four markets. Two
 
-    four markets. Across the threshold family, two thirds to four fifths of the
+    thirds to four fifths of the variation in return between rules is explained
 
-    variation in return between rules is explained by the mean price the rule
+    by the mean price the rule backs, so a leaderboard mostly ranks price bands,
 
-    backs, so a leaderboard mostly ranks price bands; the residual is not
+    and the residual does not hold across halves of one window. The two best
 
-    stable across halves of the same window. The two best rules on the test
+    rules on test were the two carried forward without being selected: the
 
-    split were the two carried forward without being selected: the market
+    market favourite in every race, with no model in it, and Owen's rule. Three
 
-    favourite in every race, with no model in it, and Owen's rule. Three rules
+    rules in the shortlist are profitable once the bookmaker's margin is
 
-    in the whole shortlist are profitable once the bookmaker's margin is
+    removed; none is profitable with it in place. Paper 4 showed the model ties
 
-    removed and none is profitable with it in place. Since paper 4 showed the
+    the settled starting price and beats the overnight forecast price, so its
 
-    model ties the settled starting price and beats the overnight forecast
+    value sits between them, and every backtest in this series settles at the
 
-    price, its value sits between the two — and every backtest in this series
+    closing end of that interval. The final section sets out what that implies
 
-    settles at the closing end of that interval, the one price where the answer
-
-    was already known to be no.
+    for live use.
 
   
 
@@ -649,7 +617,7 @@ Output created: _output\index.html
 
 
 
-✔ paper_6_betting_strategy completed [40.5s, 2.28 MB]
+✔ paper_6_betting_strategy completed [38.7s, 2.23 MB]
 
-✔ ended pipeline [49.7s, 2 completed, 81 skipped]
+✔ ended pipeline [47.8s, 1 completed, 82 skipped]
 
