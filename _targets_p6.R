@@ -76,6 +76,8 @@ tar_source("R/p6_test_report.R")
 tar_source("R/p6_plots.R")
 tar_source("R/p6_explore.R")
 tar_source("R/p6_explore_report.R")
+tar_source("R/p6_racechar.R")
+tar_source("R/p6_paper.R")
 
 # Read-only reuse. Paper 6 adds no variant of any of these: the settlement is
 # paper 2b's, the market-probability construction paper 1's, the price query
@@ -89,6 +91,7 @@ tar_source("R/value_bets_p2b.R")
 tar_source("R/model_fitting_p2.R")
 tar_source("R/gbt_results.R")
 tar_source("R/market_blend_p4.R")
+tar_source("R/build_going_features.R")
 
 MAIN_STORE <- "_targets"
 P5_STORE   <- "_targets_p5"
@@ -480,5 +483,302 @@ list(
       bets = p6_explore_bets
     ),
     format = "file"
+  ),
+
+  # =======================================================================
+  # ROUND 3 — RACE-CHARACTERISTIC FILTERS, AND A STABILITY GUARD
+  #
+  # Rounds 1 and 2 searched two families: which horse (the picker) and where
+  # to cut on the model-probability / model-to-market-ratio plane. That plane
+  # is largely a price-band dial (`DIAGNOSTICS.md`), so the search was dense
+  # in one dimension and absent everywhere else. This round adds the third
+  # family — filters on conditions known the night before the race, which
+  # select races rather than reacting to a settled price — and then puts
+  # every candidate in all three families through a half-window stability
+  # guard before anything reaches the test split.
+  #
+  # The new upstream read (`qualifying_races`) has its OWN fingerprint target
+  # rather than joining `p6_upstream_fingerprint`, so adding it does not
+  # invalidate round 2's chain.
+  # =======================================================================
+
+  tar_target(
+    p6_rc_fingerprint,
+    targets::tar_meta(names = "qualifying_races",
+                      fields = c("name", "data"), store = MAIN_STORE) |>
+      dplyr::mutate(store = "main")
+  ),
+  tar_target(p6_qualifying_races, {
+    p6_rc_fingerprint
+    targets::tar_read(qualifying_races, store = MAIN_STORE)
+  }),
+
+  # -- Race attributes, aligned to each split's compiled frame -------------
+  tar_target(p6_val_attrs,
+             p6_race_attributes(p6_val_frame, p6_qualifying_races)),
+  tar_target(p6_test_attrs,
+             p6_race_attributes(p6_test_frame, p6_qualifying_races)),
+
+  # Field size per FRAME ROW, for the mean-field-size column.
+  tar_target(p6_val_field_size, p6_val_frame$field_size),
+  tar_target(p6_test_field_size, p6_test_frame$field_size),
+
+  # The half index, and the two window masks over the validation races.
+  tar_target(p6_val_half, p6_half_index(p6_val_attrs)),
+  tar_target(p6_val_window_h1, p6_val_half == 1L),
+  tar_target(p6_val_window_h2, p6_val_half == 2L),
+
+  # -- The specifications, declared on the search set ---------------------
+  # Distance terciles are computed on the validation slice and applied to the
+  # test split unchanged: they are part of the filter's definition.
+  tar_target(p6_rc_terciles, p6_distance_terciles(p6_val_attrs)),
+  tar_target(p6_rc_all_specs, p6_rc_specs(p6_val_attrs, p6_rc_terciles)),
+  tar_target(p6_val_rc_masks,
+             p6_rc_masks(p6_val_cf, p6_val_attrs, p6_rc_all_specs)),
+  tar_target(p6_test_rc_masks,
+             p6_rc_masks(p6_test_cf, p6_test_attrs, p6_rc_all_specs)),
+  tar_target(p6_rc_pruned,
+             p6_rc_prune(p6_rc_all_specs, p6_val_rc_masks, p6_val_half,
+                         min_races = 300L, min_half = 150L)),
+  tar_target(p6_rc_kept, dplyr::filter(p6_rc_pruned, kept)),
+
+  # -- STAGE 1a: the race-characteristic family, on three windows ---------
+  tar_target(p6_rc_sweep_full,
+             p6_rc_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_kept,
+                         p6_val_field_size)),
+  tar_target(p6_rc_sweep_h1,
+             p6_rc_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_kept,
+                         p6_val_field_size, window = p6_val_window_h1)),
+  tar_target(p6_rc_sweep_h2,
+             p6_rc_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_kept,
+                         p6_val_field_size, window = p6_val_window_h2)),
+
+  # -- STAGE 1b: the threshold family, re-scored on the two halves --------
+  # Round 2's family. `p6_val_sweep` already holds the full-window result but
+  # without the `mean_field_size` / `n_filter_races` columns the guard reads,
+  # so the full window is re-swept through the same function. It must
+  # reproduce round 2's ROIs exactly, which `p6_round3_gate` asserts.
+  tar_target(p6_thr_sweep_full,
+             p6_threshold_sweep_window(p6_val_cf, p6_explore_grid,
+                                       p6_val_field_size)),
+  tar_target(p6_thr_sweep_h1,
+             p6_threshold_sweep_window(p6_val_cf, p6_explore_grid,
+                                       p6_val_field_size,
+                                       window = p6_val_window_h1)),
+  tar_target(p6_thr_sweep_h2,
+             p6_threshold_sweep_window(p6_val_cf, p6_explore_grid,
+                                       p6_val_field_size,
+                                       window = p6_val_window_h2)),
+
+  # -- ROUND-3 GATE -------------------------------------------------------
+  # Two assertions, both blockers. (1) The windowed threshold sweep
+  # reproduces round 2's `p6_val_sweep` ROI on every shared row, so the new
+  # scoring path is not a second, different implementation. (2) The two half
+  # windows partition the validation races exactly: no race in both, none in
+  # neither.
+  tar_target(
+    p6_round3_gate,
+    {
+      j <- p6_thr_sweep_full |>
+        dplyr::select(picker, p_cut, r_cut, bet, roi_new = roi,
+                      n_new = n_bets) |>
+        dplyr::inner_join(
+          dplyr::select(p6_val_sweep, picker, p_cut, r_cut, bet,
+                        roi_old = roi, n_old = n_bets),
+          by = c("picker", "p_cut", "r_cut", "bet")
+        )
+      d <- abs(j$roi_new - j$roi_old)
+      stopifnot(
+        nrow(j) == nrow(p6_val_sweep),
+        all(j$n_new == j$n_old),
+        max(d, na.rm = TRUE) < 1e-12,
+        sum(is.na(j$roi_new) != is.na(j$roi_old)) == 0L,
+        all(xor(p6_val_window_h1, p6_val_window_h2)),
+        sum(p6_val_window_h1) + sum(p6_val_window_h2) == p6_val_cf$n_races,
+        identical(p6_val_attrs$race_id, p6_val_cf$races),
+        identical(p6_test_attrs$race_id, p6_test_cf$races)
+      )
+      tibble::tibble(
+        rows_compared = nrow(j),
+        max_abs_roi_diff = max(d, na.rm = TRUE),
+        n_races_h1 = sum(p6_val_window_h1),
+        n_races_h2 = sum(p6_val_window_h2),
+        h1_cut = "2012-01-15"
+      )
+    }
+  ),
+
+  # -- STAGE 1c: the combined layer ---------------------------------------
+  # The best race-characteristic filter per picker per bet type, crossed with
+  # the full probability / ratio grid, so it is visible whether the two
+  # families are additive or redundant. "field size any" is excluded as a
+  # best filter: it is the no-filter row and would make the layer a copy of
+  # the threshold family.
+  tar_target(
+    p6_rc_best_pairs,
+    p6_rc_sweep_full |>
+      dplyr::filter(!is.na(roi), n_bets >= 300L,
+                    filter != "field size any") |>
+      dplyr::group_by(picker, bet) |>
+      dplyr::arrange(dplyr::desc(roi), .by_group = TRUE) |>
+      dplyr::slice(1) |>
+      dplyr::ungroup() |>
+      dplyr::select(picker, bet, rc_id, filter, rc_roi = roi)
+  ),
+  tar_target(
+    p6_comb_sweep_full,
+    {
+      p6_round3_gate
+      p6_combined_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_best_pairs,
+                        p6_explore_grid, p6_val_field_size)
+    }
+  ),
+  tar_target(p6_comb_sweep_h1,
+             p6_combined_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_best_pairs,
+                               p6_explore_grid, p6_val_field_size,
+                               window = p6_val_window_h1)),
+  tar_target(p6_comb_sweep_h2,
+             p6_combined_sweep(p6_val_cf, p6_val_rc_masks, p6_rc_best_pairs,
+                               p6_explore_grid, p6_val_field_size,
+                               window = p6_val_window_h2)),
+
+  # -- STAGE 2: the guard, per family -------------------------------------
+  tar_target(p6_rc_guard,
+             p6_stability_guard(p6_rc_sweep_full, p6_rc_sweep_h1,
+                                p6_rc_sweep_h2)),
+  tar_target(p6_thr_guard,
+             p6_stability_guard(p6_thr_sweep_full, p6_thr_sweep_h1,
+                                p6_thr_sweep_h2)),
+  tar_target(p6_comb_guard,
+             p6_stability_guard(p6_comb_sweep_full, p6_comb_sweep_h1,
+                                p6_comb_sweep_h2)),
+
+  tar_target(
+    p6_guard_summary,
+    dplyr::bind_rows(
+      p6_half_correlations(p6_rc_guard),
+      p6_half_correlations(p6_thr_guard),
+      p6_half_correlations(p6_comb_guard)
+    )
+  ),
+  tar_target(
+    p6_guard_summary_sub,
+    dplyr::bind_rows(
+      p6_half_correlations(p6_rc_guard, by = "subfamily"),
+      p6_half_correlations(p6_thr_guard, by = "subfamily"),
+      p6_half_correlations(p6_comb_guard, by = "subfamily")
+    )
+  ),
+
+  # Owen's cell against the guard, named explicitly because the brief asks.
+  tar_target(
+    p6_owen_guard,
+    p6_thr_guard |>
+      dplyr::filter(picker == "P5", filter == "P5 / P>0.15, ratio>1.30") |>
+      dplyr::select(bet, roi, roi_h1, roi_h2, n_bets, n_bets_h1, n_bets_h2,
+                    rank_full, rank_h1, rank_h2, n_eligible, cutoff,
+                    survives, struck_because, mean_sp)
+  ),
+
+  # -- STAGE 3: the test split, scored once -------------------------------
+  tar_target(
+    p6_round3_shortlists,
+    purrr::map(p6_explore_bets,
+               function(b) p6_round3_shortlist(p6_rc_guard, p6_comb_guard,
+                                               p6_thr_guard, b)) |>
+      purrr::list_rbind()
+  ),
+  tar_target(
+    p6_round3_val,
+    p6_score_round3(p6_val_cf, p6_val_rc_masks, p6_rc_all_specs,
+                    p6_round3_shortlists, p6_val_field_size)
+  ),
+  tar_target(
+    p6_round3_test,
+    p6_score_round3(p6_test_cf, p6_test_rc_masks, p6_rc_all_specs,
+                    p6_round3_shortlists, p6_test_field_size)
+  ),
+  tar_target(
+    p6_round3_ranks,
+    {
+      j <- p6_round3_shortlists |>
+        dplyr::select(bet, rule, family, subfamily, roles, val_roi,
+                      val_roi_h1, val_roi_h2, val_bets, val_mean_sp) |>
+        dplyr::left_join(
+          dplyr::select(p6_round3_test, bet, rule, test_roi = roi,
+                        test_bets = n_bets, test_wins = n_wins,
+                        test_mean_sp = mean_sp, test_fair = roi_fair,
+                        test_drop1 = roi_drop_top1, ci_lo, ci_hi),
+          by = c("bet", "rule")
+        )
+      list(
+        table = j |>
+          dplyr::group_by(bet) |>
+          dplyr::mutate(val_rank = rank(-val_roi, ties.method = "min"),
+                        test_rank = rank(-test_roi, ties.method = "min"),
+                        rank_move = test_rank - val_rank) |>
+          dplyr::ungroup() |>
+          dplyr::arrange(bet, val_rank),
+        by_bet = j |>
+          dplyr::group_by(bet) |>
+          dplyr::summarise(
+            n_rules = dplyr::n(),
+            spearman = suppressWarnings(stats::cor(val_roi, test_roi,
+                                                   method = "spearman")),
+            pearson = suppressWarnings(stats::cor(val_roi, test_roi)),
+            .groups = "drop"),
+        by_family = j |>
+          dplyr::group_by(family) |>
+          dplyr::summarise(
+            n_rules = dplyr::n(),
+            spearman = suppressWarnings(stats::cor(val_roi, test_roi,
+                                                   method = "spearman")),
+            pearson = suppressWarnings(stats::cor(val_roi, test_roi)),
+            mean_val_roi = mean(val_roi), mean_test_roi = mean(test_roi),
+            .groups = "drop")
+      )
+    }
+  ),
+
+  # Mean prices the paper's prose compares against, as a target rather than
+  # three numbers typed into a sentence.
+  tar_target(
+    p6_price_context,
+    tibble::tibble(
+      mean_sp_all = mean(p6_val_frame$starting_price_decimal),
+      median_sp_all = stats::median(p6_val_frame$starting_price_decimal),
+      mean_sp_top_rated = mean(p6_top_rated(p6_val_frame)$starting_price_decimal),
+      mean_sp_all_11_12 = mean(
+        p6_val_frame$starting_price_decimal[p6_val_frame$field_size %in% 11:12]),
+      n_runners_11_12 = sum(p6_val_frame$field_size %in% 11:12)
+    )
+  ),
+
+  # -- The price-band regression, promoted out of the diagnostics file ----
+  # Paper section 3 needs it as a live number, not a transcription from
+  # `DIAGNOSTICS.md`.
+  tar_target(
+    p6_price_band_fit,
+    p6_price_band_regression(p6_val_sweep, min_bets = 300L)
+  ),
+
+  # -- THE PAPER ----------------------------------------------------------
+  # Rendered locally. NOT published: `docs/` is untouched, the site index is
+  # not updated, and `scripts/publish_docs.R` has no paper-6 row.
+  tar_quarto(
+    paper_6_betting_strategy,
+    path = "papers/06_betting_strategy",
+    quiet = FALSE,
+    extra_files = c(
+      "papers/06_betting_strategy/_01_searched.qmd",
+      "papers/06_betting_strategy/_02_found.qmd",
+      "papers/06_betting_strategy/_03_priceband.qmd",
+      "papers/06_betting_strategy/_04_staking.qmd",
+      "papers/06_betting_strategy/_05_forward.qmd",
+      "papers/06_betting_strategy/_06_limitations.qmd",
+      "papers/06_betting_strategy/_helpers.R",
+      "papers/06_betting_strategy/references.bib",
+      "papers/06_betting_strategy/_quarto.yml"
+    )
   )
 )

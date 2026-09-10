@@ -129,58 +129,61 @@ below has five entries for four numbered papers.
   `papers/05_encoder/`, and the supplementary theory note is in
   `papers/05_encoder/supplement/`.
   Live: <https://gillenpj.github.io/awracing/paper5/>.
-- **Paper 6 — Exploratory ROI sweep, validation to test. NOT A PAPER, NOT
-  PUBLISHED.** No longer a hypothesis-testing paper. It is an exploratory
-  stress test of whether test-split ROI can be moved by a different betting
-  rule, to generate ideas to return to when betting goes live: **no
-  declaration rule, no bar to clear, no interval gating what reaches test**,
-  and several rules read against the same test split, so whatever tops the
-  test table is partly noise. The model is held fixed at paper 5's rung-3b
-  encoder; paper 6 fits nothing. Output is a working report,
-  `papers/06_betting_strategy/EXPLORATION.md`, written from a
-  `format = "file"` target so no number in it is a transcription.
-  The candidate set is a cross-product of **five pickers** (which horse:
-  highest model probability; market favourite; model probability x SP;
-  largest model-minus-market; highest model probability among qualifiers =
-  Owen's) and **1,261 filters** (which races: `P_mod` cut 0.00-0.35 step
-  0.01 crossed with ratio cut 0.80-2.50 step 0.05, plus a no-filter row),
-  scored on four settlement tables at a flat stake — 25,220 combinations.
-  Staking is a separate stage 3, because in the first draft Kelly and
-  edge-proportional staking changed the bet set as well as the stake.
-  **Mean backed price is on every table and is the column to read first**:
-  ROI across this surface correlates −0.785 with mean backed price and a
-  quadratic in log mean price explains 65% of it, so a rule's return is
-  mostly a statement about the price band it bets in.
-  What it found: **nothing is profitable at the settled starting price** —
-  1 of the 28 rule-by-bet-type combinations that reached test returned a
-  positive real-price ROI (P3 at P>0.15/ratio>1.70 on place, +0.65%, 90% CI
-  [−14.9%, +17.1%]). The three least-bad things are all price-band
-  artefacts, and the report says so: the market favourite every race with no
-  model (win −6.4% real, **+8.4% at a fair book, the best fair-book win
-  figure in the sweep** — pure favourite-longshot bias, so its whole loss is
-  the over-round, which makes it the strongest live candidate because only a
-  better entry price is needed); P3/1.70 on place (mean backed price 20.66,
-  6.9% strike rate); and P5 at P>0.17/ratio>1.45 on each-way (−0.28% real
-  but only on paper 5's synthetic flat 1/5-top-3 terms — under the corrected
-  ladder Owen's own each-way falls from −5.96% to −17.43%).
-  **Selecting a rule by validation ROI does not work on the win market**
-  (Spearman −0.143, Pearson −0.586 between validation and test ROI across
-  the shortlist; the best validation win rule, +10.68%, returned −18.77% on
-  test) **but does work on the place market** (Spearman +0.857, mean
-  absolute rank move 0.86 against 2.86 on win). Non-flat staking helps
-  nowhere: 29 of 32 non-flat arms return less than their own flat-stake
-  counterpart, one beats it by 0.4 points on an identical bet set, and the
-  other two only look positive because the stake collapsed (K1 staked 14 of
-  311 selected validation races).
-  Five pickers, unlike the previous nine arms, are genuinely five: no pair
-  exceeds 0.95 agreement at any filter with a cut in it (closest P4 vs P5 at
-  0.947), and the one 1.000 is P1 vs P5 at the no-filter row, which is
-  definitional.
-  Own pipeline and store (`_targets_p6.R` / `_targets_p6`); the declaration
-  chain is off the graph. Standing gates: `scripts/verify_p6_ledger.R`
-  (**now seven assertions — see below**) plus the on-graph `p6_sweep_gate`,
-  which asserts the sweep's index arithmetic reproduces `p6_ledger()` bit
-  for bit on the three rules that exist in both languages.
+- **Paper 6 — Bet selection: three families of rule, and where the edge is
+  not. DRAFTED AND RENDERED LOCALLY, NOT PUBLISHED.** Changes the betting
+  rule and nothing else; the model is held fixed at paper 5's rung-3b
+  encoder and paper 6 fits nothing. Searched in three rounds, and the third
+  is the paper.
+  **The three families.** A betting rule has three independent parts: a
+  PICKER (which horse — five of them: highest model probability; market
+  favourite; model probability x SP; largest model-minus-market; highest
+  model probability among qualifiers, which is Owen's), a THRESHOLD filter
+  (which races, from the model's own output — `P_mod` 0.00-0.35 step 0.01
+  crossed with ratio 0.80-2.50 step 0.05 plus a no-filter row, 1,261
+  filters), and a RACE-CHARACTERISTIC filter (which races, from conditions
+  known the night before — field size, class, course, distance, going).
+  Rounds 1 and 2 searched only the first two and concluded "nothing beat
+  Owen's rule"; that was a claim about one family, and round 3 adds the
+  third plus a combined layer.
+  **The stability guard.** Every candidate in all three families is scored
+  on both halves of the search window (split 2012-01-15, 755 / 750 races)
+  and reaches test only if it ranks in the top decile of its family on BOTH
+  halves with >= 150 bets in each. **It struck Owen's rule on three of the
+  four markets** (second-half ranks 871 / 773 / 1264 of 2,880 against a
+  cutoff of 288; it survives on place only). Record that: the rule this
+  series has used since paper 1 is not stable inside the search window.
+  **What it found, and it is negative.** One rule won every search-set
+  leaderboard — P4 (largest model-minus-market probability) in fields of
+  11-12 runners — at **+37.2% win ROI on 354 bets, with the two halves
+  agreeing to within two points (+38.0% / +36.6%)**, and returned
+  **-38.1% on test**: a 75-point reversal, strike rate 11.9% -> 5.3%, mean
+  backed price 16.30 -> 18.88. The best combined rule went +43.3% -> -31.6%.
+  **The guard passed the rules that collapsed hardest**, so within-window
+  stability is NOT the same property as across-window transfer, and this
+  data has the first without the second.
+  **Search-set rank predicts test rank NEGATIVELY on all four markets**
+  (Spearman win -0.714, place -0.857, each-way -0.679, corrected -0.821; by
+  family, race characteristic -0.657, combined -0.381, threshold +0.095).
+  Round 2's +0.857 on place did not replicate and should not be cited: with
+  a different seven-rule shortlist the same market gives -0.857. **A
+  1,505-race window does not rank betting rules.**
+  **The two best rules on test were the two carried forward without being
+  selected**: the market favourite in every race with no model (win -6.4%
+  real, **+8.4% at a fair book**, the best fair-book figure anywhere in the
+  paper) and Owen's rule (-12.2%, +0.8% fair). Only three of the 28
+  rule-by-market combinations scored on test are profitable at a zero-margin
+  book, and none was chosen by a search.
+  **Two of the five race-characteristic sub-families are empty by
+  construction on UK AW**: 1,499 of 1,505 search races are going "Standard",
+  and classes 2+3 together carry 117 races, below the 300-race floor even
+  pooled. Field size does essentially all the work; course and distance
+  contribute a little; class and going nothing.
+  Cross-half rank correlations run 0.25-0.59 within the real families, so no
+  family is reliably findable at 750 races a half. Staking: round 2's result
+  stands, 29 of 32 non-flat arms return less than flat.
+  Own pipeline and store (`_targets_p6.R` / `_targets_p6`). Standing gates:
+  `scripts/verify_p6_ledger.R` (seven assertions — see below), plus
+  on-graph `p6_sweep_gate` and `p6_round3_gate`.
   **TWO EARLIER ATTEMPTS WERE VOIDED**, both hypothesis-testing papers, kept
   unrendered under `papers/06_betting_strategy/SUPERSEDED/` with a README:
   `attempt1_training_split/` searched training-split predictions, which are
@@ -188,7 +191,11 @@ below has five entries for four numbered papers.
   but its nine-arm space was degenerate (seven arms were one horse-picker
   behind seven race filters, agreeing at 100.0% in every shared race — see
   `papers/06_betting_strategy/DIAGNOSTICS.md`). Do not cite either one's
-  numbers. **`docs/` is untouched and the site index is not updated.**
+  numbers. Round 2's own working report, `EXPLORATION.md`, is still current
+  as the record of the first two families and is cited by the paper.
+  **`docs/` is untouched, `scripts/publish_docs.R` has no paper-6 row and
+  the site index is not updated** — publishing is a separate, unstarted
+  task.
 
 ## Standing conventions
 
@@ -295,6 +302,39 @@ below has five entries for four numbered papers.
   rest on a top-three finish rather than a win, so far more events per race
   contribute and the estimate is much less sample-driven. If one market is
   worth searching on a held-out window, it is the place market.
+- **CORRECTION to the entry above, from paper 6 round 3: a held-out window of
+  this size does not rank betting rules on ANY market.** Round 2's Spearman
+  of +0.857 on place was a seven-rule correlation and did not replicate — with
+  a different seven-rule shortlist on the same market round 3 got **-0.857**,
+  and the validation-to-test rank correlation is negative on all four markets
+  (win -0.714, place -0.857, each-way -0.679, corrected -0.821). Do not cite
+  the +0.857. The general lesson: a rank correlation over a handful of rules
+  is itself an estimate with a wide interval, and reading one as a property of
+  a market is the same error as reading a single window's argmax as a rule.
+- **Within-window stability is not across-window transfer, and a stability
+  guard will not save a search.** Paper 6 round 3 required every candidate to
+  rank in the top decile of its family on BOTH halves of the 1,505-race search
+  window before it could reach the test split. The guard behaved: it struck
+  Owen's rule on three of four markets. It still did not work, because the
+  rule it passed was stable within the window and collapsed outside it — P4 in
+  fields of 11-12 runners returned +38.0% and +36.6% on the two halves and
+  **-38.1% on test**, a 75-point reversal. Half-window agreement measures
+  whether a window is internally consistent, not whether the effect exists.
+  Do not build another guard of this shape expecting a different outcome.
+- **The fair-book column decides whether a rule is worth carrying forward.**
+  A rule that loses roughly the over-round at the real price is a candidate
+  for a better entry price; a rule that still loses with the margin removed is
+  simply wrong and no execution improvement rescues it. Paper 6's search
+  winner lost 24.8% at a zero-margin book on test, while the market favourite
+  with no model in it returned +8.4% there. Read `roi_fair` before `roi`.
+- **The series' place prices are a construction and its each-way market does
+  not exist on an exchange.** Place figures in papers 2b, 5 and 6 are
+  discounted-Harville probabilities computed from win prices, not traded place
+  prices; Betfair's place market is real and independently priced and can
+  disagree with anything derived from win prices. Betfair has no each-way
+  market at all — it is a bookmaker product. Of the four markets the series
+  reports, only WIN is both real and priced as traded, and it is the one that
+  carries forward to live work. See paper 6 Section 5.
 - **Every reported number is a live target, not a transcription.**
   Papers reference results via `tar_read()`/`tar_load()` inline in the
   `.qmd`, never as a hard-coded figure — a number with nothing behind it
@@ -487,19 +527,27 @@ below has five entries for four numbered papers.
     chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
     that folder needs neither renv nor the targets store. `publish_docs.R`
     copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
-  - `papers/06_betting_strategy/` — **paper 6, an exploratory sweep, NOT a
-    Quarto paper and NOT published.** Built by its own pipeline,
-    `_targets_p6.R`, into its own store, `_targets_p6` — NOT by `_targets.R`.
-    Run it with `Rscript scripts/run_p6_pipeline.R`, optionally naming a
-    target to build up to. `tar_config_set()` is never called. Upstream
-    targets are read from the MAIN and PAPER-5 stores read-only, hashes in
-    `p6_upstream_fingerprint`. **There is no `tar_quarto()` target and no
-    `_quarto.yml` at this level** — the output is Markdown written by
-    `format = "file"` targets, so nothing here needs Quarto or TeX.
+  - `papers/06_betting_strategy/` — **paper 6, drafted and rendered locally,
+    NOT published.** Built by its own pipeline, `_targets_p6.R`, into its own
+    store, `_targets_p6` — NOT by `_targets.R`. Run it with
+    `Rscript scripts/run_p6_pipeline.R`, optionally naming a target to build
+    up to. Rendered by `tar_quarto(paper_6_betting_strategy)` inside that
+    pipeline, HTML + PDF. `tar_config_set()` is never called; the qmd setup
+    chunk passes `store =` to each `tar_load()`. Upstream targets are read
+    from the MAIN and PAPER-5 stores read-only, hashes in
+    `p6_upstream_fingerprint` and, for the round-3 read of
+    `qualifying_races`, in its own `p6_rc_fingerprint` — deliberately
+    separate, so adding that read did not invalidate rounds 1-2.
     Contents:
-    - `EXPLORATION.md` — the working report, written by `p6_exploration_file`
-      from `R/p6_explore_report.R`. Every number is a function of the
-      targets; do not hand-edit it, change the writer and rebuild.
+    - `index.qmd` plus `_01_searched.qmd`, `_02_found.qmd`,
+      `_03_priceband.qmd`, `_04_staking.qmd`, `_05_forward.qmd`,
+      `_06_limitations.qmd`, `_helpers.R`, `references.bib`, `_quarto.yml` —
+      the paper. Date pinned "2026-09-10".
+    - `EXPLORATION.md` — round 2's working report on the first two families,
+      written by the `p6_exploration_file` target from
+      `R/p6_explore_report.R`. Still current and cited by the paper. Every
+      number is a function of the targets; do not hand-edit it, change the
+      writer and rebuild.
     - `DIAGNOSTICS.md` plus its three `diagnostics_*.png` figures — the
       read-only audit that established the second attempt's search space was
       degenerate and its validation ledger nonetheless correct. Standalone
@@ -509,7 +557,12 @@ below has five entries for four numbered papers.
       drafts with their qmd, declaration files, test reports and logs, plus a
       top-level `SUPERSEDED/README.md` explaining why each was set aside. Not
       rendered, not cited.
-    - `p6_explore_run.log` — the `tar_make()` run log.
+    - `p6_explore_run.log`, `p6_round3_run.log`, `p6_render.log` — run logs.
+    **`_helpers.R` holds the paper's formatting helpers and `R/p6_paper.R`
+    holds only the one function that is a target.** That split is deliberate:
+    files under `R/` are `source()`d into the global environment and
+    `_helpers.R` is `source()`d by the qmd, so a helper defined in both would
+    exist twice and the copies could diverge.
   - `papers/02_extended_features_ARCHIVE/` — the combined pre-split
     paper-2 draft, kept for reference only, not rendered.
   - Every paper follows the same shape: master `index.qmd` (YAML,
@@ -626,6 +679,13 @@ below has five entries for four numbered papers.
     connection for those 1,505 races, so it must be run under PowerShell —
     `{RMariaDB}` crashes under the Bash tool's Git Bash environment on this
     machine. It still acquires no `{targets}` lock and writes nothing.
+    Two further paper-6 gates live on the graph rather than in `scripts/`:
+    `p6_sweep_gate` asserts the fast index-arithmetic sweep in
+    `R/p6_explore.R` reproduces `p6_ledger()` bit for bit on the three rules
+    expressible in both languages, and `p6_round3_gate` asserts round 3's
+    windowed scoring path reproduces round 2's `p6_val_sweep` on all 25,220
+    shared rows and that the two half-windows partition the search races
+    exactly.
   - `run_p6_pipeline.R` — the paper-6 driver, same reasons as paper 5's. An
     optional argument names a target to build up to; that is how the
     declaration was frozen before the test targets were written. It unquotes

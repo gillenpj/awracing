@@ -1,0 +1,65 @@
+# Limitations {#sec-limitations}
+
+**The search window is too small to rank rules.** It is
+`r p6_fn(p6_universe$n_val_races)` races. Cross-half rank correlations within
+every family run between
+`r p6_fcor(min(p6_guard_summary$spearman))` and
+`r p6_fcor(max(p6_guard_summary$spearman))` (@sec-found), and the rule that
+won the search on both halves reversed by
+`r sprintf("%.0f", 100 * (p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$val_roi - p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$test_roi))`
+points out of sample. Nothing in this paper should be read as having
+identified a good rule.
+
+**The win market does not transfer from it.** Search-set rank predicts test
+rank negatively on all four markets. Round 2's positive place-market
+correlation did not replicate here, and the difference between the two rounds
+is which seven rules happened to be in the shortlist.
+
+**Several rules were read against one test split with no multiplicity
+correction.** Twenty-eight rule-by-market combinations were scored on the same
+`r p6_fn(p6_universe$n_test_races)` races in one pass. The intervals reported
+are marginal 90% race-level bootstraps and are not adjusted for having looked
+twenty-eight times. Whatever tops a test table here is partly noise, and the
+two rules that did top them — the market favourite and Owen's rule — were
+carried forward unconditionally rather than selected, which is the only
+reason their position is worth anything at all.
+
+**Only the betting rule is clean.** The model was not selected on these test
+races in any single step, but it was selected with knowledge of them across
+five papers: the feature set, the objective, the function class, the encoder
+architecture and the rung ladder were each chosen after seeing test results
+from the papers before. The test split has been scored once per paper, six
+times in total, on the same races. Paper 6 fits nothing and refits nothing,
+so its betting rules are genuinely out of sample with respect to this split;
+the model underneath them is not, and the fair-book columns in @sec-found
+inherit that.
+
+**The going and class sub-families were not really tested.**
+`r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$family == "going" & grepl("<= 4", p6_rc_pruned$label)]))`
+of `r p6_fn(p6_universe$n_val_races)` search-set races are reported
+"Standard", and classes 2 and 3 together carry
+`r p6_fn(sum(p6_rc_pruned$n_races[p6_rc_pruned$label == "class 2-3"]))`
+races. Their absence from the results is a fact about the scope of this
+series — four All-Weather courses, classes 2 to 5 handicaps, 2006 to 2015 —
+not evidence that going or class is uninformative for betting in general.
+
+**Field size is the only race characteristic with real coverage**, and the
+band that won, 11 to 12 runners, is
+`r p6_fpct(sum(p6_overround_val$n_races[p6_overround_val$field_size %in% 11:12]) / p6_universe$n_val_races, 1)`
+of the search set. A rule defined on that band bets about
+`r p6_fn(p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$test_bets)`
+times on the test split, which is not enough for its ROI to mean much in
+either direction.
+
+**The place prices are a construction and the each-way market is not a
+market.** Set out in @sec-forward. The place figures are
+discounted-Harville probabilities computed from win prices, not traded place
+prices; the each-way figures price a bookmaker product that has no exchange
+counterpart. Both are internally consistent across the series and neither is
+what the forward strategy in @sec-forward would trade.
+
+**The forward strategy is untested.** @sec-forward is a reading of paper 4's
+result plus a market-structure argument. Its two load-bearing assumptions —
+that usable size exists at early prices, and that the model beats an early
+traded price rather than a compiler's forecast — are not tested anywhere in
+this series and cannot be tested on this archive.

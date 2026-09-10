@@ -1,0 +1,301 @@
+# What was found {#sec-found}
+
+Read the mean-price column first. Every table in this section carries it
+beside the ROI, for the reason @sec-priceband gives: on this surface a rule's
+return is mostly a statement about the price band it bets in.
+
+## The field-size family
+
+```{r}
+#| label: tbl-fs-win
+p6_tbl(p6_leader(p6_rc_sweep_full, "win", "field size", n = 10),
+       caption = "Field-size filters, win market, search set, flat stake. Top ten by ROI at the real starting price.")
+```
+
+```{r}
+#| label: tbl-fs-others
+purrr::map(c("place", "eachway", "eachway_corrected"), function(b)
+  p6_leader(p6_rc_sweep_full, b, "field size", n = 5) |>
+    dplyr::mutate(Market = unname(BET_LAB[b]), .before = 1)) |>
+  purrr::list_rbind() |>
+  p6_tbl(caption = "Field-size filters, the other three markets, search set, flat stake. Top five each.")
+```
+
+One rule dominates every market: **P4 in fields of 11 to 12 runners** —
+back the horse whose model probability most exceeds its market probability,
+but only in a middling-to-large field. On the search set it returns
+`r p6_fpct(p6_row(p6_rc_sweep_full, "win", "P4 / field size 11-12")$roi, 1, TRUE)`
+on the win market over
+`r p6_fn(p6_row(p6_rc_sweep_full, "win", "P4 / field size 11-12")$n_bets)`
+bets, and it is the top row on place, each-way and each-way at corrected
+terms as well. Its mean backed price is
+`r p6_fprice(p6_row(p6_rc_sweep_full, "win", "P4 / field size 11-12")$mean_sp)`.
+
+## The other sub-families, and the combined layer
+
+```{r}
+#| label: tbl-rc-all
+purrr::map(p6_explore_bets, function(b)
+  p6_leader(p6_rc_sweep_full, b, n = 6) |>
+    dplyr::mutate(Market = unname(BET_LAB[b]), .before = 1)) |>
+  purrr::list_rbind() |>
+  p6_tbl(caption = "The race-characteristic family pooled across sub-families, search set. Top six per market.")
+```
+
+Course and distance contribute a little — Wolverhampton alone, and the
+longest distance tercile, both appear — and class and going contribute nothing
+at all. Field size does essentially all of the work.
+
+The second layer crosses the best race-characteristic filter for each picker
+and market with the full threshold grid, to see whether the two families are
+additive or redundant.
+
+```{r}
+#| label: tbl-comb
+purrr::map(p6_explore_bets, function(b) {
+  rc <- p6_best(dplyr::filter(p6_rc_sweep_full, n_bets >= 300), b)
+  cb <- p6_best(dplyr::filter(p6_comb_sweep_full, n_bets >= 300), b)
+  tibble::tibble(
+    Market = unname(BET_LAB[b]),
+    `Best race-characteristic rule` = rc$rule,
+    `Its ROI` = p6_fpct(rc$roi, 1, TRUE),
+    `Best combined rule` = cb$rule,
+    `Combined ROI` = p6_fpct(cb$roi, 1, TRUE),
+    `Gain from adding the plane` = p6_fpct(cb$roi - rc$roi, 1, TRUE))
+}) |> purrr::list_rbind() |>
+  p6_tbl(caption = "The combined layer against the pure race-characteristic rule, search set. Adding the model-probability plane on top of the field-size filter adds a few points; the filter is doing almost all of it.")
+```
+
+The two families are mildly additive and the addition is small. Every winning
+combined rule is the same field-size band with a light cut on top.
+
+## The stability guard
+
+The search window splits at 2012-01-15 into
+`r p6_fn(p6_round3_gate$n_races_h1)` and `r p6_fn(p6_round3_gate$n_races_h2)`
+races. Every candidate in all three families is scored on both halves, and
+reaches the test split only if it ranks in the top decile of its family on
+**both** halves and places at least 150 bets in each. The guard exists
+because a single-window argmax cannot see a collapse: on the earlier
+diagnostic sweep Owen's cell ranked first of 617 on the first half and 157th
+of 579 on the second.
+
+```{r}
+#| label: tbl-guard-counts
+p6_tbl(p6_guard_counts(list(p6_rc_guard, p6_thr_guard, p6_comb_guard)),
+       caption = "What the stability guard strikes, by family and market.")
+```
+
+**Owen's rule fails the guard on three of the four markets.**
+
+```{r}
+#| label: tbl-owen-guard
+p6_tbl(
+  p6_owen_guard |>
+    dplyr::transmute(
+      Market = unname(BET_LAB[bet]),
+      ROI = p6_fpct(roi, 1, TRUE),
+      `H1 ROI` = p6_fpct(roi_h1, 1, TRUE),
+      `H2 ROI` = p6_fpct(roi_h2, 1, TRUE),
+      `H1 rank` = rank_h1, `H2 rank` = rank_h2,
+      `of` = n_eligible, `Top-decile cutoff` = cutoff,
+      Survives = ifelse(survives, "yes", "**no**"),
+      Reason = ifelse(is.na(struck_because), "---", struck_because)),
+  caption = "Owen's rule against the guard. It is a top-ten rule on the first half of the search window on three markets and outside the top third on the second half of all but one."
+)
+```
+
+That is the guard working as intended, and it is worth stating plainly that
+the rule this series has used since paper 1 is not stable within the search
+window itself.
+
+### Is any family findable at all?
+
+The cross-half rank correlation is the number that decides whether searching
+a family on 1,505 races can work, independently of how good its best row
+looks.
+
+```{r}
+#| label: tbl-half-cor
+p6_tbl(
+  p6_guard_summary |>
+    dplyr::transmute(Family = family, Market = unname(BET_LAB[bet]),
+                     Candidates = n_eligible,
+                     Spearman = p6_fcor(spearman),
+                     Pearson = p6_fcor(pearson),
+                     Survivors = n_survivors) |>
+    dplyr::arrange(Family, Market),
+  caption = "Cross-half rank correlation of ROI within each family. A family whose two halves disagree cannot be searched on this data size however good its best row looks."
+)
+```
+
+```{r}
+#| label: tbl-half-cor-sub
+p6_tbl(
+  p6_guard_summary_sub |>
+    dplyr::filter(family == "race characteristic") |>
+    dplyr::transmute(`Sub-family` = subfamily, Market = unname(BET_LAB[bet]),
+                     Candidates = n_eligible,
+                     Spearman = p6_fcor(spearman),
+                     Survivors = n_survivors) |>
+    dplyr::arrange(`Sub-family`, Market),
+  caption = "The same, within the race-characteristic sub-families."
+)
+```
+
+Nothing reaches the point where a single window would be a reliable guide.
+The race-characteristic family is a little more consistent than the threshold
+family on the win market
+(`r p6_fcor(p6_guard_summary$spearman[p6_guard_summary$family == "race characteristic" & p6_guard_summary$bet == "win"])`
+against
+`r p6_fcor(p6_guard_summary$spearman[p6_guard_summary$family == "threshold" & p6_guard_summary$bet == "win"])`),
+and the place market is the least consistent everywhere. The combined layer's
+high correlations
+(`r p6_fcor(p6_guard_summary$spearman[p6_guard_summary$family == "combined" & p6_guard_summary$bet == "eachway_corrected"])`
+on corrected each-way terms) are an artefact of its construction: every
+combined candidate contains the same race-characteristic filter, so the rules
+are near-copies of one another and their halves agree because they are barely
+different rules.
+
+## The test split, scored once
+
+Carried forward per market: the top three surviving race-characteristic
+candidates, the top two surviving combined candidates, Owen's rule as the
+series comparator, and the market favourite in every race as a control with
+no model in it. The comparator and the control are carried forward
+unconditionally — that is what a comparator is for — and both were scored on
+the test split in one pass.
+
+```{r}
+#| label: tbl-r3-win
+p6_tbl(p6_r3_table(p6_round3_ranks$table, "win"),
+       caption = "Win market: search set to test split. Ordered by search-set ROI.")
+```
+
+```{r}
+#| label: tbl-r3-place
+p6_tbl(p6_r3_table(p6_round3_ranks$table, "place"),
+       caption = "Place market: search set to test split.")
+```
+
+```{r}
+#| label: tbl-r3-ew
+p6_tbl(p6_r3_table(p6_round3_ranks$table, "eachway"),
+       caption = "Each-way at paper 5's flat one-fifth, top-three terms: search set to test split.")
+```
+
+```{r}
+#| label: tbl-r3-ewc
+p6_tbl(p6_r3_table(p6_round3_ranks$table, "eachway_corrected"),
+       caption = "Each-way at the corrected industry ladder: search set to test split. These are the terms a bet actually settles on."
+)
+```
+
+### The result
+
+```{r}
+#| label: r3-key
+#| include: false
+fs <- p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")
+cb <- p6_round3_ranks$table |>
+  dplyr::filter(bet == "win", family == "combined") |>
+  dplyr::arrange(dplyr::desc(val_roi)) |> dplyr::slice(1)
+ow <- p6_row(p6_round3_ranks$table, "win", "P5 / P>0.15, ratio>1.30")
+fv <- p6_row(p6_round3_ranks$table, "win", "P2 / no filter")
+```
+
+**The rule that won the search reversed by
+`r sprintf("%.0f", 100 * (fs$val_roi - fs$test_roi))` points.** P4 in fields
+of 11 to 12 returned `r p6_fpct(fs$val_roi, 1, TRUE)` on the search set —
+`r p6_fpct(fs$val_roi_h1, 1, TRUE)` on the first half and
+`r p6_fpct(fs$val_roi_h2, 1, TRUE)` on the second, as stable a pair as
+anything in the search — and `r p6_fpct(fs$test_roi, 1, TRUE)` on the test
+split, 90% interval `r p6_fci(fs$ci_lo, fs$ci_hi)`. The best combined rule
+went from `r p6_fpct(cb$val_roi, 1, TRUE)` to
+`r p6_fpct(cb$test_roi, 1, TRUE)`.
+
+Two things about that collapse matter more than its size.
+
+First, **the price column predicted it and the guard did not.** The rule's
+mean backed price was `r p6_fprice(fs$val_mean_sp)` on the search set and
+`r p6_fprice(fs$test_mean_sp)` on the test split; its win strike rate fell
+from 11.9% to 5.3%. Maximising the gap between model and market probability,
+inside a field big enough to contain a long price, resolves to backing the
+horse the model is most wrong about. On the search window that paid; it is not
+a thing that should be expected to repeat.
+
+Second, **it loses at a zero-margin book too.** Its fair-book test return is
+`r p6_fpct(fs$test_fair, 1, TRUE)`. A rule whose only problem is the
+bookmaker's margin is a candidate for a better price; a rule that loses when
+the margin is removed is simply wrong, and no improvement in execution
+rescues it.
+
+**The two rules that were not selected by any search are the two best on
+test.** The market favourite in every race, with no model input at all,
+returns `r p6_fpct(fv$test_roi, 1, TRUE)` and is the only rule in the win
+table to finish first; Owen's rule returns
+`r p6_fpct(ow$test_roi, 1, TRUE)` and finishes second. Both came last and
+sixth respectively on the search set.
+
+```{r}
+#| label: tbl-fair-positive
+p6_tbl(
+  p6_round3_test |>
+    dplyr::filter(roi_fair > 0) |>
+    dplyr::arrange(dplyr::desc(roi_fair)) |>
+    dplyr::transmute(Market = unname(BET_LAB[bet]), Rule = rule,
+                     Bets = n_bets,
+                     `Test ROI` = p6_fpct(roi, 1, TRUE),
+                     `Test fair book` = p6_fpct(roi_fair, 1, TRUE),
+                     `Mean price` = p6_fprice(mean_sp),
+                     `90% CI` = p6_fci(ci_lo, ci_hi)),
+  caption = "Every rule in the round-3 shortlist that is profitable at a zero-margin book on the test split. Of the 28 rule-by-market combinations scored, these are all of them, and none was chosen by a search."
+)
+```
+
+### Does search-set ROI select anything useful?
+
+```{r}
+#| label: tbl-rank-agree
+p6_tbl(
+  p6_round3_ranks$by_bet |>
+    dplyr::transmute(Market = unname(BET_LAB[bet]), Rules = n_rules,
+                     Spearman = p6_fcor(spearman),
+                     Pearson = p6_fcor(pearson)),
+  caption = "Search-set rank against test rank, within each market's shortlist."
+)
+```
+
+```{r}
+#| label: tbl-rank-agree-fam
+p6_tbl(
+  p6_round3_ranks$by_family |>
+    dplyr::transmute(Family = family, Rules = n_rules,
+                     Spearman = p6_fcor(spearman),
+                     Pearson = p6_fcor(pearson),
+                     `Mean search ROI` = p6_fpct(mean_val_roi, 1, TRUE),
+                     `Mean test ROI` = p6_fpct(mean_test_roi, 1, TRUE)),
+  caption = "The same, pooled by family across markets."
+)
+```
+
+**No.** The correlation is negative on all four markets — win
+`r p6_fcor(p6_round3_ranks$by_bet$spearman[p6_round3_ranks$by_bet$bet == "win"])`,
+place
+`r p6_fcor(p6_round3_ranks$by_bet$spearman[p6_round3_ranks$by_bet$bet == "place"])`,
+each-way
+`r p6_fcor(p6_round3_ranks$by_bet$spearman[p6_round3_ranks$by_bet$bet == "eachway"])`,
+corrected each-way
+`r p6_fcor(p6_round3_ranks$by_bet$spearman[p6_round3_ranks$by_bet$bet == "eachway_corrected"])`
+— and negative in the two families the search actually produced. On this
+data, ranking better on the search set predicts ranking *worse* on the test
+split.
+
+Round 2 reported a Spearman of
+`r p6_fcor(p6_explore_ranks$correlations$spearman[p6_explore_ranks$correlations$bet == "place"])`
+on the place market and read it as a sign that a held-out window selects
+usefully there. That reading does not survive: with a different shortlist on
+the same market the correlation is
+`r p6_fcor(p6_round3_ranks$by_bet$spearman[p6_round3_ranks$by_bet$bet == "place"])`.
+Seven-rule rank correlations are themselves noisy, and the honest conclusion
+across both rounds is that a 1,505-race window does not rank betting rules.

@@ -1,0 +1,122 @@
+# Why most of the surface is price band, not picking {#sec-priceband}
+
+The searches in @sec-found produce leaderboards, and a leaderboard invites the
+reading that its top row has found something. On this surface most of what
+separates the rows is which price band the rule bets in.
+
+## The regression
+
+Across every threshold-family rule placing at least 300 search-set bets, ROI
+is regressed on the mean starting price the rule backs.
+
+```{r}
+#| label: tbl-priceband
+p6_tbl(
+  p6_price_band_fit |>
+    dplyr::transmute(
+      Market = unname(BET_LAB[bet]), Rules = n_rules,
+      `cor(ROI, price)` = p6_fcor(cor_roi_price),
+      `cor(ROI, log price)` = p6_fcor(cor_roi_logprice),
+      `$R^2$, quadratic in log price` = p6_fpct(r_squared, 1),
+      `Residual SD` = p6_fpct(resid_sd, 1),
+      `Fitted peak at price` = p6_fprice(price_at_fitted_peak),
+      `Median rule ROI` = p6_fpct(median_roi, 1, TRUE)),
+  caption = "ROI against the mean price the rule backs, across the threshold family on the search set. Two thirds to four fifths of the variation between rules is a price effect."
+)
+```
+
+On the win market the correlation is
+`r p6_fcor(p6_price_band_fit$cor_roi_price[p6_price_band_fit$bet == "win"])`
+and a quadratic in log mean price explains
+`r p6_fpct(p6_price_band_fit$r_squared[p6_price_band_fit$bet == "win"], 1)`
+of the between-rule variation; on corrected each-way terms it explains
+`r p6_fpct(p6_price_band_fit$r_squared[p6_price_band_fit$bet == "eachway_corrected"], 1)`.
+The surface is, to first order, a map of the favourite–longshot bias read at
+different prices, with an interior optimum where the tilt toward longer prices
+stops paying for the extra variance and the extra margin.
+
+That is the substance behind two things that would otherwise look like
+findings. It is why the threshold family's leaderboards are mostly ordered by
+price. And it is why P4 in fields of 11 to 12 topped every search-set
+leaderboard in @sec-found: P4 maximises the gap between the model's
+probability and the market's, which in a field large enough to hold a long
+price selects the longest price the model does not actively dislike. Its mean
+backed price is
+`r p6_fprice(p6_row(p6_rc_sweep_full, "win", "P4 / field size 11-12")$mean_sp)`
+against `r p6_fprice(p6_price_context$mean_sp_top_rated)` for the model's
+top-rated horse — and against
+`r p6_fprice(p6_price_context$mean_sp_all_11_12)` for the average runner in an
+eleven- or twelve-horse field. The second comparison is the informative one:
+P4 in a big field backs a horse priced almost exactly like a runner drawn at
+random from it, and only
+`r p6_fpct(p6_row(p6_rc_sweep_full, "win", "P4 / field size 11-12")$share_favourite, 1)`
+of its picks are the favourite. It is less selecting a price band than
+declining to select at all, in the races where declining costs most.
+
+## What is left after the price band
+
+Owen's rule is a useful case because it is not the price band alone.
+
+```{r}
+#| label: tbl-owen-resid
+p6_tbl(
+  p6_price_band_fit |>
+    dplyr::transmute(
+      Market = unname(BET_LAB[bet]),
+      `Owen ROI` = p6_fpct(owen_roi, 1, TRUE),
+      `Mean price` = p6_fprice(owen_price),
+      `Fitted from price alone` = p6_fpct(owen_fitted, 1, TRUE),
+      Residual = p6_fpct(owen_resid, 1, TRUE),
+      `Residual, in SDs` = sprintf("%+.2f", owen_resid_sd_units),
+      `Rules ranked` = n_rules,
+      `Owen's rank` = owen_rank),
+  caption = "Owen's rule against the price-band fit on the search set. The residual is the part of its return the price band does not explain."
+)
+```
+
+On the win market Owen's rule returns
+`r p6_fpct(p6_price_band_fit$owen_roi[p6_price_band_fit$bet == "win"], 1, TRUE)`
+where the price band alone predicts
+`r p6_fpct(p6_price_band_fit$owen_fitted[p6_price_band_fit$bet == "win"], 1, TRUE)`,
+a residual of
+`r p6_fpct(p6_price_band_fit$owen_resid[p6_price_band_fit$bet == "win"], 1, TRUE)`
+or
+`r sprintf("%.2f", p6_price_band_fit$owen_resid_sd_units[p6_price_band_fit$bet == "win"])`
+residual standard deviations. Two standard deviations of a residual is not a
+finding on its own, and the next subsection is why.
+
+## The halved window
+
+The rules that top a search-set leaderboard are not stable inside the search
+set. Splitting the `r p6_fn(p6_universe$n_val_races)` search races at
+2012-01-15 into `r p6_fn(p6_round3_gate$n_races_h1)` and
+`r p6_fn(p6_round3_gate$n_races_h2)`, Owen's cell moves from
+`r p6_fpct(p6_owen_guard$roi_h1[p6_owen_guard$bet == "win"], 1, TRUE)` on the
+first half to
+`r p6_fpct(p6_owen_guard$roi_h2[p6_owen_guard$bet == "win"], 1, TRUE)` on the
+second, and from rank
+`r p6_owen_guard$rank_h1[p6_owen_guard$bet == "win"]` to rank
+`r p6_owen_guard$rank_h2[p6_owen_guard$bet == "win"]` of
+`r p6_fn(p6_owen_guard$n_eligible[p6_owen_guard$bet == "win"])` eligible
+threshold-family rules. An earlier diagnostic sweep of Owen's own two
+thresholds, without the picker dimension, put the same cell first of 617 on
+the first half and 157th of 579 on the second. On that earlier surface Owen's
+cell also sat second of 597 rules placing at least 300 bets — the 99.8th
+percentile — which is exactly the shape a peak takes when a two-year window
+happens to reward one price band: the 6-to-9 band in that window returned
+about ten points more against its implied probability than the same band does
+on the test split.
+
+The reading, and it is the paper's central methodological point: **a
+search-set leaderboard on 1,505 races mostly ranks price bands, and the
+part that is not price band is not stable across halves of the same window.**
+The stability guard in @sec-found was built to catch exactly that and it
+struck Owen's rule on three of four markets. It did not save the search,
+because the rule it passed —
+`r p6_fpct(p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$val_roi_h1, 1, TRUE)`
+on the first half,
+`r p6_fpct(p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$val_roi_h2, 1, TRUE)`
+on the second — was stable within the window and still collapsed to
+`r p6_fpct(p6_row(p6_round3_ranks$table, "win", "P4 / field size 11-12")$test_roi, 1, TRUE)`
+outside it. Within-window stability is not the same property as
+across-window transfer, and this data has the first without the second.

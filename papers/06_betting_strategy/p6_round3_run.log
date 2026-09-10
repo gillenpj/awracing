@@ -1,0 +1,143 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ p6_rc_fingerprint dispatched
+
+✔ p6_rc_fingerprint completed [2s, 177 B]
+
++ p6_qualifying_races dispatched
+
+✔ p6_qualifying_races completed [20ms, 58.60 kB]
+
++ p6_test_attrs dispatched
+
+✔ p6_test_attrs completed [20ms, 14.26 kB]
+
++ p6_test_field_size dispatched
+
+✔ p6_test_field_size completed [20ms, 2.73 kB]
+
++ p6_val_field_size dispatched
+
+✔ p6_val_field_size completed [0ms, 1.98 kB]
+
++ p6_val_attrs dispatched
+
+✔ p6_val_attrs completed [50ms, 10.06 kB]
+
++ p6_val_half dispatched
+
+✔ p6_val_half completed [0ms, 80 B]
+
++ p6_rc_terciles dispatched
+
+✔ p6_rc_terciles completed [0ms, 56 B]
+
++ p6_val_window_h1 dispatched
+
+✔ p6_val_window_h1 completed [0ms, 82 B]
+
++ p6_val_window_h2 dispatched
+
+✔ p6_val_window_h2 completed [0ms, 81 B]
+
++ p6_rc_all_specs dispatched
+
+✔ p6_rc_all_specs completed [410ms, 1.10 kB]
+
++ p6_thr_sweep_full dispatched
+
+✔ p6_thr_sweep_full completed [9.1s, 926.57 kB]
+
++ p6_thr_sweep_h1 dispatched
+
+✔ p6_thr_sweep_h1 completed [8s, 863.73 kB]
+
++ p6_thr_sweep_h2 dispatched
+
+✔ p6_thr_sweep_h2 completed [7.7s, 807.83 kB]
+
++ p6_val_rc_masks dispatched
+
+✔ p6_val_rc_masks completed [30ms, 31.32 kB]
+
++ p6_test_rc_masks dispatched
+
+✔ p6_test_rc_masks completed [30ms, 44.72 kB]
+
++ p6_thr_guard dispatched
+
+✔ p6_thr_guard completed [200ms, 872.04 kB]
+
++ p6_rc_pruned dispatched
+
+✔ p6_rc_pruned completed [10ms, 2.39 kB]
+
++ p6_price_band_fit dispatched
+
+✔ p6_price_band_fit completed [220ms, 703 B]
+
++ p6_round3_gate dispatched
+
+✔ p6_round3_gate completed [30ms, 209 B]
+
++ p6_owen_guard dispatched
+
+✔ p6_owen_guard completed [0ms, 522 B]
+
++ p6_rc_kept dispatched
+
+✔ p6_rc_kept completed [0ms, 1.89 kB]
+
++ p6_rc_sweep_h1 dispatched
+
+✔ p6_rc_sweep_h1 completed [640ms, 64.75 kB]
+
++ p6_rc_sweep_h2 dispatched
+
+✔ p6_rc_sweep_h2 completed [560ms, 61.17 kB]
+
++ p6_rc_sweep_full dispatched
+
+✔ p6_rc_sweep_full completed [750ms, 66.80 kB]
+
++ p6_rc_best_pairs dispatched
+
+✔ p6_rc_best_pairs completed [10ms, 484 B]
+
++ p6_rc_guard dispatched
+
+✔ p6_rc_guard completed [30ms, 71.31 kB]
+
++ p6_comb_sweep_h1 dispatched
+
+✔ p6_comb_sweep_h1 completed [11.6s, 1.19 MB]
+
++ p6_comb_sweep_h2 dispatched
+
+✔ p6_comb_sweep_h2 completed [11.5s, 1.12 MB]
+
++ p6_comb_sweep_full dispatched
+
+✔ p6_comb_sweep_full completed [12.5s, 1.40 MB]
+
++ p6_comb_guard dispatched
+
+✔ p6_comb_guard completed [470ms, 1.16 MB]
+
++ p6_round3_shortlists dispatched
+
+✔ p6_round3_shortlists completed [170ms, 1.69 kB]
+
++ p6_guard_summary_sub dispatched
+
+✔ p6_guard_summary_sub completed [60ms, 1.34 kB]
+
++ p6_round3_test dispatched
+
+✔ p6_round3_test completed [11.7s, 2.99 kB]
+
++ p6_round3_ranks dispatched
+
+✔ p6_round3_ranks completed [30ms, 3.19 kB]
+
+✔ ended pipeline [1m 29.3s, 35 completed, 18 skipped]
+
