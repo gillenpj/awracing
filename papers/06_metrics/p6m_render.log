@@ -163,7 +163,7 @@ metadata
 
   author: Patrick Gillen
 
-  date: '2026-09-10'
+  date: '2026-09-11'
 
   abstract: |
 
@@ -393,7 +393,7 @@ metadata
 
   author: Patrick Gillen
 
-  date: '2026-09-10'
+  date: '2026-09-11'
 
   abstract: |
 
@@ -485,7 +485,7 @@ Output created: _output\index.html
 
 
 
-✔ paper_6_metrics completed [34.4s, 2.12 MB]
+✔ paper_6_metrics completed [30.9s, 2.12 MB]
 
-✔ ended pipeline [42.9s, 1 completed, 38 skipped]
+✔ ended pipeline [39.1s, 1 completed, 38 skipped]
 

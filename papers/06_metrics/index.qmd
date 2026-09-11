@@ -2,7 +2,7 @@
 title: "What the metrics can and cannot tell us"
 subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
-date: "2026-09-10"
+date: "2026-09-11"
 abstract: |
   Return on investment has been reported throughout this series, alongside the
   ranking measures, and it cannot carry the model-to-model comparison on its
