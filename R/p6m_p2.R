@@ -1,44 +1,49 @@
 # p6m_p2.R
-# Paper 6, Section 2 — the P2 scoring rule, refined.
+# Paper 6, Section 2 — Owen's two scoring rules, recomputed.
 #
-# Owen's paper 1 reports two scoring rules over runner-rows whose probability
-# exceeds a threshold t:
+# Paper 1 reports two rules over the runner-rows whose probability exceeds a
+# threshold t:
 #
 #   P1(t)  geometric mean of the probability assigned to winners
 #   P2(t)  geometric mean of the per-row Bernoulli likelihood
 #
-# P1 is dropped. It reads only the winning rows, so a source can raise it by
-# inflating every probability it publishes, and nothing in the rule penalises
-# that. P2 reads the losing rows too and is the proper rule of the pair.
+# BOTH ARE KEPT. Every source here is a distribution over the race: the model
+# probabilities come from a softmax or a conditional logit over the race's
+# runners, and both price columns are renormalised within race by
+# `normalise_overround()`. Under that constraint the two rules score two
+# different outcomes, and each is proper for the one it scores.
 #
-# THREE CHANGES TO P2.
+#   P1 at t = 0 is the exponentiated mean, over races, of the log probability
+#   assigned to the horse that won. There is exactly one winner per race, so
+#   the mean over winning rows is a mean over races. That is the log score for
+#   the race-level categorical outcome.
 #
-#   1  DISJOINT BINS instead of nested thresholds. Under `P2(t)` the subset at
-#      t = 0.15 still contains every row above 0.15, so no band can be read on
-#      its own and consecutive thresholds are almost the same set of rows.
-#      Here each row falls in exactly one bin.
+#   P2 sums a Bernoulli log-likelihood over every runner-row and divides by
+#   the row count, so it scores each runner's marginal win probability as an
+#   independent binary event and does not use the one-winner constraint.
 #
-#   2  FINER RESOLUTION BELOW 0.10. The nested form's bottom subset pools
-#      everything, and a 0.10 threshold pools every price longer than 9/1,
-#      which is where the models' long-priced statements sit. The bins below
-#      0.10 are 2, 2, 2 and 4 points wide.
+# `score_p1_rank()` in `R/scoring.R` — the series' headline ranking measure in
+# papers 3 and 5 — is `exp(mean(log(P(observed top-3 order))))`, the same
+# construction at depth three. Its own documentation calls it "the ranking
+# analogue of Owen's P1".
 #
-#   3  TWO BENCHMARKS. P2 is reported against the over-round-adjusted settled
-#      starting price, as the series has always done, and against the
-#      overnight racecard forecast price from `daily_runners`, renormalised
-#      per race the same way. Paper 4's finding is that the model ties the
-#      first and beats the second, so a single benchmark cannot say whether a
-#      model's probabilities are good or bad.
+# TWO CHANGES, and they are the section's subject.
 #
-# BINS ARE CUT ON THE SCORED SOURCE'S OWN PROBABILITY. A bin therefore answers
-# "when this source says 4 to 6 per cent, how good are those statements?",
-# which is the question a disjoint bin exists to answer. The consequence is
-# that a bin holds different rows for different sources, so P2 is comparable
-# BETWEEN SOURCES WITHIN A BIN only in the loose sense that both are scoring
-# statements of the same stated strength. Across bins P2 is not comparable at
-# all: the best attainable value depends on the win rate in the bin, and a bin
-# with no winners scores close to 1 for any source. Win counts are reported
-# beside every score for that reason.
+#   1  DISJOINT BINS instead of nested thresholds. Subsetting rows on the
+#      source's own probability before scoring affects P1 and P2 equally:
+#      under `P1(t)` and `P2(t)` the subset at t = 0.15 still contains every
+#      row above 0.15, so consecutive thresholds are nearly the same rows and
+#      no band can be read on its own. Disjoint bins are what address that.
+#
+#   2  TWO BENCHMARKS. The over-round-adjusted settled starting price, as the
+#      series has always used, and the overnight racecard forecast price from
+#      `daily_runners`, renormalised per race the same way.
+#
+# P1 IS NOT REPORTED BY BIN. It reads only the winning rows, and four of the
+# fifty source-by-bin cells contain no winner, so a per-bin P1 table would
+# have holes in it. The bins carry calibration instead: what a source states
+# against what happens, which is the only within-bin reading that does not
+# depend on which rows the bin holds.
 
 # ---------------------------------------------------------------------------
 # The panel
@@ -47,9 +52,7 @@
 #' The disjoint bin edges, and their labels
 #'
 #' Finer than any threshold the series has used below 0.10, and 5 points wide
-#' above 0.15. The bottom bin is kept at 0 to 0.02 rather than merged upward:
-#' it is thin, and that thinness is itself the reportable fact that the models
-#' almost never state a probability that low.
+#' above 0.15.
 #'
 #' @return A list with `breaks` and `labels`.
 p6m_p2_bins_spec <- function() {
@@ -60,7 +63,7 @@ p6m_p2_bins_spec <- function() {
   )
 }
 
-#' The five sources P2 is computed for, and their labels
+#' The five sources the rules are computed for, and their labels
 #' @return A named character vector, column name to label.
 p6m_p2_sources <- function() {
   c(p_2b = "Paper 2b logit",
@@ -78,10 +81,8 @@ p6m_p2_sources <- function() {
 #' 5's stored test predictions. Nothing is refitted and no price is
 #' renormalised a second time.
 #'
-#' Every source is scored on the SAME rows. That matters because one benchmark
-#' could otherwise be available on fewer races than the other, which would make
-#' the model ordering depend on the benchmark through the row set rather than
-#' through the models.
+#' Every source is scored on the SAME rows, so the ordering cannot depend on a
+#' benchmark through the row set rather than through the sources.
 #'
 #' @param p4_probs Paper 4's `p4_probs` target.
 #' @param encoder Paper 5's stored rung-3b test predictions.
@@ -99,8 +100,9 @@ p6m_p2_panel <- function(p4_probs, encoder) {
 
   cols <- names(p6m_p2_sources())
 
-  # Every probability must be usable as a Bernoulli likelihood, and every
-  # source must be a genuine within-race distribution.
+  # Every probability must be usable as a likelihood, and every source must be
+  # a genuine within-race distribution — which is what makes P1 the log score
+  # for the race rather than an arbitrary average over winners.
   for (cl in cols) {
     v <- panel[[cl]]
     stopifnot(!anyNA(v), all(v > 0), all(v < 1))
@@ -110,7 +112,8 @@ p6m_p2_panel <- function(p4_probs, encoder) {
     dplyr::summarise(dplyr::across(dplyr::all_of(cols), sum), .groups = "drop")
   stopifnot(max(abs(as.matrix(sums[cols]) - 1)) < 1e-9)
 
-  # Exactly one winner per race, as everywhere in the series.
+  # Exactly one winner per race, so P1's mean over winning rows is a mean over
+  # races.
   wins <- panel |>
     dplyr::group_by(race_id) |>
     dplyr::summarise(w = sum(won), .groups = "drop")
@@ -120,10 +123,6 @@ p6m_p2_panel <- function(p4_probs, encoder) {
 }
 
 #' What the panel costs against the full test split
-#'
-#' The panel is the intersection of paper 4's price panel and paper 5's test
-#' predictions. Reported rather than absorbed, so the reader can see how many
-#' rows the forecast-price requirement removes.
 #'
 #' @param panel Output of `p6m_p2_panel()`.
 #' @param encoder Paper 5's stored rung-3b test predictions.
@@ -141,8 +140,23 @@ p6m_p2_coverage <- function(panel, encoder) {
 }
 
 # ---------------------------------------------------------------------------
-# The rule
+# The rules
 # ---------------------------------------------------------------------------
+
+#' P1: the geometric mean of the probability assigned to winners
+#'
+#' `exp(mean(log(p)))` over the winning rows. With one winner per race this is
+#' the exponentiated mean per-race log probability of the observed winner.
+#' Higher is better.
+#'
+#' @param p Numeric vector of probabilities, strictly inside (0, 1).
+#' @param won Integer 0/1 win indicator.
+#' @return A scalar, or `NA_real_` if the input holds no winner.
+p6m_p1 <- function(p, won) {
+  w <- p[won == 1L]
+  if (length(w) == 0L) return(NA_real_)
+  exp(mean(log(w)))
+}
 
 #' P2: the geometric mean of the per-row Bernoulli likelihood
 #'
@@ -156,18 +170,31 @@ p6m_p2 <- function(p, won) {
   exp(mean(dplyr::if_else(won == 1L, log(p), log1p(-p))))
 }
 
-#' Race-level bootstrap of a set of P2 statistics computed on one panel
+#' One of the two rules, by name
+#' @param p,won As for `p6m_p1()`.
+#' @param rule `"P1"` or `"P2"`.
+#' @return A scalar.
+p6m_score <- function(p, won, rule) {
+  switch(rule, P1 = p6m_p1(p, won), P2 = p6m_p2(p, won),
+         stop("unknown rule: ", rule))
+}
+
+#' The two rules, in report order
+#' @return A character vector.
+p6m_rules <- function() c("P1", "P2")
+
+#' Race-level bootstrap of a set of statistics computed on one panel
 #'
-#' Races are the resampling unit, as everywhere else in the series. One set of
-#' race draws is shared across every statistic in `f`, so differences between
-#' statistics are paired by race and their intervals are comparable.
+#' Races are the resampling unit, as everywhere else in the series. ONE set of
+#' race draws is shared across every statistic in `f`, so both rules and every
+#' source are paired by race and their intervals are comparable.
 #'
 #' @param panel A tibble carrying `race_id`.
 #' @param f A named list of functions of a resampled panel, each returning a
 #'   scalar.
 #' @param n_boot,seed Replicates and RNG seed.
 #' @return A tibble: `statistic`, `point`, `ci_lo`, `ci_hi`, `n_races`.
-p6m_p2_bootstrap <- function(panel, f, n_boot = 2000L, seed = 42L) {
+p6m_score_bootstrap <- function(panel, f, n_boot = 2000L, seed = 42L) {
   races <- sort(unique(panel$race_id))
   n <- length(races)
   by_race <- split(seq_len(nrow(panel)), match(panel$race_id, races))
@@ -192,174 +219,144 @@ p6m_p2_bootstrap <- function(panel, f, n_boot = 2000L, seed = 42L) {
   )
 }
 
-#' Overall P2 for every source, with intervals
+#' Both rules, every source, with intervals
 #'
 #' @param panel Output of `p6m_p2_panel()`.
 #' @param n_boot,seed Replicates and RNG seed.
-#' @return A tibble, one row per source, best first.
-p6m_p2_overall <- function(panel, n_boot = 2000L, seed = 42L) {
+#' @return A tibble, one row per (rule, source).
+p6m_scores_overall <- function(panel, n_boot = 2000L, seed = 42L) {
   src <- p6m_p2_sources()
-  f <- purrr::map(rlang::set_names(names(src)),
-                  function(cl) function(d) p6m_p2(d[[cl]], d$won))
-  p6m_p2_bootstrap(panel, f, n_boot, seed) |>
-    dplyr::transmute(source = unname(src[statistic]), column = statistic,
-                     p2 = point, ci_lo, ci_hi, n_races,
+  keys <- tidyr::expand_grid(rule = p6m_rules(), column = names(src))
+  f <- purrr::map(
+    rlang::set_names(paste(keys$rule, keys$column, sep = "|")),
+    function(key) {
+      parts <- strsplit(key, "|", fixed = TRUE)[[1]]
+      function(d) p6m_score(d[[parts[2]]], d$won, parts[1])
+    }
+  )
+  p6m_score_bootstrap(panel, f, n_boot, seed) |>
+    tidyr::separate_wider_delim(statistic, "|", names = c("rule", "column")) |>
+    dplyr::transmute(rule, source = unname(src[column]), column,
+                     score = point, ci_lo, ci_hi, n_races,
                      n_rows = nrow(panel)) |>
-    dplyr::arrange(dplyr::desc(p2))
+    dplyr::arrange(match(rule, p6m_rules()), dplyr::desc(score))
 }
 
-#' Every model against every benchmark, paired by race
+#' Every model against every benchmark, on both rules, paired by race
+#'
+#' @param panel Output of `p6m_p2_panel()`.
+#' @param models,benchmarks Column names.
+#' @param n_boot,seed Replicates and RNG seed.
+#' @return A tibble, one row per (rule, model, benchmark).
+p6m_scores_vs_benchmark <- function(panel, models = c("p_2b", "p_3", "p_5"),
+                                    benchmarks = c("p_sp", "p_fc"),
+                                    n_boot = 2000L, seed = 42L) {
+  src <- p6m_p2_sources()
+  spec <- tidyr::expand_grid(rule = p6m_rules(), model = models,
+                             benchmark = benchmarks)
+  f <- purrr::map(
+    rlang::set_names(paste(spec$rule, spec$model, spec$benchmark, sep = "|")),
+    function(key) {
+      p <- strsplit(key, "|", fixed = TRUE)[[1]]
+      function(d) p6m_score(d[[p[2]]], d$won, p[1]) -
+        p6m_score(d[[p[3]]], d$won, p[1])
+    }
+  )
+  p6m_score_bootstrap(panel, f, n_boot, seed) |>
+    tidyr::separate_wider_delim(statistic, "|",
+                                names = c("rule", "model", "benchmark")) |>
+    dplyr::transmute(
+      rule, model = unname(src[model]), benchmark = unname(src[benchmark]),
+      diff_point = point, ci_lo, ci_hi, n_races,
+      excludes_zero = ci_lo > 0 | ci_hi < 0
+    ) |>
+    dplyr::arrange(match(rule, p6m_rules()), benchmark, model)
+}
+
+#' The three models against each other, on both rules, paired by race
 #'
 #' @param panel Output of `p6m_p2_panel()`.
 #' @param models Model column names.
-#' @param benchmarks Benchmark column names.
 #' @param n_boot,seed Replicates and RNG seed.
-#' @return A tibble, one row per (model, benchmark).
-p6m_p2_contrasts <- function(panel, models = c("p_2b", "p_3", "p_5"),
-                             benchmarks = c("p_sp", "p_fc"),
-                             n_boot = 2000L, seed = 42L) {
+#' @return A tibble, one row per (rule, unordered model pair).
+p6m_scores_model_pairs <- function(panel, models = c("p_5", "p_2b", "p_3"),
+                                   n_boot = 2000L, seed = 42L) {
   src <- p6m_p2_sources()
-  spec <- tidyr::expand_grid(model = models, benchmark = benchmarks)
-  f <- purrr::map(
-    rlang::set_names(paste(spec$model, spec$benchmark, sep = "|")),
-    function(key) {
-      parts <- strsplit(key, "|", fixed = TRUE)[[1]]
-      function(d) p6m_p2(d[[parts[1]]], d$won) - p6m_p2(d[[parts[2]]], d$won)
-    }
-  )
-  p6m_p2_bootstrap(panel, f, n_boot, seed) |>
-    tidyr::separate_wider_delim(statistic, "|",
-                                names = c("model", "benchmark")) |>
-    dplyr::transmute(
-      model = unname(src[model]), benchmark = unname(src[benchmark]),
-      diff_point = point, ci_lo, ci_hi, n_races,
-      excludes_zero = ci_lo > 0 | ci_hi < 0
-    )
-}
-
-#' The three models against each other on P2, paired by race
-#'
-#' Section 1 showed the single-bet ROI difference between papers 2b and 3 has
-#' an interval far too wide to separate them. This asks the same question of
-#' P2, which is the point of preferring it: it is computed over every
-#' runner-row rather than over the races a betting rule selects.
-#'
-#' @param panel Output of `p6m_p2_panel()`.
-#' @param models Model column names, best-first order not required.
-#' @param n_boot,seed Replicates and RNG seed.
-#' @return A tibble, one row per unordered model pair.
-p6m_p2_model_pairs <- function(panel, models = c("p_5", "p_2b", "p_3"),
-                               n_boot = 2000L, seed = 42L) {
-  src <- p6m_p2_sources()
-  spec <- tidyr::expand_grid(ai = seq_along(models), bi = seq_along(models)) |>
+  pairs <- tidyr::expand_grid(ai = seq_along(models), bi = seq_along(models)) |>
     dplyr::filter(ai < bi) |>
     dplyr::transmute(a = models[ai], b = models[bi])
+  spec <- tidyr::expand_grid(rule = p6m_rules(), i = seq_len(nrow(pairs))) |>
+    dplyr::mutate(a = pairs$a[i], b = pairs$b[i])
   f <- purrr::map(
-    rlang::set_names(paste(spec$a, spec$b, sep = "|")),
+    rlang::set_names(paste(spec$rule, spec$a, spec$b, sep = "|")),
     function(key) {
-      parts <- strsplit(key, "|", fixed = TRUE)[[1]]
-      function(d) p6m_p2(d[[parts[1]]], d$won) - p6m_p2(d[[parts[2]]], d$won)
+      p <- strsplit(key, "|", fixed = TRUE)[[1]]
+      function(d) p6m_score(d[[p[2]]], d$won, p[1]) -
+        p6m_score(d[[p[3]]], d$won, p[1])
     }
   )
-  p6m_p2_bootstrap(panel, f, n_boot, seed) |>
-    tidyr::separate_wider_delim(statistic, "|", names = c("a", "b")) |>
+  p6m_score_bootstrap(panel, f, n_boot, seed) |>
+    tidyr::separate_wider_delim(statistic, "|", names = c("rule", "a", "b")) |>
     dplyr::transmute(
-      contrast = paste(unname(src[a]), "-", unname(src[b])),
+      rule, contrast = paste(unname(src[a]), "-", unname(src[b])),
       diff_point = point, ci_lo, ci_hi, n_races,
       excludes_zero = ci_lo > 0 | ci_hi < 0
-    )
+    ) |>
+    dplyr::arrange(match(rule, p6m_rules()), contrast)
 }
 
-#' P2 by disjoint bin, for every source
+#' Whether the two rules agree on the ordering of the sources
 #'
-#' Bins are cut on the scored source's own probability, so a source's row
-#' counts differ from another's. `n` and `wins` are reported beside every
-#' score because P2 is not comparable across bins: a bin with few or no
-#' winners scores close to 1 whatever the source.
+#' A single fact, reported in a clause rather than a table.
+#'
+#' @param overall Output of `p6m_scores_overall()`.
+#' @return A one-row tibble.
+p6m_rules_agree <- function(overall) {
+  ord_of <- function(d) d |>
+    dplyr::group_by(rule) |>
+    dplyr::arrange(dplyr::desc(score), .by_group = TRUE) |>
+    dplyr::summarise(order = paste(source, collapse = " > "), .groups = "drop")
+
+  all_src <- ord_of(overall)
+  models <- ord_of(dplyr::filter(overall,
+                                 column %in% c("p_2b", "p_3", "p_5")))
+  tibble::tibble(
+    all_sources_order = all_src$order[1],
+    all_sources_agree = dplyr::n_distinct(all_src$order) == 1L,
+    models_order = models$order[1],
+    models_agree = dplyr::n_distinct(models$order) == 1L
+  )
+}
+
+# ---------------------------------------------------------------------------
+# The bins
+# ---------------------------------------------------------------------------
+
+#' Calibration by disjoint bin: what a source states against what happens
+#'
+#' No bootstrap and no score. Bins are cut on the scored source's own
+#' probability, so a bin holds different rows for different sources and a
+#' score computed inside one is largely set by the bin's win rate. Mean stated
+#' probability against observed win rate is the reading that survives that,
+#' and it is the only one the bins are used for.
 #'
 #' @param panel Output of `p6m_p2_panel()`.
 #' @param spec Output of `p6m_p2_bins_spec()`.
-#' @param n_boot,seed Replicates and RNG seed.
-#' @param min_rows Bins with fewer rows than this get no interval; their
-#'   point estimate is still reported.
 #' @return A long tibble: one row per (source, bin).
-p6m_p2_by_bin <- function(panel, spec = p6m_p2_bins_spec(),
-                          n_boot = 2000L, seed = 42L, min_rows = 30L) {
+p6m_bin_calibration <- function(panel, spec = p6m_p2_bins_spec()) {
   src <- p6m_p2_sources()
-
-  binned <- panel |>
-    dplyr::mutate(dplyr::across(
-      dplyr::all_of(names(src)),
-      ~ cut(.x, spec$breaks, labels = spec$labels, right = FALSE,
-            include.lowest = TRUE),
-      .names = "bin_{.col}"
-    ))
-
-  f <- list()
-  for (cl in names(src)) {
-    for (lb in spec$labels) {
-      key <- paste(cl, lb, sep = "|")
-      f[[key]] <- local({
-        cl_ <- cl; lb_ <- lb
-        function(d) {
-          keep <- d[[paste0("bin_", cl_)]] == lb_
-          p6m_p2(d[[cl_]][keep], d$won[keep])
-        }
-      })
-    }
-  }
-
-  # Row and win counts, and the mean probability the source states inside the
-  # bin. `mean_p` against `win_rate` is the calibration comparison: it is the
-  # only within-bin reading that does not depend on which rows the bin holds.
-  counts <- purrr::map(names(src), function(cl)
-    binned |>
-      dplyr::group_by(bin = .data[[paste0("bin_", cl)]]) |>
+  purrr::map(names(src), function(cl) {
+    panel |>
+      dplyr::mutate(bin = cut(.data[[cl]], spec$breaks, labels = spec$labels,
+                              right = FALSE, include.lowest = TRUE)) |>
+      dplyr::group_by(bin) |>
       dplyr::summarise(n = dplyr::n(), wins = sum(won),
                        mean_p = mean(.data[[cl]]), .groups = "drop") |>
-      dplyr::mutate(column = cl)) |>
-    purrr::list_rbind()
-
-  p6m_p2_bootstrap(binned, f, n_boot, seed) |>
-    tidyr::separate_wider_delim(statistic, "|", names = c("column", "bin")) |>
-    dplyr::left_join(counts, by = c("column", "bin")) |>
-    dplyr::mutate(
-      source = unname(src[column]),
-      n = dplyr::coalesce(n, 0L), wins = dplyr::coalesce(wins, 0L),
-      win_rate = dplyr::if_else(n > 0L, wins / n, NA_real_),
-      calib_gap = win_rate - mean_p,
-      thin = n < min_rows,
-      ci_lo = dplyr::if_else(thin, NA_real_, ci_lo),
-      ci_hi = dplyr::if_else(thin, NA_real_, ci_hi)
-    ) |>
+      dplyr::mutate(source = unname(src[cl]), column = cl)
+  }) |>
+    purrr::list_rbind() |>
+    dplyr::mutate(win_rate = wins / n, calib_gap = win_rate - mean_p) |>
     dplyr::transmute(source, column, bin, n, wins, mean_p, win_rate,
-                     calib_gap, p2 = point, ci_lo, ci_hi, thin) |>
+                     calib_gap) |>
     dplyr::arrange(match(column, names(src)), match(bin, spec$labels))
-}
-
-#' The model ordering under each benchmark, and whether it differs
-#'
-#' The prompt's question. Both benchmarks are scored on the same rows here, so
-#' the models' own P2 cannot change between them; what can change is whether a
-#' model beats the benchmark. This records both facts explicitly rather than
-#' leaving the reader to infer them.
-#'
-#' @param overall Output of `p6m_p2_overall()`.
-#' @param contrasts Output of `p6m_p2_contrasts()`.
-#' @return A tibble, one row per benchmark.
-p6m_p2_ordering <- function(overall, contrasts) {
-  models <- overall |>
-    dplyr::filter(column %in% c("p_2b", "p_3", "p_5")) |>
-    dplyr::arrange(dplyr::desc(p2))
-  order_str <- paste(models$source, collapse = " > ")
-
-  contrasts |>
-    dplyr::group_by(benchmark) |>
-    dplyr::summarise(
-      `model ordering` = order_str,
-      n_models_above = sum(diff_point > 0),
-      n_above_excluding_zero = sum(diff_point > 0 & excludes_zero),
-      n_below_excluding_zero = sum(diff_point < 0 & excludes_zero),
-      .groups = "drop"
-    )
 }

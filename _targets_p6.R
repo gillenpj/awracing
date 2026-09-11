@@ -273,15 +273,6 @@ list(
                             p6m_p5_contrasts)
   ),
 
-  tar_target(
-    p6m_resolution,
-    p6m_resolution_table(
-      p6m_boot_ranking_3_vs_2b, p6m_ranking_metrics_2b,
-      single_2b = p6m_backtests_main$single_2b,
-      single_3 = p6m_backtests_main$single_3,
-      roi_contrast = dplyr::filter(p6m_contrasts, contrast == "3 - 2b")
-    )
-  ),
 
   # =======================================================================
   # SECTION 1b
@@ -328,15 +319,21 @@ list(
   tar_target(p6m_p2_frame, p6m_p2_panel(p6m_p4_probs, p6m_encoder_test)),
   tar_target(p6m_p2_cover, p6m_p2_coverage(p6m_p2_frame, p6m_encoder_test)),
 
-  tar_target(p6m_p2_all,
-             p6m_p2_overall(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
-  tar_target(p6m_p2_diffs,
-             p6m_p2_contrasts(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
-  tar_target(p6m_p2_bins,
-             p6m_p2_by_bin(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
-  tar_target(p6m_p2_pairs,
-             p6m_p2_model_pairs(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
-  tar_target(p6m_p2_order, p6m_p2_ordering(p6m_p2_all, p6m_p2_diffs)),
+  # Both rules, one bootstrap. The same race draws are shared across every
+  # statistic, so P1 and P2 are paired by race and their intervals compare.
+  tar_target(p6m_scores,
+             p6m_scores_overall(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_scores_bench,
+             p6m_scores_vs_benchmark(p6m_p2_frame, n_boot = 2000L,
+                                     seed = 42L)),
+  tar_target(p6m_scores_pairs,
+             p6m_scores_model_pairs(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_rule_agreement, p6m_rules_agree(p6m_scores)),
+
+  # The bins carry calibration only: P1 reads just the winning rows and four
+  # of the fifty source-by-bin cells hold none, so no score is reported by
+  # bin. No bootstrap is needed for a count and a mean.
+  tar_target(p6m_bins, p6m_bin_calibration(p6m_p2_frame)),
 
   # =======================================================================
   # SECTION 3 — the pooled coefficient
@@ -372,7 +369,6 @@ list(
       "papers/06_metrics/_01_roi.qmd",
       "papers/06_metrics/_02_p2.qmd",
       "papers/06_metrics/_03_beta.qmd",
-      "papers/06_metrics/_04_limitations.qmd",
       "papers/06_metrics/_helpers.R",
       "papers/06_metrics/references.bib",
       "papers/06_metrics/_quarto.yml"

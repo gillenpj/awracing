@@ -1,70 +1,73 @@
-# P1 out, P2 refined {#sec-p2}
+# Owen's scoring rules {#sec-p2}
 
 ```{r}
 #| label: p2-key
 #| include: false
-src_sp <- p6m_row(p6m_p2_all, "column", "p_sp")
-src_fc <- p6m_row(p6m_p2_all, "column", "p_fc")
-src_5  <- p6m_row(p6m_p2_all, "column", "p_5")
-src_2b <- p6m_row(p6m_p2_all, "column", "p_2b")
-src_3  <- p6m_row(p6m_p2_all, "column", "p_3")
-d_5_sp <- p6m_p2_diffs |>
-  dplyr::filter(model == "Paper 5 encoder", benchmark == "Starting price")
-d_5_fc <- p6m_p2_diffs |>
-  dplyr::filter(model == "Paper 5 encoder", benchmark == "Forecast price")
-pair_5_3 <- p6m_row(p6m_p2_pairs, "contrast", "Paper 5 encoder - Paper 3 GBT")
-pair_2b_3 <- p6m_row(p6m_p2_pairs, "contrast", "Paper 2b logit - Paper 3 GBT")
-bin_enc <- p6m_p2_bins |> dplyr::filter(column == "p_5")
-bin_sp <- p6m_p2_bins |> dplyr::filter(column == "p_sp")
-thin_rows <- p6m_p2_bins |> dplyr::filter(thin)
-
-# Short column labels for the pivoted bin tables. A header long enough to wrap
-# shifts every value in its column up a row in the PDF, so these stay to two
-# or three characters and the caption carries the key.
+sc <- function(rule, col) {
+  out <- p6m_scores |> dplyr::filter(rule == !!rule, column == !!col)
+  stopifnot(nrow(out) == 1L); out
+}
+bench <- function(rule, model, benchmark) {
+  out <- p6m_scores_bench |>
+    dplyr::filter(rule == !!rule, model == !!model, benchmark == !!benchmark)
+  stopifnot(nrow(out) == 1L); out
+}
+pair <- function(rule, contrast) {
+  out <- p6m_scores_pairs |>
+    dplyr::filter(rule == !!rule, contrast == !!contrast)
+  stopifnot(nrow(out) == 1L); out
+}
+n_bench <- nrow(p6m_scores_bench)
+n_bench_excl <- sum(p6m_scores_bench$excludes_zero)
+bot <- p6m_bins |> dplyr::filter(bin == "0-2%")
+bin_enc <- p6m_bins |> dplyr::filter(column == "p_5")
+bin_sp <- p6m_bins |> dplyr::filter(column == "p_sp")
 SHORT <- c("Paper 2b logit" = "2b", "Paper 3 GBT" = "3",
            "Paper 5 encoder" = "5", "Starting price" = "SP",
            "Forecast price" = "FP")
 KEY <- "Columns: 2b = paper 2b logit, 3 = paper 3 GBT, 5 = paper 5 encoder, SP = starting price, FP = forecast price."
-pivot_bins <- function(d, value_col) {
-  d |>
-    dplyr::mutate(src = unname(SHORT[source])) |>
-    dplyr::select(bin, src, dplyr::all_of(value_col)) |>
-    tidyr::pivot_wider(names_from = src,
-                       values_from = dplyr::all_of(value_col)) |>
-    dplyr::rename(Bin = bin)
-}
 ```
 
-Owen's paper 1 reports two scoring rules over the runner-rows whose
-probability exceeds a threshold $t$:
+Paper 1 reports two scoring rules over the runner-rows whose probability
+exceeds a threshold $t$: $P_1(t)$, the geometric mean of the probability
+assigned to winners, and $P_2(t)$, the geometric mean of the per-row Bernoulli
+likelihood. Both are kept here, with two changes.
 
-- $P_1(t)$, the geometric mean of the probability assigned to winners;
-- $P_2(t)$, the geometric mean of the per-row Bernoulli likelihood.
+## What each rule scores
 
-**P1 is dropped.** It reads only the winning rows, so a source can raise it by
-inflating every probability it publishes and nothing in the rule penalises
-that. P2 reads the losing rows too and is the proper rule of the pair.
+Every source in this paper is a distribution over the race. The model
+probabilities come from a softmax or a conditional logit over the race's
+runners, and both price columns are renormalised within race, so each sums to
+one over the field.
 
-P2 is kept with three changes.
+Under that constraint the two rules score two different outcomes. **P1 at
+$t = 0$ is the exponentiated mean, over races, of the log probability assigned
+to the horse that won** — there is exactly one winner per race, so the mean
+over winning rows is a mean over races. That is the log score for the
+race-level categorical outcome. **P2 sums a Bernoulli log-likelihood over
+every runner-row and divides by the row count**, so it scores each runner's
+marginal win probability as an independent binary event and does not use the
+one-winner constraint. Each is proper for the outcome it scores.
 
-**Disjoint bins instead of nested thresholds.** Under $P_2(t)$ the subset at
-$t = 0.15$ still contains every row above 0.15, so no band can be read on its
-own and consecutive thresholds are nearly the same rows. Here each row falls
-in exactly one bin.
+The series' own headline ranking measure is built the same way as P1:
+`score_p1_rank` is the exponentiated mean log probability of the observed
+top-three finishing order, which is P1's construction at depth three.
 
-**Finer resolution below 0.10.** A 0.10 threshold pools every price longer
-than 9/1, which is where the models' long-priced statements sit. The bins
-below 0.10 are two, two, two and four points wide. The bottom bin is kept at
-0 to 2% rather than merged upward: it is thin, and the thinness is itself
-reportable, since the models almost never state a probability that low. Its
-one consequence is that `r nrow(thin_rows)` bin of the
-`r nrow(p6m_p2_bins)` has too few rows to support an interval.
+## Two changes
 
-**Two benchmarks.** P2 is reported against the over-round-adjusted settled
-starting price, as the series has always done, and against the overnight
-racecard forecast price from `daily_runners`, renormalised per race the same
-way. Paper 4 found the model ties the first and beats the second, so one
-benchmark alone cannot say whether a model's probabilities are good.
+**Disjoint bins instead of nested thresholds.** Subsetting rows on the
+source's own probability before scoring affects both rules equally: under
+$P_1(t)$ and $P_2(t)$ the subset at $t = 0.15$ still contains every row above
+0.15, so consecutive thresholds are nearly the same rows and no band can be
+read on its own. Disjoint bins are what address that. The bins below 0.10 are
+two, two, two and four points wide, finer than any threshold the series has
+used, because that is where the models' long-priced statements sit.
+
+**Two benchmarks.** The over-round-adjusted settled starting price, as the
+series has always used, and the overnight racecard forecast price from
+`daily_runners`, renormalised per race the same way. Paper 4 found the model
+ties the first and beats the second, so one benchmark alone cannot say whether
+a model's probabilities are good.
 
 Every source is scored on the same rows. Paper 4's price panel supplies both
 benchmark probabilities and papers 2b and 3's stored predictions; paper 5's
@@ -84,138 +87,100 @@ p6m_tbl(
 
 Requiring a usable pre-race forecast price costs
 `r p6m_n(p6m_p2_cover$rows_dropped)` rows in
-`r p6m_n(p6m_p2_cover$races_dropped)` race, so the forecast price covers the
-test split almost completely and both benchmarks are scored on identical rows.
+`r p6m_n(p6m_p2_cover$races_dropped)` race, so both benchmarks are scored on
+identical rows.
 
 ## The three models under both benchmarks
 
 ```{r}
-#| label: tbl-p2-overall
+#| label: tbl-scores
 p6m_tbl(
-  p6m_p2_all |>
+  p6m_scores |>
     dplyr::transmute(
-      Source = source, P2 = sprintf("%.5f", p2),
+      Rule = rule, Source = source, Score = sprintf("%.5f", score),
       `90% interval` = sprintf("[%.5f, %.5f]", ci_lo, ci_hi)),
-  caption = "P2 over every scored runner-row. Higher is better. Race-level bootstrap, B = 2000, seed 42."
+  caption = "Both rules, every source, over every scored runner-row. Higher is better. Race-level bootstrap, B = 2000, seed 42."
 )
 ```
 
+The two rules give the same ordering,
+`r p6m_rule_agreement$all_sources_order`, so nothing below turns on which is
+read.
+
 ```{r}
-#| label: tbl-p2-diffs
+#| label: tbl-scores-bench
 p6m_tbl(
-  p6m_p2_diffs |>
+  p6m_scores_bench |>
     dplyr::transmute(
-      Model = model, Benchmark = benchmark,
+      Rule = rule, Model = model, Benchmark = benchmark,
+      Difference = sprintf("%+.5f", diff_point),
+      `90% interval` = sprintf("[%+.5f, %+.5f]", ci_lo, ci_hi)),
+  caption = "Each model against each benchmark, on both rules, paired by race. Every interval excludes zero."
+)
+```
+
+All `r n_bench` contrasts exclude zero: every model loses to the starting
+price and beats the forecast price on both rules. That is paper 4's finding in
+a different measure, and it is why one benchmark is not enough. Against the
+settled price alone the models look worse than the market; against the
+overnight price alone they look better; both are true.
+
+## The three models against each other
+
+```{r}
+#| label: tbl-scores-pairs
+p6m_tbl(
+  p6m_scores_pairs |>
+    dplyr::transmute(
+      Rule = rule, Contrast = contrast,
       Difference = sprintf("%+.5f", diff_point),
       `90% interval` = sprintf("[%+.5f, %+.5f]", ci_lo, ci_hi),
       `Excludes zero` = p6m_yn(excludes_zero)),
-  caption = "Each model against each benchmark on P2, paired by race."
+  caption = "The three models against each other, on both rules, paired by race."
 )
 ```
 
-The model ordering is the same under both benchmarks, because both are scored
-on the same rows and so the models' own P2 cannot change between them. That is
-worth stating because it was the thing to check: a benchmark available on
-fewer races would have moved the ordering through the row set rather than
-through the models.
-
-What changes completely is the verdict. Every model loses to the starting
-price and every model beats the forecast price, and all six intervals exclude
-zero.
-
-```{r}
-#| label: tbl-p2-order
-p6m_tbl(
-  p6m_p2_order |>
-    dplyr::transmute(
-      Benchmark = benchmark,
-      Above = n_models_above,
-      `Above, excl. zero` = n_above_excluding_zero,
-      `Below, excl. zero` = n_below_excluding_zero),
-  caption = "How many of the three models beat each benchmark on P2."
-)
-```
-
-The ordering under both benchmarks is
-`r unique(p6m_p2_order$"model ordering")`.
-
-The encoder loses `r sprintf("%.5f", abs(d_5_sp$diff_point))` to the starting
-price and beats the forecast price by
-`r sprintf("%.5f", d_5_fc$diff_point)`. This is paper 4's result in a
-different measure: the model knows less than the settled price and more than
-the overnight one.
-
-## What P2 resolves that ROI did not
-
-```{r}
-#| label: tbl-p2-pairs
-p6m_tbl(
-  p6m_p2_pairs |>
-    dplyr::transmute(
-      Contrast = contrast, Difference = sprintf("%+.5f", diff_point),
-      `90% interval` = sprintf("[%+.5f, %+.5f]", ci_lo, ci_hi),
-      `Excludes zero` = p6m_yn(excludes_zero)),
-  caption = "The three models against each other on P2, paired by race."
-)
-```
-
-P2 separates the encoder from both earlier models, with both intervals
-excluding zero, and reports papers 2b and 3 as a tie. @sec-roi could do
-neither: the single-bet ROI difference between the encoder and paper 3 was
+On both rules the encoder separates from the two earlier models and papers 2b
+and 3 do not separate from each other. @sec-roi could do neither: the
+single-bet return difference between the encoder and paper 3 was
 `r p6m_pp(p6m_row(p6m_contrasts, "contrast", "5 - 3")$diff_point, 1)` with an
 interval `r sprintf("%.0f", 100 * (p6m_row(p6m_contrasts, "contrast", "5 - 3")$ci_hi - p6m_row(p6m_contrasts, "contrast", "5 - 3")$ci_lo))`
-points wide, and every contrast after the first contained zero.
-
-The reason is the one @sec-roi ends on. P2 is computed over all
-`r p6m_n(src_5$n_rows)` scored runner-rows; the ROI difference was computed
-over the races where Owen's rule finds a bet, and within those over the
+points wide. Both rules are computed over all
+`r p6m_n(sc("P2", "p_5")$n_rows)` runner-rows; the return difference was
+computed over the races Owen's rule selects, and within those over the
 handful that won.
 
 ## By bin
 
-```{r}
-#| label: tbl-p2-bins
-p6m_p2_bins |>
-  dplyr::mutate(v = sprintf("%.4f", p2)) |>
-  pivot_bins("v") |>
-  p6m_tbl(caption = paste("P2 by disjoint bin. Bins are cut on the scored source's own probability, so a bin holds different rows for different sources.", KEY))
-```
+The bins carry calibration and no score. A score computed inside a bin is
+largely set by the bin's win rate, and P1 reads only the winning rows, so four
+of the fifty source-by-bin cells hold no winner at all. What a source states
+against what happens is the reading that survives, and it is the only one the
+bins are used for here.
 
 ```{r}
-#| label: tbl-p2-bin-counts
-p6m_p2_bins |>
-  dplyr::mutate(v = sprintf("%s (%s)", p6m_n(n), p6m_n(wins))) |>
-  pivot_bins("v") |>
-  p6m_tbl(caption = paste(sprintf("Rows in each bin, winners in brackets. The one bin too thin to support an interval is %s's bottom bin: %s rows, %s winners.", thin_rows$source[1], p6m_n(thin_rows$n[1]), p6m_n(thin_rows$wins[1])), KEY))
-```
-
-P2 is not comparable across bins. The best attainable value depends on the win
-rate in the bin, so a bin with few winners scores close to 1 for any source,
-which is why the counts sit beside the scores. The comparison that is valid
-within a bin is between what a source states and what happens.
-
-```{r}
-#| label: tbl-p2-calib
-p6m_p2_bins |>
-  dplyr::mutate(v = sprintf("%+.1f", 100 * calib_gap)) |>
-  pivot_bins("v") |>
+#| label: tbl-bins-calib
+p6m_bins |>
+  dplyr::mutate(src = unname(SHORT[source]),
+                v = sprintf("%+.1f", 100 * calib_gap)) |>
+  dplyr::select(bin, src, v) |>
+  tidyr::pivot_wider(names_from = src, values_from = v) |>
+  dplyr::rename(Bin = bin) |>
   p6m_tbl(caption = paste("Observed win rate less mean stated probability, in percentage points. A negative gap means the source states more than it wins.", KEY))
 ```
 
-The bins show where the models lose to the starting price, which the nested
-form could not: it pooled everything above each threshold, so the upper bands
-were swamped by the rows below them.
+Every source states more than it wins at the long-priced end and less than it
+wins at the short-priced end, and the models overshoot further than the prices
+do. The encoder's 30-35% bin wins
+`r sprintf("%+.1f", 100 * p6m_row(bin_enc, "bin", "30-35%")$calib_gap)` points
+more often than it says, against
+`r sprintf("%+.1f", 100 * p6m_row(bin_sp, "bin", "30-35%")$calib_gap)` for the
+starting price, which is within
+`r sprintf("%.1f", 100 * max(abs(bin_sp$calib_gap[bin_sp$bin != "35%+"])))`
+points of its stated probability in every bin but its top one. The nested form
+could not show this, because it pooled everything above each threshold and the
+upper bands were swamped by the rows below them.
 
-The encoder states more than it wins at the long-priced end and less than it
-wins at the short-priced end. In its 4-6% bin it states
-`r p6m_pct(p6m_row(bin_enc, "bin", "4-6%")$mean_p, 2)` and wins
-`r p6m_pct(p6m_row(bin_enc, "bin", "4-6%")$win_rate, 2)`; in its 30-35% bin
-it states `r p6m_pct(p6m_row(bin_enc, "bin", "30-35%")$mean_p, 2)` and wins
-`r p6m_pct(p6m_row(bin_enc, "bin", "30-35%")$win_rate, 2)`, a gap of
-`r sprintf("%+.1f", 100 * p6m_row(bin_enc, "bin", "30-35%")$calib_gap)`
-points. The starting price is within
-`r sprintf("%.1f", 100 * max(abs(p6m_row(bin_sp, "bin", "4-6%")$calib_gap), abs(p6m_row(bin_sp, "bin", "25-30%")$calib_gap)))`
-points of its stated probability in every bin from 4-6% through 30-35%, and
-misses only in its top bin, where it states
-`r p6m_pct(p6m_row(bin_sp, "bin", "35%+")$mean_p, 2)` and wins
-`r p6m_pct(p6m_row(bin_sp, "bin", "35%+")$win_rate, 2)`.
+The bottom bin is thin and its gap is close to minus the stated probability by
+construction: it holds `r p6m_n(min(bot$n))` to `r p6m_n(max(bot$n))` rows
+with at most `r max(bot$wins)` winners depending on the source.

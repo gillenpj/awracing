@@ -42,14 +42,6 @@ p6m_n <- function(x) ifelse(is.na(x), "---", format(x, big.mark = ","))
 #' @return Character vector.
 p6m_yn <- function(x) ifelse(is.na(x), "---", ifelse(x, "yes", "no"))
 
-#' A number to a fixed number of significant figures, as a string
-#' @param x Numeric vector.
-#' @param digits Significant figures.
-#' @return Character vector.
-p6m_sig <- function(x, digits = 3) {
-  ifelse(is.na(x), "---", formatC(x, format = "g", digits = digits))
-}
-
 #' One row of a table, looked up by a key column
 #'
 #' Every figure the prose quotes goes through this, so a prose number cannot

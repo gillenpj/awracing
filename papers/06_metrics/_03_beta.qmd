@@ -5,13 +5,13 @@
 #| include: false
 b_slope <- p6m_row(p6m_beta, "term", "slope")
 b_int <- p6m_row(p6m_beta, "term", "intercept")
-p4_sp <- p6m_p4_cited |> dplyr::filter(benchmark == "settled starting price")
-p4_fc <- p6m_p4_cited |> dplyr::filter(benchmark == "overnight forecast price")
-p4_fc_a <- p4_fc |> dplyr::filter(sample == "test-A")
-p4_fc_b <- p4_fc |> dplyr::filter(sample == "test-B")
 ```
 
-**This section is speculation. Nothing in the paper rests on it.**
+Two things bound what follows. The forecast price is a compiler's published
+opinion rather than a price money has traded at, and an early exchange price
+would already contain much of what a compiler misses, so anything measured
+here is an upper bound on anything tradeable. And a coefficient near zero
+would close the idea off, while a positive one does not establish it.
 
 Paper 4 fitted a two-stage conditional logit with a market probability and a
 model probability, both coefficients free, and found the model adds nothing
@@ -30,9 +30,9 @@ p6m_tbl(
 )
 ```
 
-That result is taken as given here and not re-argued. What it implies is that
-the model's information, such as it is, sits between the overnight price and
-the off. The quantity that matters is then how much of the model's
+That result is taken as given and not re-argued. What it implies is that the
+model's information, such as it is, sits between the overnight price and the
+off, which makes the quantity of interest how much of the model's
 disagreement with the overnight price the market subsequently accepts.
 
 ## The regression
@@ -77,8 +77,8 @@ forecast, the market's own later move away from that forecast goes about
 `r sprintf("%.0f%%", 100 * b_slope$estimate)` of the way in the same
 direction, so the encoder anticipates most of a move the market was going to
 make anyway. It is not a return, not an edge, and not a price improvement. It
-is agreement between two opinions about a third, and the third is a published
-forecast rather than a price anyone bet into.
+is agreement between two opinions about a third, and the third is published
+rather than traded.
 
 The intercept is `r sprintf("%.3f", b_int$estimate)`. Both price columns are
 renormalised to sum to one within each race, so no difference in over-round
@@ -93,23 +93,3 @@ the model and the forecast agree.
 Only the pooled coefficient is reported. There is no breakdown by price band,
 field size or anything else, because that would be a search and @sec-roi is
 the reason searches on this data do not work.
-
-## Two caveats
-
-**The forecast price is a compiler's published opinion, not a price money has
-traded at.** `daily_runners.forecast_price_decimal` is written the evening
-before racing by someone whose job is to publish an estimate. An early
-exchange price aggregates people who have committed funds, and it will
-already contain much of what a compiler's forecast misses. The coefficient
-above is therefore an upper bound on anything tradeable: whatever fraction of
-the model's disagreement with a compiler the market later accepts, the
-fraction it would accept from an early traded price is smaller.
-
-**A coefficient near zero would close the idea off. A positive coefficient
-does not establish it.** This result is the second of those. At
-`r sprintf("%.3f", b_slope$estimate)`, with an interval well clear of zero,
-the market does move in the encoder's direction rather than ignoring it, so
-the idea is not closed off. That is all it shows. It does not show that the
-movement can be captured, that it is large enough to survive costs, or that
-any of it survives against a price that has been traded rather than
-published.

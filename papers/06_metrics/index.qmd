@@ -4,45 +4,36 @@ subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
 author: "Patrick Gillen"
 date: "2026-09-10"
 abstract: |
-  Every paper in this series except paper 4 has reported a return on
-  investment, and the sequence of those figures has been used to judge whether
-  each model improved on the one before. This paper shows it cannot support
-  that use, drops one of Owen's two scoring rules, refines the other, and
-  closes with a labelled first look at a quantity that matches how the model
-  would be used rather than how it has been scored.
-  Section 1 gives two demonstrations. Of the four consecutive-model
-  differences in single-bet win return, recomputed here on one bet rule so the
-  four can be read as a sequence, only
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); c("none", "one", "two", "three", "all four")[sum(d$excludes_zero) + 1] })`
-  excludes zero, and it is the earliest. Papers 2b and 3 tie on three ranking
-  measures with intervals a few per cent of the quantity measured, while the
-  interval on their return difference is
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_resolution, store = S); r <- d[d$measure == "single-bet win ROI", ]; sprintf("%.0f%%", 100 * r$width_over_value) })`
-  of it. Holding the model and the rule fixed and changing only the races, the
-  same figure moves
+  Return on investment has been reported throughout this series, alongside the
+  ranking measures, and it cannot carry the model-to-model comparison on its
+  own. Section 1 shows why: of the four consecutive-model differences in
+  single-bet win return, recomputed on one bet rule so they read as a
+  sequence, only the first step is distinguishable from zero, the three later
+  intervals running
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f to %.0f", 100 * min(d$ci_hi - d$ci_lo), 100 * max(d$ci_hi - d$ci_lo)) })`
+  points wide against point differences no larger than
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f", 100 * max(abs(d$diff_point))) })`;
+  and the same model under the same rule moves
   `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_race_sets, store = S); sprintf("%.0f", 100 * (d$roi[1] - d$roi[2])) })`
-  points between two adjacent sets of races.
-  Section 2 drops P1, which reads only the winning rows, and recomputes P2 on
-  disjoint bins with finer resolution below 0.10, against two benchmarks: the
+  points between two adjacent sets of races. Section 2 keeps both of Owen's
+  scoring rules, which score different outcomes — P1 the race, P2 the
+  runner-rows as independent binary events — and recomputes them on disjoint
+  bins instead of nested thresholds, against two benchmarks: the
   over-round-adjusted settled starting price and the overnight racecard
   forecast price. On
   `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_p2_cover, store = S); format(d$rows_panel, big.mark = ",") })`
-  runner-rows all three models lose to the starting price and all three beat
-  the forecast price, six intervals excluding zero. P2 also separates the
-  paper-5 encoder from both earlier models, which the return could not, and
-  reports papers 2b and 3 as a tie. The bins show the models stating more than
-  they win on long prices and less than they win on short ones.
-  Section 3 is speculation and nothing in the paper rests on it. Paper 4 found
-  the model adds nothing distinguishable against the settled starting price
-  and a great deal against the overnight forecast, so this fits how much of
-  the model's disagreement with the forecast the market later accepts. The
+  runner-rows both rules give the same ordering, every model loses to the
+  starting price and beats the forecast price with all twelve intervals
+  excluding zero, and both rules separate the paper-5 encoder from the two
+  earlier models where the return could not. Section 3 fits how much of the
+  model's disagreement with the forecast price the market later accepts: the
   pooled coefficient is
   `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$estimate[d$term == "slope"]) })`
   with a standard error of
-  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$se[d$term == "slope"]) })`.
-  A forecast is a published opinion rather than a price anyone bet into, so
-  the figure is an upper bound on anything tradeable, and a positive
-  coefficient does not establish the idea it came from.
+  `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$se[d$term == "slope"]) })`,
+  so the market's later move goes about two thirds of the way in the encoder's
+  direction — though a forecast is a published opinion rather than a traded
+  price, which makes that an upper bound.
 format:
   html: default
   pdf:
@@ -74,14 +65,13 @@ source(file.path(P6_ROOT, "papers", "06_metrics", "_helpers.R"))
 tar_load(c(
   # identity and gates
   p6m_race_identity, p6m_basis_check, p6m_recompute_check,
-  # section 1a
-  p6m_series, p6m_published, p6m_contrasts, p6m_resolution,
-  p6m_backtests_main,
+  # section 1
+  p6m_series, p6m_published, p6m_contrasts, p6m_backtests_main,
   # section 1b
   p6m_val_halves, p6m_race_sets,
   # section 2
-  p6m_p2_cover, p6m_p2_all, p6m_p2_diffs, p6m_p2_bins, p6m_p2_order,
-  p6m_p2_pairs,
+  p6m_p2_cover, p6m_scores, p6m_scores_bench, p6m_scores_pairs,
+  p6m_rule_agreement, p6m_bins,
   # section 3
   p6m_beta, p6m_p4_cited, p6m_spread
 ), store = P6_STORE)
@@ -92,5 +82,3 @@ tar_load(c(
 {{< include _02_p2.qmd >}}
 
 {{< include _03_beta.qmd >}}
-
-{{< include _04_limitations.qmd >}}
