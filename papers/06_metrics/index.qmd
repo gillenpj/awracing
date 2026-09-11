@@ -41,8 +41,13 @@ tar_load(c(
   p6m_series, p6m_published, p6m_contrasts, p6m_resolution,
   p6m_backtests_main,
   # section 1b
-  p6m_val_halves, p6m_race_sets
+  p6m_val_halves, p6m_race_sets,
+  # section 2
+  p6m_p2_cover, p6m_p2_all, p6m_p2_diffs, p6m_p2_bins, p6m_p2_order,
+  p6m_p2_pairs
 ), store = P6_STORE)
 ```
 
 {{< include _01_roi.qmd >}}
+
+{{< include _02_p2.qmd >}}

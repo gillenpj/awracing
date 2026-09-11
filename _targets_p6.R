@@ -50,6 +50,7 @@ tar_option_set(
 
 # Paper 6's own code.
 tar_source("R/p6m_metrics.R")
+tar_source("R/p6m_p2.R")
 
 # Read-only reuse of the series' own helpers. The single-bet selection and
 # settlement is paper 2b's, the market-probability construction paper 1's, the
@@ -60,8 +61,10 @@ tar_source("R/value_bets_p2b.R")
 tar_source("R/model_fitting_p2.R")
 tar_source("R/ranking_eval_p2b.R")
 tar_source("R/p5_diagnostics.R")
+tar_source("R/market_blend_p4.R")
 
 MAIN_STORE <- "_targets"
+P4_STORE   <- "_targets_p4"
 P5_STORE   <- "_targets_p5"
 
 # Owen's naive thresholds, paper 1 section 3.4. Fixed, not searched.
@@ -295,6 +298,45 @@ list(
   ),
 
   # =======================================================================
+  # SECTION 2 — P1 out, P2 refined
+  #
+  # The two benchmark probabilities and papers 2b and 3's stored predictions
+  # come from paper 4's own price panel, read read-only: it already carries
+  # the pre-race forecast price from `daily_runners` and the settled starting
+  # price, both renormalised within race by `normalise_overround()`. Paper 5's
+  # encoder is joined on from its stored test predictions. No price is
+  # renormalised a second time and nothing is refitted.
+  # =======================================================================
+
+  tar_target(
+    p6m_p4_fingerprint,
+    targets::tar_meta(names = c("p4_probs", "p4_common"),
+                      fields = c("name", "data"), store = P4_STORE) |>
+      dplyr::mutate(store = "paper4")
+  ),
+  tar_target(p6m_p4_probs, {
+    p6m_p4_fingerprint
+    targets::tar_read(p4_probs, store = P4_STORE)
+  }),
+  tar_target(p6m_encoder_test, {
+    p6m_upstream_fingerprint
+    targets::tar_read(p5_test_predictions, store = P5_STORE)$rung3b
+  }),
+
+  tar_target(p6m_p2_frame, p6m_p2_panel(p6m_p4_probs, p6m_encoder_test)),
+  tar_target(p6m_p2_cover, p6m_p2_coverage(p6m_p2_frame, p6m_encoder_test)),
+
+  tar_target(p6m_p2_all,
+             p6m_p2_overall(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_p2_diffs,
+             p6m_p2_contrasts(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_p2_bins,
+             p6m_p2_by_bin(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_p2_pairs,
+             p6m_p2_model_pairs(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_p2_order, p6m_p2_ordering(p6m_p2_all, p6m_p2_diffs)),
+
+  # =======================================================================
   # THE PAPER
   #
   # Rendered inside this pipeline, as papers 4 and 5 are. HTML and PDF.
@@ -305,6 +347,7 @@ list(
     quiet = FALSE,
     extra_files = c(
       "papers/06_metrics/_01_roi.qmd",
+      "papers/06_metrics/_02_p2.qmd",
       "papers/06_metrics/_helpers.R",
       "papers/06_metrics/references.bib",
       "papers/06_metrics/_quarto.yml"

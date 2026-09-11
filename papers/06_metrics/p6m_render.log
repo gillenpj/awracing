@@ -10,61 +10,115 @@
 processing file: index.qmd
 
 
-1/19                       
+1/37                       
 
 
-2/19 [setup]               
+2/37 [setup]               
 
 
-3/19                       
+3/37                       
 
 
-4/19 [roi-key]             
+4/37 [roi-key]             
 
 
-5/19                       
+5/37                       
 
 
-6/19 [tbl-series]          
+6/37 [tbl-series]          
 
 
-7/19                       
+7/37                       
 
 
-8/19 [tbl-contrasts]       
+8/37 [tbl-contrasts]       
 
 
-9/19                       
+9/37                       
 
 
-10/19 [tbl-published]       
+10/37 [tbl-published]       
 
 
-11/19                       
+11/37                       
 
 
-12/19 [tbl-recompute-check] 
+12/37 [tbl-recompute-check] 
 
 
-13/19                       
+13/37                       
 
 
-14/19 [tbl-resolution]      
+14/37 [tbl-resolution]      
 
 
-15/19                       
+15/37                       
 
 
-16/19 [tbl-resolution-basis]
+16/37 [tbl-resolution-basis]
 
 
-17/19                       
+17/37                       
 
 
-18/19 [tbl-race-sets]       
+18/37 [tbl-race-sets]       
 
 
-19/19                       
+19/37                       
+
+
+20/37 [p2-key]              
+
+
+21/37                       
+
+
+22/37 [tbl-p2-cover]        
+
+
+23/37                       
+
+
+24/37 [tbl-p2-overall]      
+
+
+25/37                       
+
+
+26/37 [tbl-p2-diffs]        
+
+
+27/37                       
+
+
+28/37 [tbl-p2-order]        
+
+
+29/37                       
+
+
+30/37 [tbl-p2-pairs]        
+
+
+31/37                       
+
+
+32/37 [tbl-p2-bins]         
+
+
+33/37                       
+
+
+34/37 [tbl-p2-bin-counts]   
+
+
+35/37                       
+
+
+36/37 [tbl-p2-calib]        
+
+
+37/37                       
 
 
 output file: index.knit.md
@@ -146,61 +200,115 @@ metadata
 processing file: index.qmd
 
 
-1/19                       
+1/37                       
 
 
-2/19 [setup]               
+2/37 [setup]               
 
 
-3/19                       
+3/37                       
 
 
-4/19 [roi-key]             
+4/37 [roi-key]             
 
 
-5/19                       
+5/37                       
 
 
-6/19 [tbl-series]          
+6/37 [tbl-series]          
 
 
-7/19                       
+7/37                       
 
 
-8/19 [tbl-contrasts]       
+8/37 [tbl-contrasts]       
 
 
-9/19                       
+9/37                       
 
 
-10/19 [tbl-published]       
+10/37 [tbl-published]       
 
 
-11/19                       
+11/37                       
 
 
-12/19 [tbl-recompute-check] 
+12/37 [tbl-recompute-check] 
 
 
-13/19                       
+13/37                       
 
 
-14/19 [tbl-resolution]      
+14/37 [tbl-resolution]      
 
 
-15/19                       
+15/37                       
 
 
-16/19 [tbl-resolution-basis]
+16/37 [tbl-resolution-basis]
 
 
-17/19                       
+17/37                       
 
 
-18/19 [tbl-race-sets]       
+18/37 [tbl-race-sets]       
 
 
-19/19                       
+19/37                       
+
+
+20/37 [p2-key]              
+
+
+21/37                       
+
+
+22/37 [tbl-p2-cover]        
+
+
+23/37                       
+
+
+24/37 [tbl-p2-overall]      
+
+
+25/37                       
+
+
+26/37 [tbl-p2-diffs]        
+
+
+27/37                       
+
+
+28/37 [tbl-p2-order]        
+
+
+29/37                       
+
+
+30/37 [tbl-p2-pairs]        
+
+
+31/37                       
+
+
+32/37 [tbl-p2-bins]         
+
+
+33/37                       
+
+
+34/37 [tbl-p2-bin-counts]   
+
+
+35/37                       
+
+
+36/37 [tbl-p2-calib]        
+
+
+37/37                       
 
 
 output file: index.knit.md
@@ -301,7 +409,7 @@ Output created: _output\index.html
 
 
 
-✔ paper_6_metrics completed [26.3s, 1.97 MB]
+✔ paper_6_metrics completed [28.8s, 2.12 MB]
 
-✔ ended pipeline [34.3s, 1 completed, 26 skipped]
+✔ ended pipeline [37s, 1 completed, 36 skipped]
 
