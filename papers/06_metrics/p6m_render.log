@@ -1,0 +1,307 @@
+﻿- The project is out-of-sync -- use `renv::status()` for details.
++ paper_6_metrics dispatched
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/19                       
+
+
+2/19 [setup]               
+
+
+3/19                       
+
+
+4/19 [roi-key]             
+
+
+5/19                       
+
+
+6/19 [tbl-series]          
+
+
+7/19                       
+
+
+8/19 [tbl-contrasts]       
+
+
+9/19                       
+
+
+10/19 [tbl-published]       
+
+
+11/19                       
+
+
+12/19 [tbl-recompute-check] 
+
+
+13/19                       
+
+
+14/19 [tbl-resolution]      
+
+
+15/19                       
+
+
+16/19 [tbl-resolution-basis]
+
+
+17/19                       
+
+
+18/19 [tbl-race-sets]       
+
+
+19/19                       
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: html
+
+  output-file: index.html
+
+  standalone: true
+
+  embed-resources: true
+
+  section-divs: true
+
+  html-math-method: mathjax
+
+  wrap: none
+
+  default-image-extension: png
+
+  toc: true
+
+  toc-depth: 3
+
+  number-sections: true
+
+  variables: {}
+
+  
+
+metadata
+
+  document-css: false
+
+  link-citations: true
+
+  date-format: long
+
+  lang: en
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  theme: cosmo
+
+  title: What the metrics can and cannot tell us
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-10'
+
+  abstract: |
+
+    Section 1 only in this draft. The abstract is written once the remaining
+
+    sections are in place.
+
+  
+
+
+
+
+
+
+
+processing file: index.qmd
+
+
+1/19                       
+
+
+2/19 [setup]               
+
+
+3/19                       
+
+
+4/19 [roi-key]             
+
+
+5/19                       
+
+
+6/19 [tbl-series]          
+
+
+7/19                       
+
+
+8/19 [tbl-contrasts]       
+
+
+9/19                       
+
+
+10/19 [tbl-published]       
+
+
+11/19                       
+
+
+12/19 [tbl-recompute-check] 
+
+
+13/19                       
+
+
+14/19 [tbl-resolution]      
+
+
+15/19                       
+
+
+16/19 [tbl-resolution-basis]
+
+
+17/19                       
+
+
+18/19 [tbl-race-sets]       
+
+
+19/19                       
+
+
+output file: index.knit.md
+
+
+
+
+
+pandoc 
+
+  to: latex
+
+  output-file: index.tex
+
+  standalone: true
+
+  pdf-engine: lualatex
+
+  variables:
+
+    graphics: true
+
+    tables: true
+
+  default-image-extension: pdf
+
+  toc: true
+
+  number-sections: true
+
+  
+
+metadata
+
+  documentclass: scrartcl
+
+  classoption:
+
+    - DIV=11
+
+    - numbers=noendperiod
+
+  papersize: letter
+
+  header-includes:
+
+    - \KOMAoption{captions}{tableheading}
+
+  block-headings: true
+
+  bibliography:
+
+    - references.bib
+
+  engines:
+
+    - path: C:\Program Files\RStudio\resources\app\bin\quarto\share\extension-subtrees\julia-engine\_extensions\julia-engine\julia-engine.js
+
+  title: What the metrics can and cannot tell us
+
+  subtitle: Paper 6 in a series on UK All-Weather racing outcomes
+
+  author: Patrick Gillen
+
+  date: '2026-09-10'
+
+  abstract: |
+
+    Section 1 only in this draft. The abstract is written once the remaining
+
+    sections are in place.
+
+  
+
+
+
+Rendering PDF
+
+running lualatex - 1
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+running lualatex - 2
+
+  This is LuaHBTeX, Version 1.24.0 (TeX Live 2026) 
+
+   restricted system commands enabled.
+
+  
+
+
+
+Output created: _output\index.html
+
+
+
+✔ paper_6_metrics completed [26.3s, 1.97 MB]
+
+✔ ended pipeline [34.3s, 1 completed, 26 skipped]
+

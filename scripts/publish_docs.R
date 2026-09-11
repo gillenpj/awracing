@@ -38,9 +38,17 @@ papers <- c(
   "02b_ranking_model"         = "paper2b",
   "03_gradient_boosted_trees" = "paper3",
   "04_market_blend"           = "paper4",
-  "05_encoder"                = "paper5",
-  "06_betting_strategy"       = "paper6"
+  "05_encoder"                = "paper5"
 )
+
+# `docs/paper6/` is RESERVED for `papers/06_metrics/`. The directory is kept
+# (with a .gitkeep) but empty, and there is deliberately no row for it above:
+# paper 6 is not finished, so nothing should be copied there or linked from
+# the landing page yet. When it is ready, add
+#
+#     "06_metrics" = "paper6"
+#
+# to `papers` and add its entry to docs/index.html.
 
 copied  <- character(0)
 missing <- character(0)

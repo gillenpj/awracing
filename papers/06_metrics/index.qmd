@@ -1,0 +1,48 @@
+---
+title: "What the metrics can and cannot tell us"
+subtitle: "Paper 6 in a series on UK All-Weather racing outcomes"
+author: "Patrick Gillen"
+date: "2026-09-10"
+abstract: |
+  Section 1 only in this draft. The abstract is written once the remaining
+  sections are in place.
+format:
+  html: default
+  pdf:
+    toc: true
+    number-sections: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+
+# Paper 6 reads the paper-6 store. Like papers 4 and 5 and unlike papers 1-3
+# this does NOT call tar_config_set(): that writes the project-root
+# `_targets.yaml`, which papers 1-3's own setup chunks also write, and
+# pointing it at `_targets_p6` would send their next render at the wrong
+# store. Passing `store =` per call leaves `_targets.yaml` untouched.
+P6_ROOT <- rprojroot::find_root(rprojroot::has_file("awracing.Rproj"))
+P6_STORE <- file.path(P6_ROOT, "_targets_p6")
+
+source(file.path(P6_ROOT, "papers", "06_metrics", "_helpers.R"))
+
+# tar_load() centrally so tarchetypes::tar_quarto() picks these up as render
+# dependencies — files pulled in via {{< include >}} are not auto-scanned.
+tar_load(c(
+  # identity and gates
+  p6m_race_identity, p6m_basis_check, p6m_recompute_check,
+  # section 1a
+  p6m_series, p6m_published, p6m_contrasts, p6m_resolution,
+  p6m_backtests_main,
+  # section 1b
+  p6m_val_halves, p6m_race_sets
+), store = P6_STORE)
+```
+
+{{< include _01_roi.qmd >}}
