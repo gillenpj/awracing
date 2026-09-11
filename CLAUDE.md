@@ -41,9 +41,9 @@ Two calibration examples (2026-08-20):
 
 Statistical models of UK All-Weather Flat handicap outcomes on the
 Smartform database. Each paper changes one thing and reports the result
-against the previous paper and against the betting market. Papers 1 to 4
+against the previous paper and against the betting market. Papers 1 to 6
 are complete and published; paper 2 is split into 2a and 2b, so the list
-below has five entries for four numbered papers.
+below has seven entries for six numbered papers.
 
 - **Paper 1 — Replicating Owen (2019) on UK AW Flat handicaps,
   2006–2015.** Coefficient picture broadly consistent with Owen; the
@@ -129,8 +129,7 @@ below has five entries for four numbered papers.
   `papers/05_encoder/`, and the supplementary theory note is in
   `papers/05_encoder/supplement/`.
   Live: <https://gillenpj.github.io/awracing/paper5/>.
-- **Paper 6 — What the metrics can and cannot tell us. DRAFTED AND RENDERED
-  LOCALLY, NOT PUBLISHED.** Changes no model and fits nothing; everything runs
+- **Paper 6 — What the metrics can and cannot tell us.** Changes no model and fits nothing; everything runs
   on stored predictions read read-only from the main, paper-4 and paper-5
   stores. Scope is fixed and narrow: win market only, single bet per race,
   Owen's naive rule at the series thresholds, real starting prices, and no
@@ -181,11 +180,9 @@ below has five entries for four numbered papers.
   every probability is inside (0,1) and every source sums to 1 within race, and
   `p6m_beta_fit()` asserts its closed-form OLS agrees with `stats::lm()` before
   the 2000 refits.
-  **NOT PUBLISHED.** `docs/paper6/` is an empty reserved directory and
-  `scripts/publish_docs.R` has no paper-6 row, only a comment naming the row
-  to add (`"06_metrics" = "paper6"`). The reserved URL is
-  <https://gillenpj.github.io/awracing/paper6/>; it 404s until the paper is
-  published and the landing page gains its entry.
+  Published 2026-09-11; `scripts/publish_docs.R` carries the
+  `"06_metrics" = "paper6"` row.
+  Live: <https://gillenpj.github.io/awracing/paper6/>.
 
 ## Standing conventions
 
@@ -517,8 +514,8 @@ below has five entries for four numbered papers.
     chunks, so `quarto render notes_on_neural_scorers.qmd --to pdf` from
     that folder needs neither renv nor the targets store. `publish_docs.R`
     copies the result to `docs/paper5/notes-on-neural-scorers.pdf`.
-  - `papers/06_metrics/` — **paper 6, drafted and rendered locally, NOT
-    published.** "What the metrics can and cannot tell us". Built by its own
+  - `papers/06_metrics/` — **paper 6, complete and published.** "What the
+    metrics can and cannot tell us". Built by its own
     pipeline, `_targets_p6.R`, into its own store, `_targets_p6` — NOT by
     `_targets.R`. Run it with `Rscript scripts/run_p6_pipeline.R`, optionally
     naming a target to build up to. Rendered by `tar_quarto(paper_6_metrics)`
@@ -528,8 +525,8 @@ below has five entries for four numbered papers.
     Master `index.qmd` plus `_01_roi.qmd`, `_02_p2.qmd`, `_03_beta.qmd`,
     `_04_limitations.qmd`, `_helpers.R`, `references.bib`, `_quarto.yml`.
     Code is `R/p6m_metrics.R` (section 1), `R/p6m_p2.R` (section 2) and
-    `R/p6m_beta.R` (section 3). Date pinned "2026-09-10"; set it at first
-    publication.
+    `R/p6m_beta.R` (section 3). Date pinned "2026-09-11", its publication
+    date.
     **`_helpers.R` holds the paper's formatting helpers and the `R/p6m_*.R`
     files hold only functions that are targets.** That split is deliberate:
     files under `R/` are `source()`d into the global environment and
