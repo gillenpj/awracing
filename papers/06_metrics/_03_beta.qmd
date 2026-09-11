@@ -70,10 +70,25 @@ p6m_tbl(
 
 The pooled coefficient is `r sprintf("%.3f", b_slope$estimate)` with a
 standard error of `r sprintf("%.3f", b_slope$se)` and a 90% interval of
-`r sprintf("[%+.3f, %+.3f]", b_slope$ci_lo, b_slope$ci_hi)`. Read directly,
-the market moves about
-`r sprintf("%.0f%%", 100 * b_slope$estimate)` of the way toward the encoder
-wherever the encoder disagrees with the overnight price.
+`r sprintf("[%+.3f, %+.3f]", b_slope$ci_lo, b_slope$ci_hi)`.
+
+What that says is narrow. Where the encoder disagrees with the published
+forecast, the market's own later move away from that forecast goes about
+`r sprintf("%.0f%%", 100 * b_slope$estimate)` of the way in the same
+direction, so the encoder anticipates most of a move the market was going to
+make anyway. It is not a return, not an edge, and not a price improvement. It
+is agreement between two opinions about a third, and the third is a published
+forecast rather than a price anyone bet into.
+
+The intercept is `r sprintf("%.3f", b_int$estimate)`. Both price columns are
+renormalised to sum to one within each race, so no difference in over-round
+between the two books survives into the fit; what remains is that the settled
+book is more spread out than the forecast book, putting
+`r p6m_pct(p6m_row(p6m_spread, "source", "settled starting price")$mean_favourite_prob, 1)`
+on its favourite against
+`r p6m_pct(p6m_row(p6m_spread, "source", "overnight forecast price")$mean_favourite_prob, 1)`,
+so the typical runner's closing logit sits below its forecast logit even where
+the model and the forecast agree.
 
 Only the pooled coefficient is reported. There is no breakdown by price band,
 field size or anything else, because that would be a search and @sec-roi is
@@ -93,7 +108,8 @@ fraction it would accept from an early traded price is smaller.
 **A coefficient near zero would close the idea off. A positive coefficient
 does not establish it.** This result is the second of those. At
 `r sprintf("%.3f", b_slope$estimate)`, with an interval well clear of zero,
-the market does move toward the encoder rather than ignoring it, so the idea
-is not closed off. That is all it shows. It does not show that the movement
-can be captured, that it is large enough to survive costs, or that it exists
-against a price anyone has traded at.
+the market does move in the encoder's direction rather than ignoring it, so
+the idea is not closed off. That is all it shows. It does not show that the
+movement can be captured, that it is large enough to survive costs, or that
+any of it survives against a price that has been traded rather than
+published.

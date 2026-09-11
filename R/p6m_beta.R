@@ -122,3 +122,32 @@ p6m_p4_cited_fits <- function(pooled, half_a, half_b) {
   stopifnot(nrow(out) == 6L)
   out
 }
+
+#' How spread out each book is, within race
+#'
+#' Descriptive, and the only thing Section 3 says about the intercept. Both
+#' price columns are renormalised to sum to one within race, so any difference
+#' in over-round between the two books is already removed and cannot be what
+#' the intercept reflects. What remains is that the settled book is more
+#' spread out than the forecast book: it concentrates more probability on its
+#' favourite and less on the rest, so the typical runner's closing logit sits
+#' below its forecast logit.
+#'
+#' @param panel The Section 2 panel.
+#' @return A tibble, one row per price source.
+p6m_book_spread <- function(panel) {
+  per_race <- panel |>
+    dplyr::group_by(race_id) |>
+    dplyr::summarise(
+      max_sp = max(p_sp), max_fc = max(p_fc),
+      sd_sp = stats::sd(p_sp), sd_fc = stats::sd(p_fc),
+      .groups = "drop"
+    )
+  tibble::tibble(
+    source = c("settled starting price", "overnight forecast price"),
+    mean_favourite_prob = c(mean(per_race$max_sp), mean(per_race$max_fc)),
+    mean_within_race_sd = c(mean(per_race$sd_sp), mean(per_race$sd_fc)),
+    mean_logit = c(mean(p6m_logit(panel$p_sp)), mean(p6m_logit(panel$p_fc))),
+    n_races = nrow(per_race)
+  )
+}

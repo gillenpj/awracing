@@ -357,6 +357,7 @@ list(
 
   tar_target(p6m_beta,
              p6m_beta_fit(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+  tar_target(p6m_spread, p6m_book_spread(p6m_p2_frame)),
 
   # =======================================================================
   # THE PAPER
