@@ -42,14 +42,6 @@ p6m_n <- function(x) ifelse(is.na(x), "---", format(x, big.mark = ","))
 #' @return Character vector.
 p6m_yn <- function(x) ifelse(is.na(x), "---", ifelse(x, "yes", "no"))
 
-#' A number to a fixed number of significant figures, as a string
-#' @param x Numeric vector.
-#' @param digits Significant figures.
-#' @return Character vector.
-p6m_sig <- function(x, digits = 3) {
-  ifelse(is.na(x), "---", formatC(x, format = "g", digits = digits))
-}
-
 #' One row of a table, looked up by a key column
 #'
 #' Every figure the prose quotes goes through this, so a prose number cannot
@@ -68,10 +60,21 @@ p6m_row <- function(d, col, value) {
 }
 
 #' Render a tibble as a paper table
+#'
+#' Pipe tables, deliberately, in both formats. Emitting LaTeX directly was
+#' tried so that each table would sit in a non-breaking `table` float: it
+#' works, but every chunk here carries a `tbl-` label, so Quarto wraps the
+#' raw LaTeX in a float of its own and the result is two captions and two
+#' numbers per table. Correct numbering is worth more than a page break, so
+#' the tables stay as pipe tables and pandoc's `longtable` is accepted.
+#'
+#' Keeping tables short is what actually prevents a split, so prefer more
+#' tables of few rows over one long one.
+#'
 #' @param d A tibble.
 #' @param caption Table caption.
 #' @param ... Passed to `knitr::kable()`.
 #' @return A knitr kable.
 p6m_tbl <- function(d, caption, ...) {
-  knitr::kable(d, caption = caption, booktabs = TRUE, linesep = "", ...)
+  knitr::kable(d, format = "pipe", caption = caption, ...)
 }

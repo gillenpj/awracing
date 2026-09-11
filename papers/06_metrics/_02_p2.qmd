@@ -1,0 +1,190 @@
+# Owen's scoring rules {#sec-p2}
+
+```{r}
+#| label: p2-key
+#| include: false
+sc <- function(rule, col) {
+  out <- p6m_scores |> dplyr::filter(rule == !!rule, column == !!col)
+  stopifnot(nrow(out) == 1L); out
+}
+bench <- function(rule, model, benchmark) {
+  out <- p6m_scores_bench |>
+    dplyr::filter(rule == !!rule, model == !!model, benchmark == !!benchmark)
+  stopifnot(nrow(out) == 1L); out
+}
+pair <- function(rule, contrast) {
+  out <- p6m_scores_pairs |>
+    dplyr::filter(rule == !!rule, contrast == !!contrast)
+  stopifnot(nrow(out) == 1L); out
+}
+n_bench <- nrow(p6m_scores_bench)
+n_bench_excl <- sum(p6m_scores_bench$excludes_zero)
+bot <- p6m_bins |> dplyr::filter(bin == "0-2%")
+bin_enc <- p6m_bins |> dplyr::filter(column == "p_5")
+bin_sp <- p6m_bins |> dplyr::filter(column == "p_sp")
+SHORT <- c("Paper 2b logit" = "2b", "Paper 3 GBT" = "3",
+           "Paper 5 encoder" = "5", "Starting price" = "SP",
+           "Forecast price" = "FP")
+KEY <- "Columns: 2b = paper 2b logit, 3 = paper 3 GBT, 5 = paper 5 encoder, SP = starting price, FP = forecast price."
+```
+
+Paper 1 reports two scoring rules over the runner-rows whose probability
+exceeds a threshold $t$: $P_1(t)$, the geometric mean of the probability
+assigned to winners, and $P_2(t)$, the geometric mean of the per-row Bernoulli
+likelihood. Both are kept here, with two changes.
+
+## What each rule scores
+
+Every source in this paper is a distribution over the race. The model
+probabilities come from a softmax or a conditional logit over the race's
+runners, and both price columns are renormalised within race, so each sums to
+one over the field.
+
+Under that constraint the two rules score two different outcomes. **P1 at
+$t = 0$ is the exponentiated mean, over races, of the log probability assigned
+to the horse that won** — there is exactly one winner per race, so the mean
+over winning rows is a mean over races. That is the log score for the
+race-level categorical outcome. **P2 sums a Bernoulli log-likelihood over
+every runner-row and divides by the row count**, so it scores each runner's
+marginal win probability as an independent binary event and does not use the
+one-winner constraint. Each is proper for the outcome it scores.
+
+The series' own headline ranking measure is built the same way as P1:
+`score_p1_rank` is the exponentiated mean log probability of the observed
+top-three finishing order, which is P1's construction at depth three.
+
+## Two changes
+
+**Disjoint bins instead of nested thresholds.** Subsetting rows on the
+source's own probability before scoring affects both rules equally: under
+$P_1(t)$ and $P_2(t)$ the subset at $t = 0.15$ still contains every row above
+0.15, so consecutive thresholds are nearly the same rows and no band can be
+read on its own. Disjoint bins are what address that. The bins below 0.10 are
+two, two, two and four points wide, finer than any threshold the series has
+used, because that is where the models' long-priced statements sit.
+
+**Two benchmarks.** The over-round-adjusted settled starting price, as the
+series has always used, and the overnight racecard forecast price from
+`daily_runners`, renormalised per race the same way. Paper 4 found the model
+ties the first and beats the second, so one benchmark alone cannot say whether
+a model's probabilities are good.
+
+Every source is scored on the same rows. Paper 4's price panel supplies both
+benchmark probabilities and papers 2b and 3's stored predictions; paper 5's
+encoder is joined on from its own stored test predictions.
+
+```{r}
+#| label: tbl-p2-cover
+p6m_tbl(
+  p6m_p2_cover |>
+    dplyr::transmute(
+      Rows = p6m_n(rows_test), Races = p6m_n(races_test),
+      `Rows scored` = p6m_n(rows_panel),
+      `Races scored` = p6m_n(races_panel)),
+  caption = "The test split against the rows both benchmarks cover."
+)
+```
+
+Requiring a usable pre-race forecast price costs
+`r p6m_n(p6m_p2_cover$rows_dropped)` rows in
+`r p6m_n(p6m_p2_cover$races_dropped)` race, so both benchmarks are scored on
+identical rows.
+
+## The three models under both benchmarks
+
+```{r}
+#| label: tbl-scores
+p6m_scores |>
+  dplyr::mutate(score_txt = sprintf("%.5f", score),
+                ci_txt = sprintf("[%.5f, %.5f]", ci_lo, ci_hi)) |>
+  dplyr::select(source, rule, score_txt, ci_txt) |>
+  tidyr::pivot_wider(names_from = rule,
+                     values_from = c(score_txt, ci_txt)) |>
+  dplyr::arrange(dplyr::desc(as.numeric(score_txt_P2))) |>
+  dplyr::transmute(Source = source, P1 = score_txt_P1,
+                   `P1 interval` = ci_txt_P1, P2 = score_txt_P2,
+                   `P2 interval` = ci_txt_P2) |>
+  p6m_tbl(caption = "Both rules, every source, over every scored runner-row. Higher is better. Race-level bootstrap, B = 2000, seed 42.")
+```
+
+The two rules give the same ordering,
+`r p6m_rule_agreement$all_sources_order`, so nothing below turns on which is
+read.
+
+```{r}
+#| label: tbl-scores-bench
+p6m_tbl(
+  p6m_scores_bench |>
+    dplyr::transmute(
+      Rule = rule, Model = model, Benchmark = benchmark,
+      Difference = sprintf("%+.5f", diff_point),
+      `90% interval` = sprintf("[%+.5f, %+.5f]", ci_lo, ci_hi)),
+  caption = "Each model against each benchmark, on both rules, paired by race. Every interval excludes zero."
+)
+```
+
+All `r n_bench` contrasts exclude zero: every model loses to the starting
+price and beats the forecast price on both rules. That is paper 4's finding in
+a different measure, and it is why one benchmark is not enough. Against the
+settled price alone the models look worse than the market; against the
+overnight price alone they look better; both are true.
+
+## The three models against each other
+
+```{r}
+#| label: tbl-scores-pairs
+p6m_tbl(
+  p6m_scores_pairs |>
+    dplyr::transmute(
+      Rule = rule, Contrast = contrast,
+      Difference = sprintf("%+.5f", diff_point),
+      `90% interval` = sprintf("[%+.5f, %+.5f]", ci_lo, ci_hi),
+      `Excludes zero` = p6m_yn(excludes_zero)),
+  caption = "The three models against each other, on both rules, paired by race."
+)
+```
+
+On both rules the encoder separates from the two earlier models and papers 2b
+and 3 do not separate from each other. @sec-roi could do neither: the
+single-bet return difference between the encoder and paper 3 was
+`r p6m_pp(p6m_row(p6m_contrasts, "contrast", "5 - 3")$diff_point, 1)` with an
+interval `r sprintf("%.0f", 100 * (p6m_row(p6m_contrasts, "contrast", "5 - 3")$ci_hi - p6m_row(p6m_contrasts, "contrast", "5 - 3")$ci_lo))`
+points wide. Both rules are computed over all
+`r p6m_n(sc("P2", "p_5")$n_rows)` runner-rows; the return difference was
+computed over the races Owen's rule selects, and within those over the
+handful that won.
+
+## By bin
+
+The bins carry calibration and no score. A score computed inside a bin is
+largely set by the bin's win rate, and P1 reads only the winning rows, so four
+of the fifty source-by-bin cells hold no winner at all. What a source states
+against what happens is the reading that survives, and it is the only one the
+bins are used for here.
+
+```{r}
+#| label: tbl-bins-calib
+p6m_bins |>
+  dplyr::mutate(src = unname(SHORT[source]),
+                v = sprintf("%+.1f", 100 * calib_gap)) |>
+  dplyr::select(bin, src, v) |>
+  tidyr::pivot_wider(names_from = src, values_from = v) |>
+  dplyr::rename(Bin = bin) |>
+  p6m_tbl(caption = paste("Observed win rate less mean stated probability, in percentage points. A negative gap means the source states more than it wins.", KEY))
+```
+
+Every source states more than it wins at the long-priced end and less than it
+wins at the short-priced end, and the models overshoot further than the prices
+do. The encoder's 30-35% bin wins
+`r sprintf("%+.1f", 100 * p6m_row(bin_enc, "bin", "30-35%")$calib_gap)` points
+more often than it says, against
+`r sprintf("%+.1f", 100 * p6m_row(bin_sp, "bin", "30-35%")$calib_gap)` for the
+starting price, which is within
+`r sprintf("%.1f", 100 * max(abs(bin_sp$calib_gap[bin_sp$bin != "35%+"])))`
+points of its stated probability in every bin but its top one. The nested form
+could not show this, because it pooled everything above each threshold and the
+upper bands were swamped by the rows below them.
+
+The bottom bin is thin and its gap is close to minus the stated probability by
+construction: it holds `r p6m_n(min(bot$n))` to `r p6m_n(max(bot$n))` rows
+with at most `r max(bot$wins)` winners depending on the source.

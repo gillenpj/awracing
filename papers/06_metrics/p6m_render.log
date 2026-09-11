@@ -10,61 +10,97 @@
 processing file: index.qmd
 
 
-1/19                       
+1/31                   
 
 
-2/19 [setup]               
+2/31 [setup]           
 
 
-3/19                       
+3/31                   
 
 
-4/19 [roi-key]             
+4/31 [roi-key]         
 
 
-5/19                       
+5/31                   
 
 
-6/19 [tbl-series]          
+6/31 [tbl-series]      
 
 
-7/19                       
+7/31                   
 
 
-8/19 [tbl-contrasts]       
+8/31 [tbl-published]   
 
 
-9/19                       
+9/31                   
 
 
-10/19 [tbl-published]       
+10/31 [tbl-contrasts]   
 
 
-11/19                       
+11/31                   
 
 
-12/19 [tbl-recompute-check] 
+12/31 [tbl-race-sets]   
 
 
-13/19                       
+13/31                   
 
 
-14/19 [tbl-resolution]      
+14/31 [p2-key]          
 
 
-15/19                       
+15/31                   
 
 
-16/19 [tbl-resolution-basis]
+16/31 [tbl-p2-cover]    
 
 
-17/19                       
+17/31                   
 
 
-18/19 [tbl-race-sets]       
+18/31 [tbl-scores]      
 
 
-19/19                       
+19/31                   
+
+
+20/31 [tbl-scores-bench]
+
+
+21/31                   
+
+
+22/31 [tbl-scores-pairs]
+
+
+23/31                   
+
+
+24/31 [tbl-bins-calib]  
+
+
+25/31                   
+
+
+26/31 [beta-key]        
+
+
+27/31                   
+
+
+28/31 [tbl-p4-cited]    
+
+
+29/31                   
+
+
+30/31 [tbl-beta]        
+
+
+31/31                   
 
 
 output file: index.knit.md
@@ -127,13 +163,69 @@ metadata
 
   author: Patrick Gillen
 
-  date: '2026-09-10'
+  date: '2026-09-11'
 
   abstract: |
 
-    Section 1 only in this draft. The abstract is written once the remaining
+    Return on investment has been reported throughout this series, alongside the
 
-    sections are in place.
+    ranking measures, and it cannot carry the model-to-model comparison on its
+
+    own. Section 1 shows why: of the four consecutive-model differences in
+
+    single-bet win return, recomputed on one bet rule so they read as a
+
+    sequence, only the first step is distinguishable from zero, the three later
+
+    intervals running
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f to %.0f", 100 * min(d$ci_hi - d$ci_lo), 100 * max(d$ci_hi - d$ci_lo)) })`
+
+    points wide against point differences no larger than
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f", 100 * max(abs(d$diff_point))) })`;
+
+    and the same model under the same rule moves
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_race_sets, store = S); sprintf("%.0f", 100 * (d$roi[1] - d$roi[2])) })`
+
+    points between two adjacent sets of races. Section 2 keeps both of Owen's
+
+    scoring rules, which score different outcomes — P1 the race, P2 the
+
+    runner-rows as independent binary events — and recomputes them on disjoint
+
+    bins instead of nested thresholds, against two benchmarks: the
+
+    over-round-adjusted settled starting price and the overnight racecard
+
+    forecast price. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_p2_cover, store = S); format(d$rows_panel, big.mark = ",") })`
+
+    runner-rows both rules give the same ordering, every model loses to the
+
+    starting price and beats the forecast price with all twelve intervals
+
+    excluding zero, and both rules separate the paper-5 encoder from the two
+
+    earlier models where the return could not. Section 3 fits how much of the
+
+    model's disagreement with the forecast price the market later accepts: the
+
+    pooled coefficient is
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$estimate[d$term == "slope"]) })`
+
+    with a standard error of
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$se[d$term == "slope"]) })`,
+
+    so the market's later move goes about two thirds of the way in the encoder's
+
+    direction — though a forecast is a published opinion rather than a traded
+
+    price, which makes that an upper bound.
 
   
 
@@ -146,61 +238,97 @@ metadata
 processing file: index.qmd
 
 
-1/19                       
+1/31                   
 
 
-2/19 [setup]               
+2/31 [setup]           
 
 
-3/19                       
+3/31                   
 
 
-4/19 [roi-key]             
+4/31 [roi-key]         
 
 
-5/19                       
+5/31                   
 
 
-6/19 [tbl-series]          
+6/31 [tbl-series]      
 
 
-7/19                       
+7/31                   
 
 
-8/19 [tbl-contrasts]       
+8/31 [tbl-published]   
 
 
-9/19                       
+9/31                   
 
 
-10/19 [tbl-published]       
+10/31 [tbl-contrasts]   
 
 
-11/19                       
+11/31                   
 
 
-12/19 [tbl-recompute-check] 
+12/31 [tbl-race-sets]   
 
 
-13/19                       
+13/31                   
 
 
-14/19 [tbl-resolution]      
+14/31 [p2-key]          
 
 
-15/19                       
+15/31                   
 
 
-16/19 [tbl-resolution-basis]
+16/31 [tbl-p2-cover]    
 
 
-17/19                       
+17/31                   
 
 
-18/19 [tbl-race-sets]       
+18/31 [tbl-scores]      
 
 
-19/19                       
+19/31                   
+
+
+20/31 [tbl-scores-bench]
+
+
+21/31                   
+
+
+22/31 [tbl-scores-pairs]
+
+
+23/31                   
+
+
+24/31 [tbl-bins-calib]  
+
+
+25/31                   
+
+
+26/31 [beta-key]        
+
+
+27/31                   
+
+
+28/31 [tbl-p4-cited]    
+
+
+29/31                   
+
+
+30/31 [tbl-beta]        
+
+
+31/31                   
 
 
 output file: index.knit.md
@@ -265,13 +393,69 @@ metadata
 
   author: Patrick Gillen
 
-  date: '2026-09-10'
+  date: '2026-09-11'
 
   abstract: |
 
-    Section 1 only in this draft. The abstract is written once the remaining
+    Return on investment has been reported throughout this series, alongside the
 
-    sections are in place.
+    ranking measures, and it cannot carry the model-to-model comparison on its
+
+    own. Section 1 shows why: of the four consecutive-model differences in
+
+    single-bet win return, recomputed on one bet rule so they read as a
+
+    sequence, only the first step is distinguishable from zero, the three later
+
+    intervals running
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f to %.0f", 100 * min(d$ci_hi - d$ci_lo), 100 * max(d$ci_hi - d$ci_lo)) })`
+
+    points wide against point differences no larger than
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_contrasts, store = S); d <- d[!d$excludes_zero, ]; sprintf("%.0f", 100 * max(abs(d$diff_point))) })`;
+
+    and the same model under the same rule moves
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_race_sets, store = S); sprintf("%.0f", 100 * (d$roi[1] - d$roi[2])) })`
+
+    points between two adjacent sets of races. Section 2 keeps both of Owen's
+
+    scoring rules, which score different outcomes — P1 the race, P2 the
+
+    runner-rows as independent binary events — and recomputes them on disjoint
+
+    bins instead of nested thresholds, against two benchmarks: the
+
+    over-round-adjusted settled starting price and the overnight racecard
+
+    forecast price. On
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_p2_cover, store = S); format(d$rows_panel, big.mark = ",") })`
+
+    runner-rows both rules give the same ordering, every model loses to the
+
+    starting price and beats the forecast price with all twelve intervals
+
+    excluding zero, and both rules separate the paper-5 encoder from the two
+
+    earlier models where the return could not. Section 3 fits how much of the
+
+    model's disagreement with the forecast price the market later accepts: the
+
+    pooled coefficient is
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$estimate[d$term == "slope"]) })`
+
+    with a standard error of
+
+    `r local({ S <- file.path(rprojroot::find_root(rprojroot::has_file("awracing.Rproj")), "_targets_p6"); d <- targets::tar_read(p6m_beta, store = S); sprintf("%.3f", d$se[d$term == "slope"]) })`,
+
+    so the market's later move goes about two thirds of the way in the encoder's
+
+    direction — though a forecast is a published opinion rather than a traded
+
+    price, which makes that an upper bound.
 
   
 
@@ -301,7 +485,7 @@ Output created: _output\index.html
 
 
 
-✔ paper_6_metrics completed [26.3s, 1.97 MB]
+✔ paper_6_metrics completed [30.9s, 2.12 MB]
 
-✔ ended pipeline [34.3s, 1 completed, 26 skipped]
+✔ ended pipeline [39.1s, 1 completed, 38 skipped]
 
