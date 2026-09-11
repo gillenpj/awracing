@@ -94,13 +94,17 @@ identical rows.
 
 ```{r}
 #| label: tbl-scores
-p6m_tbl(
-  p6m_scores |>
-    dplyr::transmute(
-      Rule = rule, Source = source, Score = sprintf("%.5f", score),
-      `90% interval` = sprintf("[%.5f, %.5f]", ci_lo, ci_hi)),
-  caption = "Both rules, every source, over every scored runner-row. Higher is better. Race-level bootstrap, B = 2000, seed 42."
-)
+p6m_scores |>
+  dplyr::mutate(score_txt = sprintf("%.5f", score),
+                ci_txt = sprintf("[%.5f, %.5f]", ci_lo, ci_hi)) |>
+  dplyr::select(source, rule, score_txt, ci_txt) |>
+  tidyr::pivot_wider(names_from = rule,
+                     values_from = c(score_txt, ci_txt)) |>
+  dplyr::arrange(dplyr::desc(as.numeric(score_txt_P2))) |>
+  dplyr::transmute(Source = source, P1 = score_txt_P1,
+                   `P1 interval` = ci_txt_P1, P2 = score_txt_P2,
+                   `P2 interval` = ci_txt_P2) |>
+  p6m_tbl(caption = "Both rules, every source, over every scored runner-row. Higher is better. Race-level bootstrap, B = 2000, seed 42.")
 ```
 
 The two rules give the same ordering,
