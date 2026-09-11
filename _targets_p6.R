@@ -51,6 +51,7 @@ tar_option_set(
 # Paper 6's own code.
 tar_source("R/p6m_metrics.R")
 tar_source("R/p6m_p2.R")
+tar_source("R/p6m_beta.R")
 
 # Read-only reuse of the series' own helpers. The single-bet selection and
 # settlement is paper 2b's, the market-probability construction paper 1's, the
@@ -310,7 +311,8 @@ list(
 
   tar_target(
     p6m_p4_fingerprint,
-    targets::tar_meta(names = c("p4_probs", "p4_common"),
+    targets::tar_meta(names = c("p4_probs", "p4_common", "p4_arm_grid",
+                                "p4_arm_grid_b", "p4_arm_grid_pooled"),
                       fields = c("name", "data"), store = P4_STORE) |>
       dplyr::mutate(store = "paper4")
   ),
@@ -337,6 +339,26 @@ list(
   tar_target(p6m_p2_order, p6m_p2_ordering(p6m_p2_all, p6m_p2_diffs)),
 
   # =======================================================================
+  # SECTION 3 — the pooled coefficient
+  #
+  # Speculative. Same rows as Section 2, the encoder's stored predictions, and
+  # a race-level bootstrap for the standard error.
+  # =======================================================================
+
+  # Paper 4's own published coefficients, read live rather than transcribed.
+  tar_target(p6m_p4_cited, {
+    p6m_p4_fingerprint
+    p6m_p4_cited_fits(
+      targets::tar_read(p4_arm_grid_pooled, store = P4_STORE)$coefficients,
+      targets::tar_read(p4_arm_grid, store = P4_STORE)$coefficients,
+      targets::tar_read(p4_arm_grid_b, store = P4_STORE)$coefficients
+    )
+  }),
+
+  tar_target(p6m_beta,
+             p6m_beta_fit(p6m_p2_frame, n_boot = 2000L, seed = 42L)),
+
+  # =======================================================================
   # THE PAPER
   #
   # Rendered inside this pipeline, as papers 4 and 5 are. HTML and PDF.
@@ -348,6 +370,8 @@ list(
     extra_files = c(
       "papers/06_metrics/_01_roi.qmd",
       "papers/06_metrics/_02_p2.qmd",
+      "papers/06_metrics/_03_beta.qmd",
+      "papers/06_metrics/_04_limitations.qmd",
       "papers/06_metrics/_helpers.R",
       "papers/06_metrics/references.bib",
       "papers/06_metrics/_quarto.yml"

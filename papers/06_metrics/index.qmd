@@ -44,10 +44,16 @@ tar_load(c(
   p6m_val_halves, p6m_race_sets,
   # section 2
   p6m_p2_cover, p6m_p2_all, p6m_p2_diffs, p6m_p2_bins, p6m_p2_order,
-  p6m_p2_pairs
+  p6m_p2_pairs,
+  # section 3
+  p6m_beta, p6m_p4_cited
 ), store = P6_STORE)
 ```
 
 {{< include _01_roi.qmd >}}
 
 {{< include _02_p2.qmd >}}
+
+{{< include _03_beta.qmd >}}
+
+{{< include _04_limitations.qmd >}}

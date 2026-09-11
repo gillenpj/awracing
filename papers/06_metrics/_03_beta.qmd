@@ -1,0 +1,99 @@
+# How much of the model's disagreement the market accepts {#sec-beta}
+
+```{r}
+#| label: beta-key
+#| include: false
+b_slope <- p6m_row(p6m_beta, "term", "slope")
+b_int <- p6m_row(p6m_beta, "term", "intercept")
+p4_sp <- p6m_p4_cited |> dplyr::filter(benchmark == "settled starting price")
+p4_fc <- p6m_p4_cited |> dplyr::filter(benchmark == "overnight forecast price")
+p4_fc_a <- p4_fc |> dplyr::filter(sample == "test-A")
+p4_fc_b <- p4_fc |> dplyr::filter(sample == "test-B")
+```
+
+**This section is speculation. Nothing in the paper rests on it.**
+
+Paper 4 fitted a two-stage conditional logit with a market probability and a
+model probability, both coefficients free, and found the model adds nothing
+distinguishable against the settled starting price and a great deal against
+the overnight racecard forecast price.
+
+```{r}
+#| label: tbl-p4-cited
+p6m_tbl(
+  p6m_p4_cited |>
+    dplyr::transmute(
+      Benchmark = benchmark, Sample = sample, Model = model,
+      Coefficient = sprintf("%.3f", estimate),
+      `95% interval` = sprintf("[%+.3f, %+.3f]", conf_low, conf_high)),
+  caption = "Paper 4's model-probability coefficients, read from its own stored fits."
+)
+```
+
+That result is taken as given here and not re-argued. What it implies is that
+the model's information, such as it is, sits between the overnight price and
+the off. The quantity that matters is then how much of the model's
+disagreement with the overnight price the market subsequently accepts.
+
+## The regression
+
+On the test split, on the encoder's stored predictions, with $p_{\text{close}}$
+the over-round-adjusted settled starting price, $p_{\text{fcst}}$ the
+renormalised overnight forecast price and $\hat p$ the encoder's probability:
+
+$$
+\operatorname{logit}(p_{\text{close}}) - \operatorname{logit}(p_{\text{fcst}})
+  = \alpha + \beta\left[\operatorname{logit}(\hat p) -
+    \operatorname{logit}(p_{\text{fcst}})\right] + \varepsilon .
+$$
+
+Standard errors are a **race-level bootstrap**, B = 2000, seed 42, which is
+the resampling unit and replicate count used for every other interval in this
+paper. The alternative was race-clustered analytic errors; the bootstrap is
+used for consistency with the rest of the series.
+
+The rows are the same `r p6m_n(b_slope$n_rows)` runner-rows in
+`r p6m_n(b_slope$n_races)` races that @sec-p2 scores, because the regression
+needs both prices and the forecast-price requirement bites in the same place.
+
+```{r}
+#| label: tbl-beta
+p6m_tbl(
+  p6m_beta |>
+    dplyr::transmute(
+      Term = term, Estimate = sprintf("%.4f", estimate),
+      `Std. error` = sprintf("%.4f", se),
+      `90% interval` = sprintf("[%+.4f, %+.4f]", ci_lo, ci_hi)),
+  caption = "The pooled fit. Standard errors and intervals from a race-level bootstrap, B = 2000, seed 42."
+)
+```
+
+The pooled coefficient is `r sprintf("%.3f", b_slope$estimate)` with a
+standard error of `r sprintf("%.3f", b_slope$se)` and a 90% interval of
+`r sprintf("[%+.3f, %+.3f]", b_slope$ci_lo, b_slope$ci_hi)`. Read directly,
+the market moves about
+`r sprintf("%.0f%%", 100 * b_slope$estimate)` of the way toward the encoder
+wherever the encoder disagrees with the overnight price.
+
+Only the pooled coefficient is reported. There is no breakdown by price band,
+field size or anything else, because that would be a search and @sec-roi is
+the reason searches on this data do not work.
+
+## Two caveats
+
+**The forecast price is a compiler's published opinion, not a price money has
+traded at.** `daily_runners.forecast_price_decimal` is written the evening
+before racing by someone whose job is to publish an estimate. An early
+exchange price aggregates people who have committed funds, and it will
+already contain much of what a compiler's forecast misses. The coefficient
+above is therefore an upper bound on anything tradeable: whatever fraction of
+the model's disagreement with a compiler the market later accepts, the
+fraction it would accept from an early traded price is smaller.
+
+**A coefficient near zero would close the idea off. A positive coefficient
+does not establish it.** This result is the second of those. At
+`r sprintf("%.3f", b_slope$estimate)`, with an interval well clear of zero,
+the market does move toward the encoder rather than ignoring it, so the idea
+is not closed off. That is all it shows. It does not show that the movement
+can be captured, that it is large enough to survive costs, or that it exists
+against a price anyone has traded at.

@@ -1,0 +1,20 @@
+# Limitations {#sec-limitations}
+
+**The metric comparisons are out of sample; the model underneath them is
+not.** The model was selected with knowledge of these test races across five
+papers: features, objective, function class, encoder architecture and the rung
+ladder were each chosen after seeing earlier papers' test results. Paper 6
+fits nothing, so the comparisons in @sec-roi and @sec-p2 are out of sample as
+comparisons. The models being compared are not.
+
+**@sec-beta is measured against a forecast price, not a traded one.** The
+coefficient describes how much of the model's disagreement with a compiler's
+published estimate the market later accepts. No early traded price appears
+anywhere in this dataset, so the corresponding figure against one cannot be
+measured here.
+
+**The thin bins below 0.10 carry small win counts.** The bottom bin holds
+`r p6m_n(min(p6m_p2_bins$wins[p6m_p2_bins$bin == "0-2%"]))` to
+`r p6m_n(max(p6m_p2_bins$wins[p6m_p2_bins$bin == "0-2%"]))` winners depending
+on the source, and one bin has too few rows to support an interval at all.
+Counts sit beside every score in @sec-p2 for that reason.
